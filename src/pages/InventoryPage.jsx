@@ -255,97 +255,84 @@ export const InventoryPage = () => {
         </div>
       </div>
 
-      {/* Rectangular Table Cards for each Raw Material */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Raw materials displayed as clean, scannable rows */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="hidden lg:grid lg:grid-cols-12 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+          <span className="col-span-3">{t.materialName}</span>
+          <span className="col-span-2">{t.currentStockLabel}</span>
+          <span>{t.unitPriceKilo}</span>
+          <span>{t.totalValue}</span>
+          <span className="col-span-2">{t.individualThresholdHeader}</span>
+          <span className="col-span-2">{t.supplier}</span>
+          <span className="text-center">{t.action}</span>
+        </div>
         {filteredItems.map((item) => {
             const itemThreshold = item.lowStockThreshold ?? lowStockThreshold;
             const isLowStock = item.stockKg <= itemThreshold;
             const totalVal = item.stockKg * item.unitPrice;
-            return (<div key={item.id} className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between relative shadow-sm ${isLowStock
-                    ? 'bg-rose-50/50 border-rose-300 hover:border-rose-400'
-                    : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 leading-tight">
-                      {getLocalizedName(item.name)}
-                    </h3>
-                    <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-amber-700 font-medium">
-                      {getLocalizedCat(item.category)}
-                    </span>
+            return (<div key={item.id} className={`grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-4 items-center px-4 sm:px-5 py-4 border-b border-slate-100 last:border-b-0 transition-colors ${isLowStock ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50/70'}`}>
+              <div className="col-span-2 lg:col-span-3 min-w-0">
+                <div className="flex items-start gap-2">
+                  {isLowStock && <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5"/>}
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 truncate" title={getLocalizedName(item.name)}>{getLocalizedName(item.name)}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-amber-700 font-medium">{getLocalizedCat(item.category)}</span>
+                      <span className={`text-[10px] font-bold ${isLowStock ? 'text-rose-700' : 'text-emerald-700'}`}>{isLowStock ? t.statusLow : t.statusNormal}</span>
+                    </div>
+                    {item.notes && <p className="text-[10px] text-slate-500 truncate mt-1" title={item.notes}>{item.notes}</p>}
                   </div>
-                  {isLowStock ? (<span className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700 border border-rose-200 animate-pulse shrink-0">
-                      <AlertTriangle className="w-3.5 h-3.5"/>
-                      <span>{t.statusLow}</span>
-                    </span>) : (<span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                      {t.statusNormal}
-                    </span>)}
                 </div>
+              </div>
 
-                {/* Stock Details */}
-                <div className="mt-4 grid grid-cols-2 gap-3 py-3 border-y border-slate-100 bg-slate-50/70 rounded-xl px-3.5">
-                  <div>
-                    <span className="text-[11px] text-slate-500 block">{t.stockInKilo}</span>
-                    <span className={`text-base font-bold font-mono ${isLowStock ? 'text-rose-700' : 'text-slate-900'}`}>
-                      {item.stockKg.toLocaleString()} {t.kilo}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-slate-500 block">{t.unitPriceKilo}</span>
-                    <span className="text-base font-bold text-amber-700 font-mono">
-                      {item.unitPrice.toLocaleString()} {t.currency}
-                    </span>
-                  </div>
-                  <div className="col-span-2 pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500">{t.totalValue}:</span>
-                    <span className="text-sm font-bold text-emerald-700 font-mono">
-                      {totalVal.toLocaleString()} {t.currency}
-                    </span>
-                  </div>
-                  <div className="col-span-2 mt-1 flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200/60">
-                    <span className="text-slate-500">{t.individualThresholdHeader}:</span>
-                    <button type="button" onClick={() => {
+              <div className="lg:col-span-2">
+                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.currentStockLabel}</span>
+                <span className={`text-sm font-bold font-mono ${isLowStock ? 'text-rose-700' : 'text-slate-900'}`}>{item.stockKg.toLocaleString()} {t.kilo}</span>
+                <span className="block text-[10px] text-slate-400 font-mono">{(item.stockKg / 1000).toFixed(2)} {t.tons}</span>
+              </div>
+
+              <div>
+                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.unitPriceKilo}</span>
+                <span className="text-sm font-bold text-amber-700 font-mono">{item.unitPrice.toLocaleString()}</span>
+                <span className="block text-[10px] text-slate-400">{t.currency}/kg</span>
+              </div>
+
+              <div>
+                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.totalValue}</span>
+                <span className="text-sm font-bold text-emerald-700 font-mono">{totalVal.toLocaleString()}</span>
+                <span className="block text-[10px] text-slate-400">{t.currency}</span>
+              </div>
+
+              <div className="lg:col-span-2">
+                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.individualThresholdHeader}</span>
+                <button type="button" onClick={() => {
                     setEditingThresholdItem({
                         id: item.id,
                         name: getLocalizedName(item.name),
                         current: item.lowStockThreshold ?? lowStockThreshold
                     });
                     setNewThresholdValue(item.lowStockThreshold ?? lowStockThreshold);
-                }} className="text-amber-700 font-mono hover:underline flex items-center gap-1 font-semibold cursor-pointer" title={t.individualThresholdTitle}>
-                      <span>{(item.lowStockThreshold ?? lowStockThreshold).toLocaleString()} {t.kilo}</span>
-                      <span className="text-[10px] text-slate-400">✎</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Supplier Info */}
-                {item.supplierName && (<div className="mt-3 flex items-center gap-2 text-xs text-slate-700">
-                    <Truck className="w-3.5 h-3.5 text-amber-600 shrink-0"/>
-                    <span className="text-slate-500">{t.supplier}:</span>
-                    <span className="font-semibold text-slate-900 truncate">{item.supplierName}</span>
-                  </div>)}
-
-                {item.notes && (<p className="text-[11px] text-slate-600 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                    {item.notes}
-                  </p>)}
+                }} className="text-amber-700 font-mono hover:underline flex items-center gap-1 font-semibold cursor-pointer text-xs" title={t.individualThresholdTitle}>
+                  <span>{itemThreshold.toLocaleString()} {t.kilo}</span><span className="text-slate-400">✎</span>
+                </button>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span>{item.dateAdded}</span>
-                <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => openRestockModal(item)} className="px-2.5 py-1.5 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-semibold">
-                    <RefreshCw className="w-3.5 h-3.5"/>
-                    <span>{lang === 'fa' ? 'افزایش موجودی' : lang === 'ps' ? 'ذخیره زیاتول' : 'Restock'}</span>
-                  </button>
-                  <button type="button" onClick={() => setMaterialToDelete(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.delete}>
-                    <Trash2 className="w-4 h-4"/>
-                  </button>
-                </div>
+              <div className="lg:col-span-2 min-w-0">
+                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.supplier}</span>
+                {item.supplierName ? <div className="flex items-center gap-1.5 min-w-0"><Truck className="w-3.5 h-3.5 text-amber-600 shrink-0"/><span className="text-xs font-semibold text-slate-700 truncate" title={item.supplierName}>{item.supplierName}</span></div> : <span className="text-xs text-slate-400">—</span>}
+                <span className="text-[10px] text-slate-400 block mt-1">{item.dateAdded}</span>
+              </div>
+
+              <div className="col-span-2 lg:col-span-1 flex items-center justify-end gap-1.5">
+                <button type="button" onClick={() => openRestockModal(item)} className="px-2.5 py-1.5 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-semibold text-xs" title={lang === 'fa' ? 'افزایش موجودی' : lang === 'ps' ? 'ذخیره زیاتول' : 'Restock'}>
+                  <RefreshCw className="w-3.5 h-3.5"/><span className="lg:hidden xl:inline">{lang === 'fa' ? 'افزایش' : lang === 'ps' ? 'زیاتول' : 'Restock'}</span>
+                </button>
+                <button type="button" onClick={() => setMaterialToDelete(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.delete}><Trash2 className="w-4 h-4"/></button>
               </div>
             </div>);
         })}
 
-        {filteredItems.length === 0 && (<div className="col-span-full p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-sm">
+        {filteredItems.length === 0 && (<div className="p-12 text-center bg-white">
             <Wheat className="w-10 h-10 text-slate-400 mx-auto mb-3"/>
             <p className="text-sm text-slate-600 font-medium">
               {t.showingResults} 0 {t.records}

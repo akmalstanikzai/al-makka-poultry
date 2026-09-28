@@ -306,7 +306,10 @@ export const DatabaseProvider = ({ children }) => {
             let supplierId = material.supplierId;
             const resolvedName = supplierName?.trim() || material.supplierName || '';
             if (resolvedName) {
-                const supplierIndex = updatedSuppliers.findIndex(supplier => supplier.id === supplierId || supplier.name.toLowerCase() === resolvedName.toLowerCase());
+                // An explicitly entered supplier name takes precedence over the
+                // material's previous supplier. Otherwise a restock from a new
+                // supplier would incorrectly update the old supplier account.
+                const supplierIndex = updatedSuppliers.findIndex(supplier => supplier.name.toLowerCase() === resolvedName.toLowerCase());
                 const transaction = {
                     id: `st-${Date.now()}`,
                     date: today,

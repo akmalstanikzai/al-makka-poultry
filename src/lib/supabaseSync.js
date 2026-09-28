@@ -370,7 +370,6 @@ export async function seedInitialDataToSupabase(state) {
                 name: f.name,
                 description: f.description || null,
                 ingredients: f.ingredients,
-                operator_name: null,
                 date_created: f.createdDate,
             }));
             await checked(supabase.from('formulas').upsert(formRows), 'formulas seed');
@@ -713,7 +712,6 @@ export async function sbSyncFormulaProduction(formula, batch, updatedRawMaterial
             name: formula.name,
             description: formula.description || null,
             ingredients: formula.ingredients,
-            operator_name: batch.operatorName || null,
             date_created: formula.createdDate,
         }), 'formulas sync');
         // 2. Production Batch
