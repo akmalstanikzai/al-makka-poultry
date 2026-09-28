@@ -215,6 +215,29 @@ export async function loadStateFromSupabase() {
             remainingAmount: Number(s.remaining_amount) || 0,
             notes: s.notes || undefined,
         }));
+        // Customer totals may already include payments from an older app
+        // version that failed before updating the sales table. Reconstruct the
+        // invoice paid/remaining values oldest-first so both pages agree.
+        let salesReconciliationNeeded = false;
+        customers.forEach(customer => {
+            let paidToAllocate = customer.totalPaid;
+            sales
+                .filter(sale => sale.customerId === customer.id || (
+                    !sale.customerId && (
+                        sale.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase() ||
+                        (customer.phone && sale.customerPhone === customer.phone)
+                    )
+                ))
+                .sort((first, second) => first.date.localeCompare(second.date))
+                .forEach(sale => {
+                    const invoicePaid = Math.min(paidToAllocate, sale.totalAmount);
+                    if (sale.paidAmount !== invoicePaid || sale.remainingAmount !== Math.max(0, sale.totalAmount - invoicePaid))
+                        salesReconciliationNeeded = true;
+                    sale.paidAmount = invoicePaid;
+                    sale.remainingAmount = Math.max(0, sale.totalAmount - invoicePaid);
+                    paidToAllocate -= invoicePaid;
+                });
+        });
         const expenses = (expRes.data || []).map(e => ({
             id: e.id,
             date: e.date,
@@ -263,6 +286,7 @@ export async function loadStateFromSupabase() {
         ].some(items => items.length > 0);
         return {
             hasData,
+            salesReconciliationNeeded,
             state: {
                 rawMaterials,
                 processedStock,

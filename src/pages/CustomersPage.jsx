@@ -9,6 +9,8 @@ export const CustomersPage = () => {
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentNote, setPaymentNote] = useState('');
+    const [paymentStatus, setPaymentStatus] = useState(null);
+    const [isSavingPayment, setIsSavingPayment] = useState(false);
     // Delete customer modal
     const [customerToDelete, setCustomerToDelete] = useState(null);
     // Status Filter: 'all' | 'debtors' | 'settled'
@@ -25,16 +27,24 @@ export const CustomersPage = () => {
         setReceiveModalCustomer(c);
         setReceivedAmount(c.balanceOwed);
         setPaymentNote('');
+        setPaymentStatus(null);
     };
-    const handleReceiveSubmit = (e) => {
+    const handleReceiveSubmit = async (e) => {
         e.preventDefault();
         if (!receiveModalCustomer)
             return;
         const amount = Number(receivedAmount);
-        if (isNaN(amount) || amount <= 0)
+        if (isNaN(amount) || amount <= 0) {
+            setPaymentStatus({ type: 'error', text: 'Payment must be greater than zero.' });
             return;
-        receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote);
-        setReceiveModalCustomer(null);
+        }
+        setIsSavingPayment(true);
+        setPaymentStatus(null);
+        const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote);
+        setIsSavingPayment(false);
+        setPaymentStatus(result.success
+            ? { type: 'success', text: 'Customer payment saved to the database.' }
+            : { type: 'error', text: result.error || 'Customer payment was not saved.' });
     };
     // Aggregated totals
     const totalSalesAll = db.customers.reduce((acc, c) => acc + (c.totalPurchasedAmount || 0), 0);
@@ -391,10 +401,11 @@ export const CustomersPage = () => {
                 <button type="button" onClick={() => setReceiveModalCustomer(null)} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer">
                   {t.cancel}
                 </button>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/25 cursor-pointer">
-                  {t.save}
+                <button type="submit" disabled={isSavingPayment || paymentStatus?.type === 'success'} className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-wait text-white text-xs font-bold shadow-md shadow-blue-600/25 cursor-pointer">
+                  {isSavingPayment ? 'Saving...' : t.save}
                 </button>
               </div>
+              {paymentStatus && <p className={`text-xs font-semibold ${paymentStatus.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`} role="status">{paymentStatus.text}</p>}
             </form>
           </div>
         </div>)}

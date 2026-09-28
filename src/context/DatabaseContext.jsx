@@ -122,6 +122,12 @@ export const DatabaseProvider = ({ children }) => {
                 isInitialLoadComplete = true;
                 isRemoteStateReady.current = true;
                 setIsDatabaseLoading(false);
+                if (result.salesReconciliationNeeded) {
+                    localWritesInProgress.current += 1;
+                    void seedInitialDataToSupabase(hydratedState).finally(() => {
+                        localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
+                    });
+                }
                 void loadFactorySettings().then(settings => {
                     if (isMounted && settings?.lowStockThreshold) {
                         setLowStockThresholdState(settings.lowStockThreshold);
@@ -731,21 +737,22 @@ export const DatabaseProvider = ({ children }) => {
         return { success: true };
     };
     // RECEIVE PAYMENT FROM CUSTOMER
-    const receiveCustomerPayment = (customerId, amount, note) => {
+    const receiveCustomerPayment = async (customerId, amount, note) => {
         if (amount <= 0)
-            return;
+            return { success: false, error: 'Payment must be greater than zero.' };
         const today = new Date().toISOString().split('T')[0];
-        setDb(prev => {
+        const nextState = (() => {
+            const prev = db;
             const custIndex = prev.customers.findIndex(c => c.id === customerId);
             if (custIndex === -1)
-                return prev;
+                return null;
             const cust = prev.customers[custIndex];
             const actualReceived = Math.min(amount, cust.balanceOwed);
             const newRemaining = Math.max(0, cust.balanceOwed - actualReceived);
             const transaction = {
                 id: `ct-${Date.now()}`,
                 date: today,
-                type: 'payment_received',
+                type: 'payment',
                 description: note || 'دریافت طلب و باقی‌داری مشتری',
                 amount: 0,
                 paidAmount: actualReceived,
@@ -759,10 +766,23 @@ export const DatabaseProvider = ({ children }) => {
                 transactions: [transaction, ...cust.transactions],
             };
             updatedCustomers[custIndex] = updatedCust;
-            let paymentToAllocate = actualReceived;
+            const normalizedCustomerName = cust.name.trim().toLowerCase();
+            const normalizedCustomerPhone = (cust.phone || '').trim();
+            const belongsToCustomer = sale => sale.customerId === customerId || (
+                !sale.customerId && (
+                    sale.customerName.trim().toLowerCase() === normalizedCustomerName ||
+                    (normalizedCustomerPhone && sale.customerPhone === normalizedCustomerPhone)
+                )
+            );
+            const alreadyAppliedToInvoices = prev.sales
+                .filter(belongsToCustomer)
+                .reduce((sum, sale) => sum + sale.paidAmount, 0);
+            // Reconcile any older customer payments that reached the customer
+            // ledger but were blocked before the related invoice update.
+            let paymentToAllocate = Math.max(0, updatedCust.totalPaid - alreadyAppliedToInvoices);
             const invoicePayments = new Map();
             [...prev.sales]
-                .filter(sale => sale.customerId === customerId && sale.remainingAmount > 0)
+                .filter(sale => belongsToCustomer(sale) && sale.remainingAmount > 0)
                 .sort((first, second) => first.date.localeCompare(second.date))
                 .forEach(sale => {
                     if (paymentToAllocate <= 0)
@@ -787,7 +807,20 @@ export const DatabaseProvider = ({ children }) => {
                 sales: updatedSales,
                 cashInHand: prev.cashInHand + actualReceived,
             };
+        })();
+        if (!nextState)
+            return { success: false, error: 'Customer was not found.' };
+        localWritesInProgress.current += 1;
+        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
+            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
         });
+        if (!saved)
+            return { success: false, error: 'The customer payment was not saved to the database.' };
+        lastSyncedState.current = JSON.stringify(nextState);
+        setDb(nextState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
+        return { success: true };
     };
     // DELETE CUSTOMER
     const deleteCustomer = (customerId) => {
