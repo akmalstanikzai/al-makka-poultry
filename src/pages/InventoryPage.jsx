@@ -1,14 +1,23 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, Sparkles, X } from 'lucide-react';
+import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, Sparkles, X, RefreshCw } from 'lucide-react';
 export const InventoryPage = () => {
-    const { db, t, lang, addRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold, getLocalizedName, getLocalizedCat } = useDatabase();
+    const { db, t, lang, addRawMaterial, restockRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold, getLocalizedName, getLocalizedCat } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [materialToDelete, setMaterialToDelete] = useState(null);
     const [editingThresholdItem, setEditingThresholdItem] = useState(null);
     const [newThresholdValue, setNewThresholdValue] = useState('');
+    const [restockItem, setRestockItem] = useState(null);
+    const [restockUnit, setRestockUnit] = useState('kg');
+    const [restockQuantity, setRestockQuantity] = useState('');
+    const [restockPrice, setRestockPrice] = useState('');
+    const [restockSupplier, setRestockSupplier] = useState('');
+    const [restockPhone, setRestockPhone] = useState('');
+    const [restockPaid, setRestockPaid] = useState('');
+    const [restockNotes, setRestockNotes] = useState('');
+    const [restockError, setRestockError] = useState('');
     // Form State
     const [itemName, setItemName] = useState('');
     const [category, setCategory] = useState('Grains');
@@ -99,6 +108,41 @@ export const InventoryPage = () => {
         setNotes('');
         setErrorMsg('');
         setIsModalOpen(false);
+    };
+    const openRestockModal = (item) => {
+        const supplier = db.suppliers.find(value => value.id === item.supplierId || value.name === item.supplierName);
+        setRestockItem(item);
+        setRestockUnit('kg');
+        setRestockQuantity('');
+        setRestockPrice(item.unitPrice);
+        setRestockSupplier(item.supplierName || supplier?.name || '');
+        setRestockPhone(supplier?.phone || '');
+        setRestockPaid('');
+        setRestockNotes('');
+        setRestockError('');
+    };
+    const restockInputQuantity = Number(restockQuantity) || 0;
+    const restockWeightKg = restockUnit === 'ton'
+        ? restockInputQuantity * 1000
+        : restockUnit === 'bag' ? restockInputQuantity * 50 : restockInputQuantity;
+    const restockTotal = restockWeightKg * (Number(restockPrice) || 0);
+    const restockPaidAmount = restockPaid === '' ? restockTotal : Number(restockPaid);
+    const handleRestock = (event) => {
+        event.preventDefault();
+        setRestockError('');
+        const result = restockRawMaterial({
+            materialId: restockItem.id,
+            addedWeightKg: restockWeightKg,
+            newUnitPrice: Number(restockPrice),
+            supplierName: restockSupplier.trim() || undefined,
+            supplierPhone: restockPhone.trim() || undefined,
+            paidAmount: restockPaidAmount,
+            notes: restockNotes.trim() || undefined,
+        });
+        if (result.success)
+            setRestockItem(null);
+        else
+            setRestockError(result.error || 'Could not restock this material.');
     };
     // Filtered raw materials with search and category filter
     const filteredItems = db.rawMaterials.filter(item => {
@@ -288,9 +332,15 @@ export const InventoryPage = () => {
 
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                 <span>{item.dateAdded}</span>
-                <button type="button" onClick={() => setMaterialToDelete(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.delete}>
-                  <Trash2 className="w-4 h-4"/>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => openRestockModal(item)} className="px-2.5 py-1.5 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-semibold">
+                    <RefreshCw className="w-3.5 h-3.5"/>
+                    <span>{lang === 'fa' ? 'افزایش موجودی' : lang === 'ps' ? 'ذخیره زیاتول' : 'Restock'}</span>
+                  </button>
+                  <button type="button" onClick={() => setMaterialToDelete(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.delete}>
+                    <Trash2 className="w-4 h-4"/>
+                  </button>
+                </div>
               </div>
             </div>);
         })}
@@ -489,6 +539,39 @@ export const InventoryPage = () => {
                 {t.save}
               </button>
             </div>
+          </div>
+        </div>)}
+
+      {restockItem && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-5">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">{lang === 'fa' ? 'افزایش موجودی مواد خام' : lang === 'ps' ? 'د خامو موادو ذخیره زیاتول' : 'Restock raw material'}</h3>
+                <p className="text-xs text-slate-500 mt-1">{getLocalizedName(restockItem.name)} · {restockItem.stockKg.toLocaleString()} {t.kilo}</p>
+              </div>
+              <button type="button" onClick={() => setRestockItem(null)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-5 h-5"/></button>
+            </div>
+            {restockError && (<div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">{restockError}</div>)}
+            <form onSubmit={handleRestock} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={restockUnit} onChange={(e) => setRestockUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="kg">{t.kg}</option><option value="bag">{t.bag}</option><option value="ton">{t.ton}</option></select></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity}</label><input required type="number" min="0.001" step="any" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo}</label><input required type="number" min="0" step="any" value={restockPrice} onChange={(e) => setRestockPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.supplier}</label><input value={restockSupplier} onChange={(e) => { setRestockSupplier(e.target.value); const supplier = db.suppliers.find(value => value.name === e.target.value); if (supplier) setRestockPhone(supplier.phone || ''); }} list="restock-suppliers" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/><datalist id="restock-suppliers">{db.suppliers.map(supplier => <option key={supplier.id} value={supplier.name}/>)}</datalist></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.phone}</label><input value={restockPhone} onChange={(e) => setRestockPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" dir="ltr"/></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidAmount}</label><input type="number" min="0" step="any" value={restockPaid} onChange={(e) => setRestockPaid(e.target.value)} placeholder={restockTotal.toString()} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.notesDescriptionLabel}</label><input value={restockNotes} onChange={(e) => setRestockNotes(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/></div>
+              </div>
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 grid grid-cols-2 gap-3 text-xs">
+                <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{restockTotal.toLocaleString()} {t.currency}</strong></div>
+                <div><span className="text-slate-500 block">{t.remainingSupplierBill}</span><strong className="font-mono text-rose-700">{Math.max(0, restockTotal - restockPaidAmount).toLocaleString()} {t.currency}</strong></div>
+              </div>
+              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setRestockItem(null)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-700">{t.cancel}</button><button type="submit" className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold">{lang === 'fa' ? 'ثبت افزایش موجودی' : lang === 'ps' ? 'ذخیره ثبتول' : 'Save restock'}</button></div>
+            </form>
           </div>
         </div>)}
 

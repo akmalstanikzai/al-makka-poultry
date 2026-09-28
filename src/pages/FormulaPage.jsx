@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Scale, Plus, Trash2, PackageCheck, DollarSign, AlertCircle, CheckCircle2, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { Scale, Plus, Trash2, PackageCheck, DollarSign, AlertCircle, CheckCircle2, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen } from 'lucide-react';
 export const FormulaPage = () => {
-    const { db, t, lang, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
+    const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
+    const [loadedFormulaId, setLoadedFormulaId] = useState(null);
     const [formulaName, setFormulaName] = useState('');
     const [description, setDescription] = useState('');
     const [operatorName, setOperatorName] = useState('');
@@ -146,6 +147,33 @@ export const FormulaPage = () => {
     const totalProcessedTons = totalProcessedKg / 1000;
     const totalProcessedBags = Math.round(totalProcessedKg / 50);
     const totalProcessedValue = db.processedStock.reduce((acc, p) => acc + ((p.stockKg || 0) * (p.averageCostPerKg || 0)), 0);
+    const handleLoadFormula = (formula) => {
+        setLoadedFormulaId(formula.id);
+        setFormulaName(formula.name);
+        setDescription(formula.description || '');
+        setIngredients(formula.ingredients.map(ingredient => ({
+            rawMaterialId: ingredient.rawMaterialId,
+            weightKg: ingredient.weightKg,
+        })));
+        setMessage({
+            type: 'success',
+            text: lang === 'fa' ? 'فرمول ذخیره‌شده بارگذاری شد.' : lang === 'ps' ? 'خوندي شوی فورمول پورته شو.' : 'Saved formula loaded.',
+        });
+    };
+    const handleSaveFormula = () => {
+        setMessage(null);
+        const result = saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined);
+        if (result.success) {
+            setLoadedFormulaId(result.formulaId);
+            setMessage({
+                type: 'success',
+                text: lang === 'fa' ? 'فرمول در Supabase ذخیره شد.' : lang === 'ps' ? 'فورمول په Supabase کې خوندي شو.' : 'Formula saved to Supabase.',
+            });
+        }
+        else {
+            setMessage({ type: 'error', text: result.error || 'Could not save formula.' });
+        }
+    };
     const handleProduce = (e) => {
         e.preventDefault();
         setMessage(null);
@@ -183,6 +211,7 @@ export const FormulaPage = () => {
             setDescription('');
             setOperatorName('');
             setBatchExpenses('');
+            setLoadedFormulaId(null);
         }
         else {
             setMessage({ type: 'error', text: result.error || 'Error' });
@@ -406,7 +435,13 @@ export const FormulaPage = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
+            <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2">
+              <button type="button" onClick={handleSaveFormula} className="px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center gap-2 cursor-pointer">
+                <Bookmark className="w-4 h-4"/>
+                <span>{loadedFormulaId
+                    ? (lang === 'fa' ? 'به‌روزرسانی فرمول' : lang === 'ps' ? 'فورمول تازه کول' : 'Update formula')
+                    : (lang === 'fa' ? 'ذخیره فرمول' : lang === 'ps' ? 'فورمول خوندي کول' : 'Save formula')}</span>
+              </button>
               <button type="submit" className="px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-md shadow-amber-600/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95">
                 <PackageCheck className="w-4 h-4"/>
                 <span>{t.produceFeedBtn}</span>
@@ -690,9 +725,14 @@ export const FormulaPage = () => {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <h4 className="font-bold text-slate-900 text-sm">{f.name}</h4>
-                      <button type="button" onClick={() => setFormulaToDelete(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.deleteFormula}>
-                        <Trash2 className="w-4 h-4"/>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => handleLoadFormula(f)} className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer" title={lang === 'fa' ? 'بارگذاری فرمول' : lang === 'ps' ? 'فورمول پورته کول' : 'Load formula'}>
+                          <FolderOpen className="w-4 h-4"/>
+                        </button>
+                        <button type="button" onClick={() => setFormulaToDelete(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.deleteFormula}>
+                          <Trash2 className="w-4 h-4"/>
+                        </button>
+                      </div>
                     </div>
                     {f.description && (<p className="text-xs text-slate-600 mt-1">{f.description}</p>)}
                     <div className="mt-3 pt-2 border-t border-slate-200/60 space-y-1.5 text-xs">

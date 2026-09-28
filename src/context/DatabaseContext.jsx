@@ -288,6 +288,78 @@ export const DatabaseProvider = ({ children }) => {
             };
         });
     };
+    // RESTOCK AN EXISTING RAW MATERIAL & RECORD THE SUPPLIER PURCHASE
+    const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, supplierName, supplierPhone, paidAmount, notes }) => {
+        const material = db.rawMaterials.find(item => item.id === materialId);
+        const weight = Number(addedWeightKg);
+        const price = Number(newUnitPrice);
+        if (!material)
+            return { success: false, error: 'Raw material not found.' };
+        if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(price) || price < 0)
+            return { success: false, error: 'Restock quantity and unit price are invalid.' };
+        const today = new Date().toISOString().split('T')[0];
+        const totalBill = weight * price;
+        const paid = Math.min(Math.max(0, Number(paidAmount) || 0), totalBill);
+        const remaining = Math.max(0, totalBill - paid);
+        setDb(prev => {
+            let updatedSuppliers = [...prev.suppliers];
+            let supplierId = material.supplierId;
+            const resolvedName = supplierName?.trim() || material.supplierName || '';
+            if (resolvedName) {
+                const supplierIndex = updatedSuppliers.findIndex(supplier => supplier.id === supplierId || supplier.name.toLowerCase() === resolvedName.toLowerCase());
+                const transaction = {
+                    id: `st-${Date.now()}`,
+                    date: today,
+                    type: 'purchase',
+                    description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
+                    amount: totalBill,
+                    paidAmount: paid,
+                    remainingAmount: remaining,
+                };
+                if (supplierIndex >= 0) {
+                    const supplier = updatedSuppliers[supplierIndex];
+                    supplierId = supplier.id;
+                    updatedSuppliers[supplierIndex] = {
+                        ...supplier,
+                        phone: supplierPhone || supplier.phone,
+                        totalPurchasedAmount: supplier.totalPurchasedAmount + totalBill,
+                        totalPaid: supplier.totalPaid + paid,
+                        balanceOwed: supplier.balanceOwed + remaining,
+                        transactions: [transaction, ...supplier.transactions],
+                    };
+                }
+                else {
+                    supplierId = `sup-${Date.now()}`;
+                    updatedSuppliers.unshift({
+                        id: supplierId,
+                        name: resolvedName,
+                        phone: supplierPhone || '',
+                        address: '',
+                        totalPurchasedAmount: totalBill,
+                        totalPaid: paid,
+                        balanceOwed: remaining,
+                        transactions: [transaction],
+                        createdAt: today,
+                    });
+                }
+            }
+            return {
+                ...prev,
+                rawMaterials: prev.rawMaterials.map(item => item.id === materialId ? {
+                    ...item,
+                    stockKg: item.stockKg + weight,
+                    unitPrice: price,
+                    supplierId,
+                    supplierName: resolvedName || item.supplierName,
+                    notes: notes || item.notes,
+                    dateAdded: today,
+                } : item),
+                suppliers: updatedSuppliers,
+                cashInHand: prev.cashInHand - paid,
+            };
+        });
+        return { success: true };
+    };
     // UPDATE RAW MATERIAL THRESHOLD PER ITEM
     const updateRawMaterialThreshold = (id, threshold) => {
         setDb(prev => {
@@ -480,6 +552,51 @@ export const DatabaseProvider = ({ children }) => {
             };
         });
         return { success: true };
+    };
+    // SAVE OR UPDATE A REUSABLE FORMULA WITHOUT PRODUCING A BATCH
+    const saveFormulaTemplate = (name, ingredients, description, formulaId) => {
+        if (!name.trim())
+            return { success: false, error: t.pleaseEnterFormulaName };
+        let totalWeight = 0;
+        let totalCost = 0;
+        const populatedIngredients = [];
+        for (const ingredient of ingredients) {
+            const raw = db.rawMaterials.find(item => item.id === ingredient.rawMaterialId);
+            const weight = Number(ingredient.weightKg) || 0;
+            if (!raw || weight <= 0)
+                return { success: false, error: t.invalidRawMaterialSelected };
+            const ingredientCost = weight * raw.unitPrice;
+            totalWeight += weight;
+            totalCost += ingredientCost;
+            populatedIngredients.push({
+                rawMaterialId: raw.id,
+                rawMaterialName: raw.name,
+                weightKg: weight,
+                costPerKg: raw.unitPrice,
+                totalCost: ingredientCost,
+            });
+        }
+        if (totalWeight <= 0)
+            return { success: false, error: t.totalWeightMustBePositive };
+        const id = formulaId || `form-${Date.now()}`;
+        const existing = db.formulas.find(formula => formula.id === id);
+        const formula = {
+            id,
+            name: name.trim(),
+            description,
+            ingredients: populatedIngredients,
+            totalWeightKg: totalWeight,
+            totalBatchCost: totalCost,
+            costPerKg: totalCost / totalWeight,
+            createdDate: existing?.createdDate || new Date().toISOString().split('T')[0],
+        };
+        setDb(prev => ({
+            ...prev,
+            formulas: existing
+                ? prev.formulas.map(item => item.id === id ? formula : item)
+                : [formula, ...prev.formulas],
+        }));
+        return { success: true, formulaId: id };
     };
     // DELETE FORMULA
     const deleteFormula = (formulaId) => {
@@ -730,10 +847,12 @@ export const DatabaseProvider = ({ children }) => {
             isSupabaseConnected,
             databaseError,
             addRawMaterial,
+            restockRawMaterial,
             deleteRawMaterial,
             settleSupplierPayment,
             deleteSupplier,
             createFormulaAndProduce,
+            saveFormulaTemplate,
             deleteFormula,
             recordSale,
             receiveCustomerPayment,
