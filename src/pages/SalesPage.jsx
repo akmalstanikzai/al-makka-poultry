@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle } from 'lucide-react';
-export const SalesView = () => {
+export const SalesPage = () => {
     const { db, t, recordSale, getLocalizedName } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedProductFilter, setSelectedProductFilter] = useState('all');
     const [selectedPaymentFilter, setSelectedPaymentFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showCostRate, setShowCostRate] = useState(true);
@@ -114,13 +113,12 @@ export const SalesView = () => {
         const matchesSearch = !term || (s.customerName.toLowerCase().includes(term) ||
             (s.customerPhone && s.customerPhone.toLowerCase().includes(term)) ||
             s.id.toLowerCase().includes(term));
-        const matchesProduct = selectedProductFilter === 'all' || s.productName.toLowerCase().includes(selectedProductFilter.toLowerCase());
         let matchesPayment = true;
         if (selectedPaymentFilter === 'paid')
             matchesPayment = s.remainingAmount === 0;
         if (selectedPaymentFilter === 'unpaid')
             matchesPayment = s.remainingAmount > 0;
-        return matchesSearch && matchesProduct && matchesPayment;
+        return matchesSearch && matchesPayment;
     });
     const totalSalesRevenue = db.sales.reduce((acc, s) => acc + s.totalAmount, 0);
     const totalSalesProfit = db.sales.reduce((acc, s) => acc + s.profit, 0);

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Lock, Mail, ArrowRight, ArrowLeft, ShieldCheck, Wheat, AlertCircle, Globe2 } from 'lucide-react';
 export const LoginPage = () => {
-    const { lang, setLang, t, login } = useDatabase();
+    const { lang, setLang, t, login, databaseError } = useDatabase();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
@@ -78,9 +78,9 @@ export const LoginPage = () => {
             </div>
 
             {/* Error Message */}
-            {error && (<div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2.5">
+            {(error || databaseError) && (<div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2.5" role="alert">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600"/>
-                <span>{error}</span>
+                <span>{error || databaseError}</span>
               </div>)}
 
             {/* Form */}
@@ -120,16 +120,6 @@ export const LoginPage = () => {
               </button>
             </form>
 
-            <button type="button" onClick={() => {
-            setEmail('Rayan@poletry.af');
-            setPassword('Rayan6789');
-            setError(null);
-        }} className="w-full mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors">
-              {t.fillDemoBtn}
-            </button>
-            <p className="mt-2 text-center text-[11px] leading-5 text-slate-500" dir="ltr">
-              {t.demoCredentialsNotice}
-            </p>
           </div>
         </div>
       </main>

@@ -1,50 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { initialFactoryData } from '../initialData';
 import { translations, getLocalizedItemName, getLocalizedCategory, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase } from '../lib/supabase';
-import { loadStateFromSupabase, seedInitialDataToSupabase, sbDeleteCustomer, sbDeleteRawMaterial, sbDeleteSupplier, sbDeleteExpense, sbDeleteFormula } from '../lib/supabaseSync';
-const STORAGE_KEY = 'al_makkah_poultry_feed_db_v1';
+import { clearAllDataFromSupabase, loadFactorySettings, loadStateFromSupabase, saveLowStockThreshold, seedInitialDataToSupabase, sbDeleteCustomer, sbDeleteRawMaterial, sbDeleteSupplier, sbDeleteExpense, sbDeleteFormula } from '../lib/supabaseSync';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
-const THRESHOLD_STORAGE_KEY = 'al_makkah_poultry_feed_threshold';
-const LOCAL_SESSION_KEY = 'al_makkah_frontend_session';
+const emptyFactoryData = {
+    rawMaterials: [],
+    processedStock: [],
+    suppliers: [],
+    customers: [],
+    formulas: [],
+    productionBatches: [],
+    sales: [],
+    expenses: [],
+    cashInHand: 0,
+};
 const DatabaseContext = createContext(undefined);
-/**
- * Earlier sync code could leave an entire related table empty (notably
- * production batches and supplier transactions) while the browser still had
- * the records in its offline backup.  Recover only fully empty collections;
- * populated remote collections remain the source of truth and are never
- * overwritten by an older browser copy.
- */
-function recoverEmptyRemoteCollections(remote, local) {
-    const collections = [
-        'rawMaterials',
-        'processedStock',
-        'suppliers',
-        'customers',
-        'formulas',
-        'productionBatches',
-        'sales',
-        'expenses',
-    ];
-    const recovered = { ...remote };
-    for (const collection of collections) {
-        if (remote[collection].length === 0 && local[collection].length > 0) {
-            Object.assign(recovered, { [collection]: local[collection] });
-        }
-    }
-    // Transactions are nested in suppliers/customers in the app state, so
-    // recover an empty transaction table without replacing the remote master
-    // supplier/customer records.
-    const remoteHasNoSupplierTransactions = remote.suppliers.every(s => s.transactions.length === 0);
-    const localHasSupplierTransactions = local.suppliers.some(s => s.transactions.length > 0);
-    if (remoteHasNoSupplierTransactions && localHasSupplierTransactions) {
-        recovered.suppliers = remote.suppliers.map(supplier => {
-            const localSupplier = local.suppliers.find(localItem => localItem.id === supplier.id || localItem.name.toLowerCase() === supplier.name.toLowerCase());
-            return localSupplier ? { ...supplier, transactions: localSupplier.transactions } : supplier;
-        });
-    }
-    return recovered;
-}
 export const DatabaseProvider = ({ children }) => {
     const [lang, setLangState] = useState(() => {
         const saved = localStorage.getItem(LANG_STORAGE_KEY);
@@ -56,45 +26,35 @@ export const DatabaseProvider = ({ children }) => {
     const [isAuthLoading, setIsAuthLoading] = useState(Boolean(supabase));
     const [isDatabaseLoading, setIsDatabaseLoading] = useState(Boolean(supabase));
     const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+    const [databaseError, setDatabaseError] = useState(supabase ? null : 'Supabase is not configured. Check the environment variables.');
     const isRemoteStateReady = useRef(false);
     const lastSyncedState = useRef(null);
     // User-defined Low Stock Threshold
-    const [lowStockThreshold, setLowStockThresholdState] = useState(() => {
-        try {
-            const saved = localStorage.getItem(THRESHOLD_STORAGE_KEY);
-            if (saved) {
-                const num = Number(saved);
-                if (!isNaN(num) && num > 0)
-                    return num;
-            }
-        }
-        catch (e) {
-            console.error(e);
-        }
-        return 5000; // default 5,000 kg threshold
-    });
+    const [lowStockThreshold, setLowStockThresholdState] = useState(5000);
     const setLowStockThreshold = (threshold) => {
         const safeVal = Math.max(100, Number(threshold) || 1000);
         setLowStockThresholdState(safeVal);
-        try {
-            localStorage.setItem(THRESHOLD_STORAGE_KEY, safeVal.toString());
-        }
-        catch (e) {
-            console.error(e);
+        if (supabase && user) {
+            void saveLowStockThreshold(safeVal).then(saved => {
+                if (!saved) {
+                    setDatabaseError('Could not save the low-stock threshold to Supabase.');
+                    void loadFactorySettings().then(settings => {
+                        if (settings?.lowStockThreshold)
+                            setLowStockThresholdState(settings.lowStockThreshold);
+                    });
+                }
+            });
         }
     };
-    const [db, setDb] = useState(() => {
-        try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                return JSON.parse(saved);
-            }
-        }
-        catch (e) {
-            console.error('Failed to load database from localStorage:', e);
-        }
-        return initialFactoryData;
-    });
+    const [db, setDb] = useState(emptyFactoryData);
+    useEffect(() => {
+        const handleDatabaseError = event => {
+            setDatabaseError(event.detail || 'An unknown Supabase error occurred.');
+            setIsSupabaseConnected(false);
+        };
+        window.addEventListener('supabase-database-error', handleDatabaseError);
+        return () => window.removeEventListener('supabase-database-error', handleDatabaseError);
+    }, []);
     const toAuthUser = (authUser) => {
         const userMetadata = authUser.user_metadata || {};
         const appMetadata = authUser.app_metadata || {};
@@ -107,17 +67,8 @@ export const DatabaseProvider = ({ children }) => {
             loginTime: new Date().toISOString(),
         };
     };
-    // Restore a local frontend-only session until the production backend is connected.
     useEffect(() => {
         if (!supabase) {
-            try {
-                const savedUser = localStorage.getItem(LOCAL_SESSION_KEY);
-                setUser(savedUser ? JSON.parse(savedUser) : null);
-            }
-            catch (error) {
-                console.error('Failed to restore the local session:', error);
-                localStorage.removeItem(LOCAL_SESSION_KEY);
-            }
             setIsAuthLoading(false);
             setIsDatabaseLoading(false);
             return;
@@ -127,7 +78,7 @@ export const DatabaseProvider = ({ children }) => {
             if (!isMounted)
                 return;
             if (error)
-                console.error('Supabase session check failed:', error.message);
+                setDatabaseError(`Supabase session check failed: ${error.message}`);
             setUser(data.session?.user ? toAuthUser(data.session.user) : null);
             setIsAuthLoading(false);
         });
@@ -159,32 +110,26 @@ export const DatabaseProvider = ({ children }) => {
         loadStateFromSupabase().then(result => {
             if (!isMounted)
                 return;
-            if (result?.hasData) {
-                const hydratedState = recoverEmptyRemoteCollections(result.state, db);
+            if (result) {
+                // Supabase is authoritative even when it is empty. This avoids
+                // restoring stale demo/browser data after an intentional reset.
+                const hydratedState = result.state;
                 setIsSupabaseConnected(true);
-                // Keep the remote hash here. If an empty collection was recovered
-                // from the offline backup, the persistence effect detects the
-                // difference and uploads that missing collection exactly once.
+                setDatabaseError(null);
                 lastSyncedState.current = JSON.stringify(result.state);
                 setDb(hydratedState);
                 isInitialLoadComplete = true;
                 isRemoteStateReady.current = true;
                 setIsDatabaseLoading(false);
-            }
-            else if (result) {
-                setIsSupabaseConnected(true);
-                // Never replace a local backup with factory data when the remote database is empty.
-                seedInitialDataToSupabase(db).finally(() => {
-                    lastSyncedState.current = JSON.stringify(db);
-                    isInitialLoadComplete = true;
-                    isRemoteStateReady.current = true;
-                    if (isMounted)
-                        setIsDatabaseLoading(false);
+                void loadFactorySettings().then(settings => {
+                    if (isMounted && settings?.lowStockThreshold) {
+                        setLowStockThresholdState(settings.lowStockThreshold);
+                    }
                 });
             }
             else {
                 setIsSupabaseConnected(false);
-                console.error('Supabase hydration failed; keeping the local database backup.');
+                setDatabaseError('Could not read application data from Supabase.');
                 isInitialLoadComplete = true;
                 setIsDatabaseLoading(false);
             }
@@ -196,8 +141,9 @@ export const DatabaseProvider = ({ children }) => {
             if (!isInitialLoadComplete)
                 return;
             loadStateFromSupabase().then(result => {
-                if (isMounted && result?.hasData) {
+                if (isMounted && result) {
                     setIsSupabaseConnected(true);
+                    setDatabaseError(null);
                     lastSyncedState.current = JSON.stringify(result.state);
                     setDb(result.state);
                 }
@@ -227,17 +173,15 @@ export const DatabaseProvider = ({ children }) => {
             }
             else {
                 setIsSupabaseConnected(false);
+                setDatabaseError('A database write failed. Your latest change was not saved.');
+                void loadStateFromSupabase().then(result => {
+                    if (result) {
+                        lastSyncedState.current = JSON.stringify(result.state);
+                        setDb(result.state);
+                    }
+                });
             }
         });
-    }, [db]);
-    // Keep localStorage in sync as offline backup
-    useEffect(() => {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-        }
-        catch (e) {
-            console.error('Failed to save database to localStorage:', e);
-        }
     }, [db]);
     // Keep HTML lang & direction in sync
     useEffect(() => {
@@ -252,19 +196,7 @@ export const DatabaseProvider = ({ children }) => {
     const t = translations[lang];
     const login = async (emailInput, passwordInput) => {
         if (!supabase) {
-            const email = emailInput.trim();
-            if (!email || !passwordInput) {
-                return { success: false, error: t.invalidCredentials };
-            }
-            const localUser = {
-                email,
-                name: 'Eng. Rayan',
-                role: 'Administrator',
-                loginTime: new Date().toISOString(),
-            };
-            localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(localUser));
-            setUser(localUser);
-            return { success: true };
+            return { success: false, error: 'Supabase is not configured. Check the environment variables.' };
         }
         const { error } = await supabase.auth.signInWithPassword({
             email: emailInput.trim(),
@@ -274,7 +206,6 @@ export const DatabaseProvider = ({ children }) => {
     };
     const logout = async () => {
         setUser(null);
-        localStorage.removeItem(LOCAL_SESSION_KEY);
         isRemoteStateReady.current = false;
         if (supabase) {
             const { error } = await supabase.auth.signOut();
@@ -764,9 +695,13 @@ export const DatabaseProvider = ({ children }) => {
             return false;
         }
     };
-    const resetToDefaultData = () => {
-        setDb(initialFactoryData);
-        seedInitialDataToSupabase(initialFactoryData);
+    const resetToDefaultData = async () => {
+        const cleared = await clearAllDataFromSupabase();
+        if (cleared) {
+            setDb(emptyFactoryData);
+            setDatabaseError(null);
+        }
+        return cleared;
     };
     // Low Stock Materials calculated per individual item threshold
     const lowStockMaterials = db.rawMaterials.filter(r => r.stockKg <= (r.lowStockThreshold !== undefined ? r.lowStockThreshold : lowStockThreshold));
@@ -793,6 +728,7 @@ export const DatabaseProvider = ({ children }) => {
             getLocalizedTxType,
             getLocalizedTxDesc,
             isSupabaseConnected,
+            databaseError,
             addRawMaterial,
             deleteRawMaterial,
             settleSupplierPayment,

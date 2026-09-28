@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Menu, Bell, Wallet, AlertTriangle, SlidersHorizontal, CheckCircle2, LogOut, Globe2, X } from 'lucide-react';
+import { Menu, Bell, Wallet, AlertTriangle, SlidersHorizontal, CheckCircle2, Globe2, X } from 'lucide-react';
 export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestockModal, }) => {
-    const { lang, setLang, t, db, user, logout, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
+    const { lang, setLang, t, db, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [editingThreshold, setEditingThreshold] = useState(false);
     const [thresholdInput, setThresholdInput] = useState(lowStockThreshold.toString());
@@ -88,10 +88,6 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
               </button>))}
           </div>
 
-          {/* User Sign Out */}
-          {user && (<button type="button" onClick={logout} title={t.logoutBtn} className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors">
-              <LogOut className="w-4 h-4"/>
-            </button>)}
         </div>
       </header>
 

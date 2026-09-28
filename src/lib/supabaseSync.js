@@ -1,10 +1,20 @@
 import { supabase } from './supabase';
 export const isSupabaseConfigured = () => !!supabase;
 let syncQueue = Promise.resolve();
+function reportDatabaseError(message) {
+    console.error(message);
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('supabase-database-error', {
+            detail: String(message),
+        }));
+    }
+}
 async function checked(operation, label) {
     const { error } = await operation;
     if (error) {
-        throw new Error(`${label}: ${error.message}`);
+        const message = `${label}: ${error.message}`;
+        reportDatabaseError(message);
+        throw new Error(message);
     }
 }
 function queueSync(operation) {
@@ -12,7 +22,42 @@ function queueSync(operation) {
     syncQueue = next.catch(() => undefined);
     return next;
 }
-const DEFAULT_CASH_IN_HAND = 435000;
+const DEFAULT_CASH_IN_HAND = 0;
+
+export async function loadFactorySettings() {
+    if (!supabase)
+        return null;
+    const { data, error } = await supabase
+        .from('factory_settings')
+        .select('data')
+        .eq('key', 'inventory')
+        .maybeSingle();
+    if (error) {
+        reportDatabaseError(`Could not load factory settings: ${error.message}`);
+        return null;
+    }
+    const threshold = Number(data?.data?.lowStockThreshold);
+    return Number.isFinite(threshold) && threshold > 0
+        ? { lowStockThreshold: threshold }
+        : null;
+}
+
+export async function saveLowStockThreshold(lowStockThreshold) {
+    if (!supabase)
+        return false;
+    try {
+        await checked(supabase.from('factory_settings').upsert({
+            key: 'inventory',
+            data: { lowStockThreshold },
+            updated_at: new Date().toISOString(),
+        }), 'factory settings save');
+        return true;
+    }
+    catch (error) {
+        reportDatabaseError(`Could not save factory settings: ${error.message}`);
+        return false;
+    }
+}
 /**
  * Cash is a value in its own right, rather than something that can safely be
  * reconstructed from a partial transaction history.  The table was added
@@ -83,7 +128,7 @@ export async function loadStateFromSupabase() {
         ];
         const failedQuery = queryResults.find(result => result.error);
         if (failedQuery?.error) {
-            console.error('Supabase fetch error:', failedQuery.error);
+            reportDatabaseError(`Supabase read failed: ${failedQuery.error.message}`);
             return null;
         }
         const rawMaterials = (rawRes.data || []).map(r => ({
@@ -234,7 +279,7 @@ export async function loadStateFromSupabase() {
         };
     }
     catch (err) {
-        console.error('Failed to load state from Supabase:', err);
+        reportDatabaseError(`Failed to load state from Supabase: ${err.message || err}`);
         return null;
     }
 }
@@ -395,7 +440,31 @@ export async function seedInitialDataToSupabase(state) {
         }
         await saveCashInHand(state.cashInHand);
     }).then(() => true).catch(err => {
-        console.error('Error seeding data to Supabase:', err);
+        reportDatabaseError(`Database write failed: ${err.message || err}`);
+        return false;
+    });
+}
+
+export async function clearAllDataFromSupabase() {
+    if (!supabase)
+        return false;
+    return queueSync(async () => {
+        const tables = [
+            'customer_transactions', 'supplier_transactions', 'sales',
+            'production_batches', 'processed_stock', 'raw_materials',
+            'expenses', 'formulas', 'customers', 'suppliers',
+        ];
+        for (const table of tables) {
+            await checked(supabase.from(table).delete().not('id', 'is', null), `${table} clear`);
+        }
+        await checked(supabase.from('factory_state').upsert({
+            id: 'default',
+            cash_in_hand: 0,
+            updated_at: new Date().toISOString(),
+        }), 'factory state reset');
+        return true;
+    }).catch(error => {
+        reportDatabaseError(`Database reset failed: ${error.message || error}`);
         return false;
     });
 }

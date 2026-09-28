@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { FileSpreadsheet, Printer, Download, Upload, RotateCcw, PackageCheck, Scale, Wheat, CheckCircle2, FileText } from 'lucide-react';
-export const ReportsView = () => {
+export const ReportsPage = () => {
     const { db, t, exportDatabase, importDatabase, resetToDefaultData } = useDatabase();
     const [period, setPeriod] = useState('daily');
     const [importStatus, setImportStatus] = useState(null);

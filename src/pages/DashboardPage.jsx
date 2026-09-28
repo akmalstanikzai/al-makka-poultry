@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Wheat, PackageCheck, Truck, Users, TrendingUp, Wallet, Receipt, CalendarClock, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowRight, ArrowLeft } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
-export const DashboardView = ({ setActiveTab }) => {
-    const { db, t, lang, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName, isSupabaseConnected } = useDatabase();
+export const DashboardPage = ({ setActiveTab }) => {
+    const { db, t, lang, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
     const [editingThreshold, setEditingThreshold] = useState(false);
     const [thresholdInput, setThresholdInput] = useState(lowStockThreshold.toString());
     const isRtl = lang === 'fa' || lang === 'ps';
@@ -179,16 +179,6 @@ export const DashboardView = ({ setActiveTab }) => {
         },
     ];
     return (<div className="space-y-6">
-      {/* 0. SUPABASE CONNECTION STATUS */}
-      <div className="flex justify-end">
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-bold tracking-wider transition-all shadow-xs ${isSupabaseConnected
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-            : 'bg-white text-slate-500 border-slate-200'}`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${isSupabaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}/>
-          <span>{isSupabaseConnected ? 'CLOUD DATA: ACTIVE' : 'LOCAL DATA: ACTIVE'}</span>
-        </div>
-      </div>
-
       {/* 1. VISUAL NOTIFICATION SYSTEM BANNER (LOW STOCK HIGHLIGHT) */}
       {lowStockMaterials.length > 0 ? (<div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50/50 to-white border border-rose-200 shadow-sm relative overflow-hidden">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">

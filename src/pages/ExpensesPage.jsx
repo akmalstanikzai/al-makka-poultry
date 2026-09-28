@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Receipt, Plus, Fuel, Users, Utensils, Zap, Wrench, Truck, Building, MoreHorizontal, Trash2, Wallet, AlertCircle, X } from 'lucide-react';
-export const ExpensesView = () => {
+export const ExpensesPage = () => {
     const { db, t, addExpense, deleteExpense } = useDatabase();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');

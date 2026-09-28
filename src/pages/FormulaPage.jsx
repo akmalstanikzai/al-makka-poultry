@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Scale, Plus, Trash2, PackageCheck, DollarSign, AlertCircle, CheckCircle2, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp } from 'lucide-react';
-export const FormulaView = () => {
+export const FormulaPage = () => {
     const { db, t, lang, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
     const [formulaName, setFormulaName] = useState('');
     const [description, setDescription] = useState('');

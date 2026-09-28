@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
-export const SuppliersView = () => {
+export const SuppliersPage = () => {
     const { db, t, deleteSupplier, settleSupplierPayment, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);

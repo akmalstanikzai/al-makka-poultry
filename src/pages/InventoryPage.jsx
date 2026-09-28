@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, Sparkles, X } from 'lucide-react';
-export const InventoryView = () => {
+export const InventoryPage = () => {
     const { db, t, lang, addRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold, getLocalizedName, getLocalizedCat } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');

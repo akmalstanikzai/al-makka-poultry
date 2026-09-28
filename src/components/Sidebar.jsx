@@ -1,8 +1,8 @@
 import React from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { LayoutDashboard, Warehouse, FlaskConical, ShoppingCart, Truck, Users, Receipt, BarChart3, LogOut, Wheat, ChevronLeft, ChevronRight, Globe2, ShieldCheck, X } from 'lucide-react';
+import { LayoutDashboard, Warehouse, FlaskConical, ShoppingCart, Truck, Users, Receipt, BarChart3, LogOut, Wheat, ChevronLeft, ChevronRight, ShieldCheck, X } from 'lucide-react';
 export const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollapsed, }) => {
-    const { lang, setLang, t, user, logout, lowStockMaterials } = useDatabase();
+    const { lang, t, user, logout, lowStockMaterials } = useDatabase();
     const isRtl = lang === 'fa' || lang === 'ps';
     const navItems = [
         {
@@ -105,21 +105,6 @@ export const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen
 
       {/* Bottom Footer Section */}
       <div className="p-3 border-t border-slate-200 space-y-3 bg-slate-50/60">
-        {/* Language selector */}
-        <div className={`flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-xs ${isCollapsed ? 'flex-col' : 'justify-between'}`}>
-          {!isCollapsed && (<div className="flex items-center gap-1.5 ps-1.5 text-xs text-slate-500 font-medium">
-              <Globe2 className="w-3.5 h-3.5"/>
-              <span>{t.languageLabel}</span>
-            </div>)}
-          <div className="flex items-center gap-1">
-            {['fa', 'ps', 'en'].map((l) => (<button key={l} type="button" onClick={() => setLang(l)} className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all ${lang === l
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}>
-                {l === 'fa' ? 'دری' : l === 'ps' ? 'پښتو' : 'EN'}
-              </button>))}
-          </div>
-        </div>
-
         {/* User Card */}
         {user && (<div className={`p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center gap-3 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
             <div className="flex items-center gap-2.5 min-w-0">

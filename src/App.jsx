@@ -4,20 +4,21 @@
  */
 import React, { useState, useEffect } from 'react';
 import { DatabaseProvider, useDatabase } from './context/DatabaseContext';
-import { LoginPage } from './components/LoginPage';
-import { Sidebar } from './components/Sidebar';
-import { TopBar } from './components/TopBar';
-import { DashboardView } from './components/DashboardView';
-import { InventoryView } from './components/InventoryView';
-import { FormulaView } from './components/FormulaView';
-import { SalesView } from './components/SalesView';
-import { SuppliersView } from './components/SuppliersView';
-import { CustomersView } from './components/CustomersView';
-import { ExpensesView } from './components/ExpensesView';
-import { ReportsView } from './components/ReportsView';
-import { LayoutDashboard, Warehouse, FlaskConical, ShoppingCart, Receipt, Menu } from 'lucide-react';
+import { Sidebar, TopBar } from './components';
+import {
+    CustomersPage,
+    DashboardPage,
+    ExpensesPage,
+    FormulaPage,
+    InventoryPage,
+    LoginPage,
+    ReportsPage,
+    SalesPage,
+    SuppliersPage,
+} from './pages';
+import { AlertCircle, LayoutDashboard, Warehouse, FlaskConical, ShoppingCart, Receipt, Menu } from 'lucide-react';
 const AppContent = () => {
-    const { user, lang, t, isAuthLoading, isDatabaseLoading } = useDatabase();
+    const { user, lang, t, isAuthLoading, isDatabaseLoading, databaseError } = useDatabase();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -39,23 +40,23 @@ const AppContent = () => {
     const renderActiveView = () => {
         switch (activeTab) {
             case 'dashboard':
-                return <DashboardView setActiveTab={(tab) => setActiveTab(tab)}/>;
+                return <DashboardPage setActiveTab={(tab) => setActiveTab(tab)}/>;
             case 'inventory':
-                return <InventoryView />;
+                return <InventoryPage />;
             case 'formula':
-                return <FormulaView />;
+                return <FormulaPage />;
             case 'sales':
-                return <SalesView />;
+                return <SalesPage />;
             case 'suppliers':
-                return <SuppliersView />;
+                return <SuppliersPage />;
             case 'customers':
-                return <CustomersView />;
+                return <CustomersPage />;
             case 'expenses':
-                return <ExpensesView />;
+                return <ExpensesPage />;
             case 'reports':
-                return <ReportsView />;
+                return <ReportsPage />;
             default:
-                return <DashboardView setActiveTab={(tab) => setActiveTab(tab)}/>;
+                return <DashboardPage setActiveTab={(tab) => setActiveTab(tab)}/>;
         }
     };
     const mobileNavItems = [
@@ -77,6 +78,13 @@ const AppContent = () => {
 
         {/* Page Content Container */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {databaseError && (<div className="mb-5 rounded-xl border border-rose-300 bg-rose-50 p-4 text-rose-800 flex items-start gap-3" role="alert">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5"/>
+            <div>
+              <p className="font-bold text-sm">Supabase database error</p>
+              <p className="text-xs mt-1 break-words" dir="ltr">{databaseError}</p>
+            </div>
+          </div>)}
           {renderActiveView()}
         </main>
 
