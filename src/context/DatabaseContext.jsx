@@ -29,6 +29,7 @@ export const DatabaseProvider = ({ children }) => {
     const [databaseError, setDatabaseError] = useState(supabase ? null : 'Supabase is not configured. Check the environment variables.');
     const isRemoteStateReady = useRef(false);
     const lastSyncedState = useRef(null);
+    const localWritesInProgress = useRef(0);
     // User-defined Low Stock Threshold
     const [lowStockThreshold, setLowStockThresholdState] = useState(5000);
     const setLowStockThreshold = (threshold) => {
@@ -37,7 +38,7 @@ export const DatabaseProvider = ({ children }) => {
         if (supabase && user) {
             void saveLowStockThreshold(safeVal).then(saved => {
                 if (!saved) {
-                    setDatabaseError('Could not save the low-stock threshold to Supabase.');
+                    setDatabaseError('Could not save the low-stock threshold to the database.');
                     void loadFactorySettings().then(settings => {
                         if (settings?.lowStockThreshold)
                             setLowStockThresholdState(settings.lowStockThreshold);
@@ -140,6 +141,11 @@ export const DatabaseProvider = ({ children }) => {
             .on('postgres_changes', { event: '*', schema: 'public' }, () => {
             if (!isInitialLoadComplete)
                 return;
+            // A snapshot touches several tables. Reloading after the first table
+            // event would temporarily replace the complete local state with a
+            // partial database snapshot and could discard a newly-created row.
+            if (localWritesInProgress.current > 0)
+                return;
             loadStateFromSupabase().then(result => {
                 if (isMounted && result) {
                     setIsSupabaseConnected(true);
@@ -166,6 +172,7 @@ export const DatabaseProvider = ({ children }) => {
         const stateHash = JSON.stringify(db);
         if (lastSyncedState.current === stateHash)
             return;
+        localWritesInProgress.current += 1;
         void seedInitialDataToSupabase(db).then(saved => {
             if (saved) {
                 lastSyncedState.current = stateHash;
@@ -181,6 +188,8 @@ export const DatabaseProvider = ({ children }) => {
                     }
                 });
             }
+        }).finally(() => {
+            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
         });
     }, [db]);
     // Keep HTML lang & direction in sync
@@ -519,9 +528,12 @@ export const DatabaseProvider = ({ children }) => {
             expenses: expense ? [expense, ...db.expenses] : db.expenses,
             cashInHand: expense ? db.cashInHand - expense.amount : db.cashInHand,
         };
-        const saved = await seedInitialDataToSupabase(nextState);
+        localWritesInProgress.current += 1;
+        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
+            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
+        });
         if (!saved)
-            return { success: false, error: 'The production batch was not saved to Supabase.' };
+            return { success: false, error: 'The production batch was not saved to the database.' };
         lastSyncedState.current = JSON.stringify(nextState);
         setDb(nextState);
         setIsSupabaseConnected(true);
@@ -529,7 +541,7 @@ export const DatabaseProvider = ({ children }) => {
         return { success: true };
     };
     // SAVE OR UPDATE A REUSABLE FORMULA WITHOUT PRODUCING A BATCH
-    const saveFormulaTemplate = (name, ingredients, description, formulaId) => {
+    const saveFormulaTemplate = async (name, ingredients, description, formulaId) => {
         if (!name.trim())
             return { success: false, error: t.pleaseEnterFormulaName };
         let totalWeight = 0;
@@ -565,12 +577,22 @@ export const DatabaseProvider = ({ children }) => {
             costPerKg: totalCost / totalWeight,
             createdDate: existing?.createdDate || new Date().toISOString().split('T')[0],
         };
-        setDb(prev => ({
-            ...prev,
+        const nextState = {
+            ...db,
             formulas: existing
-                ? prev.formulas.map(item => item.id === id ? formula : item)
-                : [formula, ...prev.formulas],
-        }));
+                ? db.formulas.map(item => item.id === id ? formula : item)
+                : [formula, ...db.formulas],
+        };
+        localWritesInProgress.current += 1;
+        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
+            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
+        });
+        if (!saved)
+            return { success: false, error: 'The formula was not saved to the database.' };
+        lastSyncedState.current = JSON.stringify(nextState);
+        setDb(nextState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
         return { success: true, formulaId: id };
     };
     // DELETE FORMULA
@@ -588,7 +610,7 @@ export const DatabaseProvider = ({ children }) => {
         sbDeleteFormula(formulaId);
     };
     // 3. RECORD SALE (DEDUCT PROCESSED STOCK, AUTO-UPDATE CUSTOMER, ADD CASH)
-    const recordSale = (saleData) => {
+    const recordSale = async (saleData) => {
         const quantityKg = convertToKg(saleData.unitType, saleData.unitQuantity);
         // Check processed stock
         let product = saleData.productId ? db.processedStock.find(p => p.id === saleData.productId) : undefined;
@@ -628,7 +650,8 @@ export const DatabaseProvider = ({ children }) => {
             remainingAmount,
             notes: saleData.notes?.trim(),
         };
-        setDb(prev => {
+        const nextState = (() => {
+            const prev = db;
             // 1. Deduct processed stock
             let updatedProcessedStock = prev.processedStock;
             if (product) {
@@ -694,7 +717,17 @@ export const DatabaseProvider = ({ children }) => {
                 sales: [newSale, ...prev.sales],
                 cashInHand: prev.cashInHand + saleData.paidAmount,
             };
+        })();
+        localWritesInProgress.current += 1;
+        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
+            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
         });
+        if (!saved)
+            return { success: false, error: 'The sale was not saved to the database.' };
+        lastSyncedState.current = JSON.stringify(nextState);
+        setDb(nextState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
         return { success: true };
     };
     // RECEIVE PAYMENT FROM CUSTOMER

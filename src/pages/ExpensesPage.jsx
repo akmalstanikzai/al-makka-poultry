@@ -230,11 +230,6 @@ export const ExpensesPage = () => {
               </button>
             </div>
 
-            {errorMsg && (<div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0"/>
-                <span>{errorMsg}</span>
-              </div>)}
-
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -281,6 +276,10 @@ export const ExpensesPage = () => {
                   {t.save}
                 </button>
               </div>
+              {errorMsg && (<div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2" role="status">
+                  <AlertCircle className="w-4 h-4 shrink-0"/>
+                  <span>{errorMsg}</span>
+                </div>)}
             </form>
           </div>
         </div>)}

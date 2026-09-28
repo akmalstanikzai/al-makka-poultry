@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
-import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle } from 'lucide-react';
+import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 export const SalesPage = () => {
-    const { db, t, recordSale, getLocalizedName } = useDatabase();
+    const { db, t, lang, recordSale, getLocalizedName } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPaymentFilter, setSelectedPaymentFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -21,7 +21,8 @@ export const SalesPage = () => {
     const [salePricePerUnit, setSalePricePerUnit] = useState('');
     const [paidAmount, setPaidAmount] = useState('');
     const [notes, setNotes] = useState('');
-    const [errorMsg, setErrorMsg] = useState('');
+    const [saveStatus, setSaveStatus] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
     // Selected Product details
     const selectedProduct = db.processedStock.find(p => p.id === productId);
     const costRatePerKg = selectedProduct ? selectedProduct.averageCostPerKg : 30;
@@ -68,33 +69,34 @@ export const SalesPage = () => {
         setSalePricePerUnit('');
         setPaidAmount('');
         setNotes('');
-        setErrorMsg('');
+        setSaveStatus(null);
         setIsModalOpen(true);
     };
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        setErrorMsg('');
+        setSaveStatus(null);
         const productName = isCustomProduct ? customProductName.trim() : (selectedProduct ? selectedProduct.name : '');
         if (!productName) {
-            setErrorMsg(t.pleaseEnterFormulaName || 'Please specify feed name');
+            setSaveStatus({ type: 'error', text: t.pleaseEnterFormulaName || 'Please specify feed name' });
             return;
         }
         if (!customerName.trim()) {
-            setErrorMsg(t.invalidCredentials || 'Please enter customer name');
+            setSaveStatus({ type: 'error', text: t.invalidCredentials || 'Please enter customer name' });
             return;
         }
         if (qtyNumber <= 0 || priceNumber <= 0) {
-            setErrorMsg(t.totalWeightMustBePositive || 'Quantity and price must be greater than zero');
+            setSaveStatus({ type: 'error', text: t.totalWeightMustBePositive || 'Quantity and price must be greater than zero' });
             return;
         }
         // Check stock if product exists in processed stock
         if (!isCustomProduct && selectedProduct) {
             if (selectedProduct.stockKg < totalQuantityKg) {
-                setErrorMsg(`${t.insufficientStockOfItem} "${getLocalizedName(selectedProduct.name)}"! ${t.currentStockLabel}: ${selectedProduct.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${totalQuantityKg.toLocaleString()} ${t.kilo}.`);
+                setSaveStatus({ type: 'error', text: `${t.insufficientStockOfItem} "${getLocalizedName(selectedProduct.name)}"! ${t.currentStockLabel}: ${selectedProduct.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${totalQuantityKg.toLocaleString()} ${t.kilo}.` });
                 return;
             }
         }
-        recordSale({
+        setIsSaving(true);
+        const result = await recordSale({
             productName,
             productId: isCustomProduct ? undefined : productId,
             customerId: customerId || undefined,
@@ -106,7 +108,16 @@ export const SalesPage = () => {
             paidAmount: paidNumber,
             notes: notes.trim() || undefined,
         });
-        setIsModalOpen(false);
+        setIsSaving(false);
+        if (result.success) {
+            setSaveStatus({
+                type: 'success',
+                text: lang === 'fa' ? 'فروش با موفقیت در دیتابیس ذخیره شد.' : lang === 'ps' ? 'پلور په بریالیتوب سره ډیټابیس کې خوندي شو.' : 'Sale saved to the database successfully.',
+            });
+        }
+        else {
+            setSaveStatus({ type: 'error', text: result.error || 'The sale was not saved to the database.' });
+        }
     };
     // Filter sales - search by customer name, phone number, and invoice number (id)
     const term = searchTerm.trim().toLowerCase();
@@ -310,11 +321,6 @@ export const SalesPage = () => {
               </button>
             </div>
 
-            {errorMsg && (<div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0"/>
-                <span>{errorMsg}</span>
-              </div>)}
-
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
               {/* Product Selection */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -431,13 +437,19 @@ export const SalesPage = () => {
                   </div>)}
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer">
-                  {t.cancel}
-                </button>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/25 cursor-pointer">
-                  {t.saveAndIssueInvoice}
-                </button>
+              <div className="pt-4 border-t border-slate-100 flex flex-col items-end gap-2">
+                <div className="flex items-center justify-end gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer">
+                    {t.cancel}
+                  </button>
+                  <button type="submit" disabled={isSaving || saveStatus?.type === 'success'} className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-wait text-white text-xs font-bold shadow-md shadow-amber-600/25 cursor-pointer">
+                    {isSaving ? 'Saving...' : t.saveAndIssueInvoice}
+                  </button>
+                </div>
+                {saveStatus && (<div className={`text-xs font-semibold flex items-center gap-1.5 ${saveStatus.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`} role="status">
+                    {saveStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0"/> : <AlertCircle className="w-4 h-4 shrink-0"/>}
+                    <span>{saveStatus.text}</span>
+                  </div>)}
               </div>
             </form>
           </div>

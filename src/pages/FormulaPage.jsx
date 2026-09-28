@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Scale, Plus, Trash2, PackageCheck, DollarSign, AlertCircle, CheckCircle2, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen } from 'lucide-react';
+import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen } from 'lucide-react';
 export const FormulaPage = () => {
     const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
     const [loadedFormulaId, setLoadedFormulaId] = useState(null);
@@ -162,14 +162,14 @@ export const FormulaPage = () => {
             text: lang === 'fa' ? 'فرمول ذخیره‌شده بارگذاری شد.' : lang === 'ps' ? 'خوندي شوی فورمول پورته شو.' : 'Saved formula loaded.',
         });
     };
-    const handleSaveFormula = () => {
+    const handleSaveFormula = async () => {
         setMessage(null);
-        const result = saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined);
+        const result = await saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined);
         if (result.success) {
             setLoadedFormulaId(result.formulaId);
             setMessage({
                 type: 'success',
-                text: lang === 'fa' ? 'فرمول در Supabase ذخیره شد.' : lang === 'ps' ? 'فورمول په Supabase کې خوندي شو.' : 'Formula saved to Supabase.',
+                text: lang === 'fa' ? 'فرمول در دیتابیس ذخیره شد.' : lang === 'ps' ? 'فورمول په ډیټابیس کې خوندي شو.' : 'Formula saved to the database.',
             });
         }
         else {
@@ -220,7 +220,7 @@ export const FormulaPage = () => {
         else {
             setProcessStatus({
                 type: 'error',
-                text: lang === 'fa' ? 'پروسس در دیتابیس ذخیره نشد.' : lang === 'ps' ? 'پروسس په ډیټابیس کې خوندي نه شو.' : 'Process was not saved to the database.',
+                text: result.error || (lang === 'fa' ? 'پروسس در دیتابیس ذخیره نشد.' : lang === 'ps' ? 'پروسس په ډیټابیس کې خوندي نه شو.' : 'Process was not saved to the database.'),
             });
         }
     };
@@ -323,14 +323,6 @@ export const FormulaPage = () => {
               </div>
             </div>
           </div>
-        </div>)}
-
-      {/* Alert Messages */}
-      {message && (<div className={`p-4 rounded-xl flex items-center gap-3 border ${message.type === 'success'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-          {message.type === 'success' ? (<CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0"/>) : (<AlertCircle className="w-5 h-5 text-rose-600 shrink-0"/>)}
-          <span className="text-xs sm:text-sm font-medium">{message.text}</span>
         </div>)}
 
       {/* Main Grid: Recipe Builder (2 Cols) + Live Cost Calculator (1 Col) */}
@@ -443,12 +435,15 @@ export const FormulaPage = () => {
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex flex-wrap items-start justify-end gap-2">
-              <button type="button" onClick={handleSaveFormula} className="px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center gap-2 cursor-pointer">
-                <Bookmark className="w-4 h-4"/>
-                <span>{loadedFormulaId
-                    ? (lang === 'fa' ? 'به‌روزرسانی فرمول' : lang === 'ps' ? 'فورمول تازه کول' : 'Update formula')
-                    : (lang === 'fa' ? 'ذخیره فرمول' : lang === 'ps' ? 'فورمول خوندي کول' : 'Save formula')}</span>
-              </button>
+              <div className="flex flex-col items-stretch sm:items-end">
+                <button type="button" onClick={handleSaveFormula} className="px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
+                  <Bookmark className="w-4 h-4"/>
+                  <span>{loadedFormulaId
+                      ? (lang === 'fa' ? 'به‌روزرسانی فرمول' : lang === 'ps' ? 'فورمول تازه کول' : 'Update formula')
+                      : (lang === 'fa' ? 'ذخیره فرمول' : lang === 'ps' ? 'فورمول خوندي کول' : 'Save formula')}</span>
+                </button>
+                {message && <p className={`mt-2 text-xs font-semibold ${message.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`} role="status">{message.text}</p>}
+              </div>
               <div className="flex flex-col items-stretch sm:items-end">
                 <button type="submit" disabled={isProducing} className="px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-wait text-white font-bold text-sm shadow-md shadow-amber-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95">
                   <PackageCheck className="w-4 h-4"/>
