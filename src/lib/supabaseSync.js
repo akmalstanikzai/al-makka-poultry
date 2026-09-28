@@ -290,6 +290,7 @@ export async function seedInitialDataToSupabase(state) {
     if (!supabase)
         return false;
     return queueSync(async () => {
+        const validFormulaIds = new Set(state.formulas.map(formula => formula.id));
         // Parents are always written before their dependants. This matters when
         // foreign keys are enabled and fixes writes that previously failed only
         // after a page refresh.
@@ -378,7 +379,7 @@ export async function seedInitialDataToSupabase(state) {
         if (state.productionBatches.length > 0) {
             const batchRows = state.productionBatches.map(b => ({
                 id: b.id,
-                formula_id: b.formulaId,
+                formula_id: b.formulaId && validFormulaIds.has(b.formulaId) ? b.formulaId : null,
                 formula_name: b.formulaName,
                 date: b.date,
                 total_weight_kg: b.totalWeightKg,
@@ -394,7 +395,7 @@ export async function seedInitialDataToSupabase(state) {
             const procRows = state.processedStock.map(p => ({
                 id: p.id,
                 name: p.name,
-                formula_id: p.formulaId || null,
+                formula_id: p.formulaId && validFormulaIds.has(p.formulaId) ? p.formulaId : null,
                 stock_kg: p.stockKg,
                 average_cost_per_kg: p.averageCostPerKg,
                 last_updated: p.lastUpdated,

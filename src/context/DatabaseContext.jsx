@@ -448,6 +448,9 @@ export const DatabaseProvider = ({ children }) => {
         }
         const today = new Date().toISOString().split('T')[0];
         const operationTimestamp = Date.now();
+        const linkedFormulaId = savedFormulaId && db.formulas.some(formula => formula.id === savedFormulaId)
+            ? savedFormulaId
+            : null;
         let totalWeight = 0;
         let totalBatchCost = 0;
         ingredients.forEach(ing => {
@@ -460,7 +463,7 @@ export const DatabaseProvider = ({ children }) => {
         const costPerKg = totalWeight > 0 ? Math.round((totalBatchCostWithExpenses / totalWeight) * 100) / 100 : 0;
         const newBatch = {
             id: `batch-${operationTimestamp}`,
-            formulaId: savedFormulaId || null,
+            formulaId: linkedFormulaId,
             formulaName: name,
             date: today,
             totalWeightKg: totalWeight,
@@ -493,7 +496,7 @@ export const DatabaseProvider = ({ children }) => {
             updatedProcessedStock = [{
                 id: `ps-${operationTimestamp}`,
                 name: name.trim(),
-                formulaId: savedFormulaId || null,
+                formulaId: linkedFormulaId,
                 stockKg: totalWeight,
                 averageCostPerKg: costPerKg,
                 lastUpdated: today,
@@ -575,6 +578,12 @@ export const DatabaseProvider = ({ children }) => {
         setDb(prev => ({
             ...prev,
             formulas: prev.formulas.filter(f => f.id !== formulaId),
+            productionBatches: prev.productionBatches.map(batch => batch.formulaId === formulaId
+                ? { ...batch, formulaId: null }
+                : batch),
+            processedStock: prev.processedStock.map(item => item.formulaId === formulaId
+                ? { ...item, formulaId: null }
+                : item),
         }));
         sbDeleteFormula(formulaId);
     };
