@@ -59,6 +59,7 @@ export const DashboardPage = ({ setActiveTab }) => {
     // Inventory breakdown for pie chart
     const COLORS = ['#d97706', '#059669', '#2563eb', '#dc2626', '#7c3aed', '#0891b2', '#db2777'];
     const inventoryPieData = db.rawMaterials.map(rm => ({
+        id: rm.id,
         name: getLocalizedName(rm.name).split('(')[0].trim(),
         value: rm.stockKg,
     })).filter(item => item.value > 0);
@@ -352,7 +353,7 @@ export const DashboardPage = ({ setActiveTab }) => {
 
           {/* Legend chips */}
           <div className="flex flex-wrap gap-1.5 justify-center max-h-20 overflow-y-auto pt-2 border-t border-slate-100">
-            {inventoryPieData.map((item, idx) => (<span key={item.name} className="inline-flex items-center gap-1.5 text-[10px] text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
+            {inventoryPieData.map((item, idx) => (<span key={item.id} className="inline-flex items-center gap-1.5 text-[10px] text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}/>
                 <span>{item.name}</span>
               </span>))}

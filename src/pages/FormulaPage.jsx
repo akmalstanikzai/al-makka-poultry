@@ -16,6 +16,8 @@ export const FormulaPage = () => {
         { rawMaterialId: db.rawMaterials[3]?.id || '', weightKg: 50 },
     ]);
     const [message, setMessage] = useState(null);
+    const [processStatus, setProcessStatus] = useState(null);
+    const [isProducing, setIsProducing] = useState(false);
     // In-app delete formula confirmation
     const [formulaToDelete, setFormulaToDelete] = useState(null);
     // Multi-unit display toggles: 'all' | 'ton' | 'bag' | 'kg'
@@ -174,37 +176,39 @@ export const FormulaPage = () => {
             setMessage({ type: 'error', text: result.error || 'Could not save formula.' });
         }
     };
-    const handleProduce = (e) => {
+    const handleProduce = async (e) => {
         e.preventDefault();
-        setMessage(null);
+        setProcessStatus(null);
         if (!formulaName.trim()) {
-            setMessage({ type: 'error', text: t.pleaseEnterFormulaName });
+            setProcessStatus({ type: 'error', text: t.pleaseEnterFormulaName });
             return;
         }
         if (totalBatchWeight <= 0) {
-            setMessage({ type: 'error', text: t.totalWeightMustBePositive });
+            setProcessStatus({ type: 'error', text: t.totalWeightMustBePositive });
             return;
         }
         // Check if we have enough raw materials in stock
         for (const ing of ingredients) {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             if (!raw) {
-                setMessage({ type: 'error', text: t.invalidRawMaterialSelected });
+                setProcessStatus({ type: 'error', text: t.invalidRawMaterialSelected });
                 return;
             }
             if (raw.stockKg < ing.weightKg) {
-                setMessage({
+                setProcessStatus({
                     type: 'error',
                     text: `${t.insufficientStockOfItem} "${getLocalizedName(raw.name)}" - ${raw.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${ing.weightKg.toLocaleString()} ${t.kilo}.`
                 });
                 return;
             }
         }
-        const result = createFormulaAndProduce(formulaName.trim(), ingredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount);
+        setIsProducing(true);
+        const result = await createFormulaAndProduce(formulaName.trim(), ingredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId);
+        setIsProducing(false);
         if (result.success) {
-            setMessage({
+            setProcessStatus({
                 type: 'success',
-                text: `${t.produceSuccessMsg} (${formulaName}) ${totalTons.toFixed(2)} ${t.tons} (${totalBatchWeight.toLocaleString()} ${t.kilo} • ${totalBags} ${t.bags}) ${t.readyFeedAddedToWarehouse}`
+                text: lang === 'fa' ? 'پروسس با موفقیت در دیتابیس ذخیره شد.' : lang === 'ps' ? 'پروسس په بریالیتوب سره ډیټابیس کې خوندي شو.' : 'Process saved to the database successfully.'
             });
             // Reset form
             setFormulaName('');
@@ -214,7 +218,10 @@ export const FormulaPage = () => {
             setLoadedFormulaId(null);
         }
         else {
-            setMessage({ type: 'error', text: result.error || 'Error' });
+            setProcessStatus({
+                type: 'error',
+                text: lang === 'fa' ? 'پروسس در دیتابیس ذخیره نشد.' : lang === 'ps' ? 'پروسس په ډیټابیس کې خوندي نه شو.' : 'Process was not saved to the database.',
+            });
         }
     };
     const handleConfirmDeleteFormula = () => {
@@ -223,7 +230,7 @@ export const FormulaPage = () => {
             setFormulaToDelete(null);
         }
     };
-    return (<div className="space-y-6">
+    return (<div className="flex flex-col gap-6">
       {/* Header */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -435,17 +442,20 @@ export const FormulaPage = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2">
+            <div className="pt-4 border-t border-slate-100 flex flex-wrap items-start justify-end gap-2">
               <button type="button" onClick={handleSaveFormula} className="px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center gap-2 cursor-pointer">
                 <Bookmark className="w-4 h-4"/>
                 <span>{loadedFormulaId
                     ? (lang === 'fa' ? 'به‌روزرسانی فرمول' : lang === 'ps' ? 'فورمول تازه کول' : 'Update formula')
                     : (lang === 'fa' ? 'ذخیره فرمول' : lang === 'ps' ? 'فورمول خوندي کول' : 'Save formula')}</span>
               </button>
-              <button type="submit" className="px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-md shadow-amber-600/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95">
-                <PackageCheck className="w-4 h-4"/>
-                <span>{t.produceFeedBtn}</span>
-              </button>
+              <div className="flex flex-col items-stretch sm:items-end">
+                <button type="submit" disabled={isProducing} className="px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-wait text-white font-bold text-sm shadow-md shadow-amber-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95">
+                  <PackageCheck className="w-4 h-4"/>
+                  <span>{isProducing ? (lang === 'fa' ? 'در حال ذخیره...' : lang === 'ps' ? 'د خوندي کولو په حال کې...' : 'Saving...') : t.produceFeedBtn}</span>
+                </button>
+                {processStatus && <p className={`mt-2 text-xs font-semibold ${processStatus.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`} role="status">{processStatus.text}</p>}
+              </div>
             </div>
           </form>
         </div>
@@ -533,7 +543,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* Processed Feed Stock Section with Multi-Unit View (Tons, Bags, Kg) */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="order-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         {/* Section Header & Unit Selector */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -709,7 +719,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* Saved Formulated Items Section with Delete Option & Tons */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="order-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-4">
           <Layers className="w-4 h-4 text-amber-600"/>
           <span>{t.savedFormulasWithTons}</span>
@@ -772,7 +782,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* Recent Production Batches with Tons */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="order-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-3">
           <CalendarClock className="w-4 h-4 text-amber-600"/>
           <span>{t.productionHistoryTons}</span>

@@ -12,6 +12,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "@tailwindcss/vite": "^4.3.3",
+    "html-to-image": "^1.11.13",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.48.0",
     "motion": "^13.4.4",
     "react": "^19.2.8",

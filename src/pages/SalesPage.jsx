@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
+import { ReceiptActions } from '../components';
 import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle } from 'lucide-react';
 export const SalesPage = () => {
     const { db, t, recordSale, getLocalizedName } = useDatabase();
@@ -452,10 +453,7 @@ export const SalesPage = () => {
                 <span className="font-bold text-base text-slate-900">{t.officialInvoicePreview}</span>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => window.print()} className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer">
-                  <Printer className="w-4 h-4"/>
-                  <span>{t.printInvoice}</span>
-                </button>
+                <ReceiptActions elementId="sales-receipt" filename={`sales-invoice-${selectedInvoice.id}`} title={`${t.officialSaleInvoiceBadge} ${selectedInvoice.id}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
                 <button type="button" onClick={() => setSelectedInvoice(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>
@@ -463,7 +461,7 @@ export const SalesPage = () => {
             </div>
 
             {/* Official Invoice Document Content */}
-            <div className="mt-4 space-y-4 print:mt-0" id="printable-invoice">
+            <div className="receipt-document mt-4 space-y-4 bg-white p-2 print:mt-0" id="sales-receipt">
               <div className="text-center pb-4 border-b-2 border-slate-900 print:border-black">
                 <h1 className="text-xl font-black tracking-tight text-slate-900 print:text-black">
                   {t.companyName}

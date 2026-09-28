@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
+import { ReceiptActions } from '../components';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 export const SuppliersPage = () => {
     const { db, t, deleteSupplier, settleSupplierPayment, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
@@ -416,17 +417,26 @@ export const SuppliersPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => window.print()} className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1 cursor-pointer">
-                  <Printer className="w-3.5 h-3.5"/>
-                  <span>{t.printInvoice}</span>
-                </button>
+                <ReceiptActions elementId="supplier-receipt" filename={`supplier-statement-${selectedHistorySupplier.id}`} title={`${t.accountStatementAndHistory} - ${selectedHistorySupplier.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
                 <button type="button" onClick={() => setSelectedHistorySupplier(null)} className="text-slate-400 hover:text-slate-900 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>
               </div>
             </div>
 
-            <div className="p-4 max-h-96 overflow-y-auto space-y-2.5">
+            <div id="supplier-receipt" className="receipt-document bg-white p-5">
+              <div className="text-center pb-4 border-b-2 border-slate-900">
+                <h1 className="text-xl font-black text-slate-900">{t.companyName}</h1>
+                <p className="text-xs text-slate-500 mt-1">{t.companySubtitle} · {t.accountStatementAndHistory}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 my-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                <div><span className="text-slate-500 block">{t.supplier}</span><strong>{selectedHistorySupplier.name}</strong></div>
+                <div><span className="text-slate-500 block">{t.phone}</span><strong dir="ltr">{selectedHistorySupplier.phone || '-'}</strong></div>
+                <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistorySupplier.totalPurchasedAmount.toLocaleString()} {t.currency}</strong></div>
+                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistorySupplier.totalPaid.toLocaleString()} {t.currency}</strong></div>
+                <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistorySupplier.balanceOwed.toLocaleString()} {t.currency}</strong></div>
+              </div>
+            <div className="space-y-2.5">
               {selectedHistorySupplier.transactions && selectedHistorySupplier.transactions.length > 0 ? (selectedHistorySupplier.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs shadow-2xs">
                     <div>
                       <div className="font-mono text-slate-500">{h.date}</div>
@@ -453,6 +463,7 @@ export const SuppliersPage = () => {
               <div className="text-[10px] font-mono text-slate-500">
                 {t.developedBy}
               </div>
+            </div>
             </div>
           </div>
         </div>)}

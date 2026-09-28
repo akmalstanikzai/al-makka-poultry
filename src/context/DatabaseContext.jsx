@@ -431,8 +431,8 @@ export const DatabaseProvider = ({ children }) => {
         }));
         sbDeleteSupplier(supplierId);
     };
-    // 2. CREATE FORMULA & PRODUCE BATCH
-    const createFormulaAndProduce = (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0) => {
+    // 2. PRODUCE A BATCH. A formula is saved only through saveFormulaTemplate.
+    const createFormulaAndProduce = async (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0, savedFormulaId = null) => {
         // 1. Verify stock availability
         for (const ing of ingredients) {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
@@ -447,113 +447,82 @@ export const DatabaseProvider = ({ children }) => {
             }
         }
         const today = new Date().toISOString().split('T')[0];
-        const formulaId = `form-${Date.now()}`;
-        // Calculate formula ingredient costs
+        const operationTimestamp = Date.now();
         let totalWeight = 0;
         let totalBatchCost = 0;
-        const populatedIngredients = ingredients.map(ing => {
+        ingredients.forEach(ing => {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             const subtotal = ing.weightKg * raw.unitPrice;
             totalWeight += ing.weightKg;
             totalBatchCost += subtotal;
-            return {
-                rawMaterialId: raw.id,
-                rawMaterialName: raw.name,
-                weightKg: ing.weightKg,
-                costPerKg: raw.unitPrice,
-                totalCost: subtotal,
-            };
         });
         const totalBatchCostWithExpenses = totalBatchCost + (Number(batchExpenses) || 0);
         const costPerKg = totalWeight > 0 ? Math.round((totalBatchCostWithExpenses / totalWeight) * 100) / 100 : 0;
-        const newFormula = {
-            id: formulaId,
-            name,
-            description,
-            ingredients: populatedIngredients,
-            totalWeightKg: totalWeight,
-            totalBatchCost: totalBatchCostWithExpenses,
-            costPerKg,
-            createdDate: today,
-        };
         const newBatch = {
-            id: `batch-${Date.now()}`,
-            formulaId,
+            id: `batch-${operationTimestamp}`,
+            formulaId: savedFormulaId || null,
             formulaName: name,
             date: today,
             totalWeightKg: totalWeight,
             costPerKg,
             totalCost: totalBatchCostWithExpenses,
             operatorName: operatorName || 'مسئول تولید',
-            notes: `پروسس خودکار: ${name} (${totalWeight.toLocaleString()} کیلو)${batchExpenses > 0 ? ` • مصارف جانبی: ${batchExpenses.toLocaleString()} ${t.currency}` : ''}`,
+            notes: description || `پروسس خودکار: ${name} (${totalWeight.toLocaleString()} کیلو)${batchExpenses > 0 ? ` • مصارف جانبی: ${batchExpenses.toLocaleString()} ${t.currency}` : ''}`,
         };
-        setDb(prev => {
-            // Deduct raw materials
-            const updatedRaw = prev.rawMaterials.map(rm => {
-                const used = ingredients.find(ing => ing.rawMaterialId === rm.id);
-                if (used) {
-                    const updated = {
-                        ...rm,
-                        stockKg: Math.max(0, rm.stockKg - used.weightKg),
-                    };
-                    return updated;
-                }
-                return rm;
-            });
-            // Update or Add Processed Stock
-            const existingProcessedIndex = prev.processedStock.findIndex(ps => ps.name.toLowerCase() === name.trim().toLowerCase());
-            let updatedProcessedStock;
-            if (existingProcessedIndex >= 0) {
-                const existing = prev.processedStock[existingProcessedIndex];
-                const newTotalKg = existing.stockKg + totalWeight;
-                const newAvgCost = newTotalKg > 0
-                    ? ((existing.stockKg * existing.averageCostPerKg) + (totalWeight * costPerKg)) / newTotalKg
-                    : costPerKg;
-                const updatedItem = {
-                    ...existing,
-                    stockKg: newTotalKg,
-                    averageCostPerKg: Math.round(newAvgCost * 100) / 100,
-                    lastUpdated: today,
-                };
-                updatedProcessedStock = [...prev.processedStock];
-                updatedProcessedStock[existingProcessedIndex] = updatedItem;
-            }
-            else {
-                const newProcessedItem = {
-                    id: `ps-${Date.now()}`,
-                    name: name.trim(),
-                    formulaId,
-                    stockKg: totalWeight,
-                    averageCostPerKg: costPerKg,
-                    lastUpdated: today,
-                };
-                updatedProcessedStock = [newProcessedItem, ...prev.processedStock];
-            }
-            // Add expense if batch expenses were incurred
-            let updatedExpenses = prev.expenses;
-            let newCashInHand = prev.cashInHand;
-            if (batchExpenses > 0) {
-                const exp = {
-                    id: `exp-${Date.now()}`,
-                    date: today,
-                    category: 'electricity',
-                    description: `مصارف تولید بچ: ${name}`,
-                    amount: batchExpenses,
-                    paidBy: operatorName || 'مسئول فابریکه',
-                };
-                updatedExpenses = [exp, ...prev.expenses];
-                newCashInHand -= batchExpenses;
-            }
-            return {
-                ...prev,
-                rawMaterials: updatedRaw,
-                processedStock: updatedProcessedStock,
-                formulas: [newFormula, ...prev.formulas],
-                productionBatches: produceBatchImmediately ? [newBatch, ...prev.productionBatches] : prev.productionBatches,
-                expenses: updatedExpenses,
-                cashInHand: newCashInHand,
-            };
+        const updatedRaw = db.rawMaterials.map(rm => {
+            const used = ingredients.find(ing => ing.rawMaterialId === rm.id);
+            return used ? { ...rm, stockKg: Math.max(0, rm.stockKg - used.weightKg) } : rm;
         });
+        const existingProcessedIndex = db.processedStock.findIndex(ps => ps.name.toLowerCase() === name.trim().toLowerCase());
+        let updatedProcessedStock;
+        if (existingProcessedIndex >= 0) {
+            const existing = db.processedStock[existingProcessedIndex];
+            const newTotalKg = existing.stockKg + totalWeight;
+            const newAvgCost = newTotalKg > 0
+                ? ((existing.stockKg * existing.averageCostPerKg) + (totalWeight * costPerKg)) / newTotalKg
+                : costPerKg;
+            updatedProcessedStock = [...db.processedStock];
+            updatedProcessedStock[existingProcessedIndex] = {
+                ...existing,
+                stockKg: newTotalKg,
+                averageCostPerKg: Math.round(newAvgCost * 100) / 100,
+                lastUpdated: today,
+            };
+        }
+        else {
+            updatedProcessedStock = [{
+                id: `ps-${operationTimestamp}`,
+                name: name.trim(),
+                formulaId: savedFormulaId || null,
+                stockKg: totalWeight,
+                averageCostPerKg: costPerKg,
+                lastUpdated: today,
+            }, ...db.processedStock];
+        }
+        const expense = Number(batchExpenses) > 0 ? {
+            id: `exp-${operationTimestamp}`,
+            date: today,
+            category: 'electricity',
+            description: `مصارف تولید بچ: ${name}`,
+            amount: Number(batchExpenses),
+            paidBy: operatorName || 'مسئول فابریکه',
+        } : null;
+        const nextState = {
+            ...db,
+            rawMaterials: updatedRaw,
+            processedStock: updatedProcessedStock,
+            formulas: db.formulas,
+            productionBatches: produceBatchImmediately ? [newBatch, ...db.productionBatches] : db.productionBatches,
+            expenses: expense ? [expense, ...db.expenses] : db.expenses,
+            cashInHand: expense ? db.cashInHand - expense.amount : db.cashInHand,
+        };
+        const saved = await seedInitialDataToSupabase(nextState);
+        if (!saved)
+            return { success: false, error: 'The production batch was not saved to Supabase.' };
+        lastSyncedState.current = JSON.stringify(nextState);
+        setDb(nextState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
         return { success: true };
     };
     // SAVE OR UPDATE A REUSABLE FORMULA WITHOUT PRODUCING A BATCH
@@ -748,9 +717,32 @@ export const DatabaseProvider = ({ children }) => {
                 transactions: [transaction, ...cust.transactions],
             };
             updatedCustomers[custIndex] = updatedCust;
+            let paymentToAllocate = actualReceived;
+            const invoicePayments = new Map();
+            [...prev.sales]
+                .filter(sale => sale.customerId === customerId && sale.remainingAmount > 0)
+                .sort((first, second) => first.date.localeCompare(second.date))
+                .forEach(sale => {
+                    if (paymentToAllocate <= 0)
+                        return;
+                    const appliedAmount = Math.min(paymentToAllocate, sale.remainingAmount);
+                    invoicePayments.set(sale.id, appliedAmount);
+                    paymentToAllocate -= appliedAmount;
+                });
+            const updatedSales = prev.sales.map(sale => {
+                const appliedAmount = invoicePayments.get(sale.id) || 0;
+                if (appliedAmount <= 0)
+                    return sale;
+                return {
+                    ...sale,
+                    paidAmount: sale.paidAmount + appliedAmount,
+                    remainingAmount: Math.max(0, sale.remainingAmount - appliedAmount),
+                };
+            });
             return {
                 ...prev,
                 customers: updatedCustomers,
+                sales: updatedSales,
                 cashInHand: prev.cashInHand + actualReceived,
             };
         });
