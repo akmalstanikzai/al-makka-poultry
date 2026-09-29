@@ -11,6 +11,7 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
         switch (activeTab) {
             case 'dashboard': return t.navDashboard;
             case 'inventory': return t.navInventory;
+            case 'stock-overview': return t.navStockOverview;
             case 'formula': return t.navFormula;
             case 'sales': return t.navSales;
             case 'suppliers': return t.navSuppliers;

@@ -11,6 +11,7 @@ import {
     ExpensesPage,
     FormulaPage,
     InventoryPage,
+    StockOverviewPage,
     LoginPage,
     ReportsPage,
     SalesPage,
@@ -43,6 +44,8 @@ const AppContent = () => {
                 return <DashboardPage setActiveTab={(tab) => setActiveTab(tab)}/>;
             case 'inventory':
                 return <InventoryPage />;
+            case 'stock-overview':
+                return <StockOverviewPage />;
             case 'formula':
                 return <FormulaPage />;
             case 'sales':

@@ -3,6 +3,7 @@ export { DashboardPage } from './DashboardPage';
 export { ExpensesPage } from './ExpensesPage';
 export { FormulaPage } from './FormulaPage';
 export { InventoryPage } from './InventoryPage';
+export { StockOverviewPage } from './StockOverviewPage';
 export { LoginPage } from './LoginPage';
 export { ReportsPage } from './ReportsPage';
 export { SalesPage } from './SalesPage';
