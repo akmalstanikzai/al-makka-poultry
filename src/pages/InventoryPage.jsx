@@ -571,7 +571,7 @@ export const InventoryPage = () => {
               {t.delete}
             </h3>
             <p className="text-xs text-slate-600 mb-6">
-              {t.confirmDelete}
+              {t.confirmDeleteRawMaterialImpact}
             </p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setMaterialToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer">

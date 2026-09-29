@@ -157,6 +157,7 @@ export async function loadStateFromSupabase() {
                 .filter(tx => tx.supplier_id === s.id)
                 .map(tx => ({
                 id: tx.id,
+                rawMaterialId: tx.raw_material_id || undefined,
                 date: tx.date,
                 type: tx.type,
                 description: tx.description,
@@ -334,6 +335,7 @@ export async function seedInitialDataToSupabase(state) {
             const txRows = state.suppliers.flatMap(s => s.transactions.map(t => ({
                 id: t.id,
                 supplier_id: s.id,
+                raw_material_id: t.rawMaterialId || null,
                 date: t.date,
                 type: t.type,
                 description: t.description,
@@ -630,6 +632,7 @@ export async function sbSyncRawMaterial(item, supplier, supplierTx) {
             await checked(supabase.from('supplier_transactions').upsert({
                 id: supplierTx.id,
                 supplier_id: supplier.id,
+                raw_material_id: supplierTx.rawMaterialId || null,
                 date: supplierTx.date,
                 type: supplierTx.type,
                 description: supplierTx.description,
@@ -643,12 +646,18 @@ export async function sbSyncRawMaterial(item, supplier, supplierTx) {
         console.error('Supabase error syncing raw material:', err);
     }
 }
-export async function sbDeleteRawMaterial(id) {
+export async function sbDeleteRawMaterial(id, supplierTransactionIds = [], supplierIdsToDelete = []) {
     if (!supabase)
         return;
     return queueSync(async () => {
         try {
+            if (supplierTransactionIds.length > 0) {
+                await checked(supabase.from('supplier_transactions').delete().in('id', supplierTransactionIds), 'linked supplier transactions delete');
+            }
             await checked(supabase.from('raw_materials').delete().eq('id', id), 'raw_materials delete');
+            if (supplierIdsToDelete.length > 0) {
+                await checked(supabase.from('suppliers').delete().in('id', supplierIdsToDelete), 'empty linked suppliers delete');
+            }
         }
         catch (err) {
             console.error('Supabase error deleting raw material:', err);
@@ -689,6 +698,7 @@ export async function sbDeleteSupplier(supplierId) {
         return;
     return queueSync(async () => {
         try {
+            await checked(supabase.from('raw_materials').delete().eq('supplier_id', supplierId), 'supplier raw materials delete');
             await checked(supabase.from('supplier_transactions').delete().eq('supplier_id', supplierId), 'supplier_transactions delete');
             await checked(supabase.from('suppliers').delete().eq('id', supplierId), 'suppliers delete');
         }

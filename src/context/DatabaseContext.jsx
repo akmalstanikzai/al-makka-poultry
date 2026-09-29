@@ -259,6 +259,7 @@ export const DatabaseProvider = ({ children }) => {
                 const existingSupIndex = updatedSuppliers.findIndex(s => s.id === item.supplierId || s.name.toLowerCase() === supName.toLowerCase());
                 const transaction = {
                     id: `st-${Date.now()}`,
+                    rawMaterialId: newId,
                     date: today,
                     type: 'purchase',
                     description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
@@ -327,6 +328,7 @@ export const DatabaseProvider = ({ children }) => {
                 const supplierIndex = updatedSuppliers.findIndex(supplier => supplier.name.toLowerCase() === resolvedName.toLowerCase());
                 const transaction = {
                     id: `st-${Date.now()}`,
+                    rawMaterialId: materialId,
                     date: today,
                     type: 'purchase',
                     description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
@@ -396,11 +398,57 @@ export const DatabaseProvider = ({ children }) => {
     };
     // DELETE RAW MATERIAL
     const deleteRawMaterial = (id) => {
-        setDb(prev => ({
-            ...prev,
-            rawMaterials: prev.rawMaterials.filter(rm => rm.id !== id),
-        }));
-        sbDeleteRawMaterial(id);
+        const material = db.rawMaterials.find(rm => rm.id === id);
+        if (!material)
+            return;
+        const supplierMaterialCounts = new Map();
+        db.rawMaterials.forEach(raw => {
+            if (raw.supplierId)
+                supplierMaterialCounts.set(raw.supplierId, (supplierMaterialCounts.get(raw.supplierId) || 0) + 1);
+        });
+        const deletedTransactionIds = [];
+        let restoredCash = 0;
+        const updatedSuppliers = db.suppliers.map(supplier => {
+            const materialName = material.name.trim().toLowerCase();
+            const linkedPurchases = supplier.transactions.filter(transaction => {
+                if (transaction.type !== 'purchase')
+                    return false;
+                if (transaction.rawMaterialId)
+                    return transaction.rawMaterialId === id;
+                // Backwards-compatible matching for purchases made before
+                // raw-material IDs were stored on supplier transactions.
+                const description = (transaction.description || '').toLowerCase();
+                return description.includes(materialName) || (
+                    supplier.id === material.supplierId && supplierMaterialCounts.get(supplier.id) === 1
+                );
+            });
+            if (linkedPurchases.length === 0)
+                return supplier;
+            const linkedIds = new Set(linkedPurchases.map(transaction => transaction.id));
+            deletedTransactionIds.push(...linkedIds);
+            const purchasedToReverse = linkedPurchases.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+            const paidToRestore = linkedPurchases.reduce((sum, transaction) => sum + Number(transaction.paidAmount || 0), 0);
+            const debtToReverse = linkedPurchases.reduce((sum, transaction) => sum + Number(transaction.remainingAmount || 0), 0);
+            restoredCash += paidToRestore;
+            return {
+                ...supplier,
+                totalPurchasedAmount: Math.max(0, supplier.totalPurchasedAmount - purchasedToReverse),
+                totalPaid: Math.max(0, supplier.totalPaid - paidToRestore),
+                balanceOwed: Math.max(0, supplier.balanceOwed - debtToReverse),
+                transactions: supplier.transactions.filter(transaction => !linkedIds.has(transaction.id)),
+            };
+        });
+        const supplierIdsToDelete = updatedSuppliers
+            .filter(supplier => supplier.transactions.length === 0 && !db.rawMaterials.some(raw => raw.id !== id && raw.supplierId === supplier.id))
+            .map(supplier => supplier.id);
+        const deletedSupplierIds = new Set(supplierIdsToDelete);
+        setDb({
+            ...db,
+            rawMaterials: db.rawMaterials.filter(rm => rm.id !== id),
+            suppliers: updatedSuppliers.filter(supplier => !deletedSupplierIds.has(supplier.id)),
+            cashInHand: db.cashInHand + restoredCash,
+        });
+        void sbDeleteRawMaterial(id, deletedTransactionIds, supplierIdsToDelete);
     };
     // SETTLE PAYMENT TO SUPPLIER
     const settleSupplierPayment = (supplierId, amountToPay, note) => {
@@ -440,11 +488,16 @@ export const DatabaseProvider = ({ children }) => {
     };
     // DELETE SUPPLIER
     const deleteSupplier = (supplierId) => {
-        setDb(prev => ({
-            ...prev,
-            suppliers: prev.suppliers.filter(s => s.id !== supplierId),
-        }));
-        sbDeleteSupplier(supplierId);
+        const supplier = db.suppliers.find(item => item.id === supplierId);
+        if (!supplier)
+            return;
+        setDb({
+            ...db,
+            rawMaterials: db.rawMaterials.filter(material => material.supplierId !== supplierId),
+            suppliers: db.suppliers.filter(item => item.id !== supplierId),
+            cashInHand: db.cashInHand + Number(supplier.totalPaid || 0),
+        });
+        void sbDeleteSupplier(supplierId);
     };
     // 2. PRODUCE A BATCH. A formula is saved only through saveFormulaTemplate.
     const createFormulaAndProduce = async (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0, savedFormulaId = null) => {

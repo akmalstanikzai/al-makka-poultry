@@ -84,6 +84,7 @@ create table public.processed_stock (
 create table public.supplier_transactions (
   id text primary key,
   supplier_id text not null references public.suppliers(id) on update cascade on delete cascade,
+  raw_material_id text,
   date date not null default current_date,
   type text not null check (type in ('purchase', 'payment')),
   description text not null,
