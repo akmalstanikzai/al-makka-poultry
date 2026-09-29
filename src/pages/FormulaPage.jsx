@@ -24,6 +24,7 @@ export const FormulaPage = () => {
     const [stockViewUnit, setStockViewUnit] = useState('all');
     // Quick Unit Converter state
     const [showConverter, setShowConverter] = useState(false);
+    const [showOptionalDetails, setShowOptionalDetails] = useState(false);
     const [convTons, setConvTons] = useState(1);
     const [convBags, setConvBags] = useState(20);
     const [convKg, setConvKg] = useState(1000);
@@ -63,45 +64,6 @@ export const FormulaPage = () => {
             setConvBags(Math.round((num / 50) * 10) / 10);
         }
     };
-    // Quick Preset Templates
-    const applyTemplate = (type) => {
-        if (db.rawMaterials.length === 0)
-            return;
-        const corn = db.rawMaterials.find(r => r.name.includes('Corn') || r.name.includes('جواری') || r.name.includes('جوار')) || db.rawMaterials[0];
-        const soya = db.rawMaterials.find(r => r.name.includes('Soy') || r.name.includes('سویا')) || db.rawMaterials[1] || db.rawMaterials[0];
-        const oilCake = db.rawMaterials.find(r => r.name.includes('Cake') || r.name.includes('کنجاره') || r.name.includes('کنجاړه')) || db.rawMaterials[2] || db.rawMaterials[0];
-        const premix = db.rawMaterials.find(r => r.name.includes('Premix') || r.name.includes('ویتامین') || r.name.includes('ویټامین')) || db.rawMaterials[3] || db.rawMaterials[0];
-        if (type === 'starter') {
-            setFormulaName(lang === 'fa' ? 'دانه آغازین برویلر (سوپر استارتر)' : lang === 'ps' ? 'د برویلر پیلنی دانه (سوپر سټارټر)' : 'Broiler Starter Feed (Super Starter)');
-            setDescription(lang === 'fa' ? 'پروتئین ۲۲ فیصد مخصوص جوجه گوشتی روز ۱ تا ۱۰' : lang === 'ps' ? '۲۲ سلنه پروتین د غوښینو چرګوړو ۱ تر ۱۰ ورځو لپاره' : '22% Protein for broiler chicks days 1-10');
-            setIngredients([
-                { rawMaterialId: corn.id, weightKg: 550 },
-                { rawMaterialId: soya.id, weightKg: 350 },
-                { rawMaterialId: oilCake.id, weightKg: 75 },
-                { rawMaterialId: premix.id, weightKg: 25 },
-            ]);
-        }
-        else if (type === 'grower') {
-            setFormulaName(lang === 'fa' ? 'دانه رشد برویلر (گروور)' : lang === 'ps' ? 'د برویلر د ودې دانه (ګروور)' : 'Broiler Grower Feed');
-            setDescription(lang === 'fa' ? 'پروتئین ۲۰ فیصد رشد سریع روز ۱۱ تا ۲۵' : lang === 'ps' ? '۲۰ سلنه پروتین د چټکې ودې لپاره ۱۱ تر ۲۵ ورځو' : '20% Protein for rapid broiler growth days 11-25');
-            setIngredients([
-                { rawMaterialId: corn.id, weightKg: 600 },
-                { rawMaterialId: soya.id, weightKg: 280 },
-                { rawMaterialId: oilCake.id, weightKg: 95 },
-                { rawMaterialId: premix.id, weightKg: 25 },
-            ]);
-        }
-        else {
-            setFormulaName(lang === 'fa' ? 'دانه مرغ تخمی (لیر)' : lang === 'ps' ? 'د هګیو د چرګانو دانه (لیر)' : 'Layer Hen Feed');
-            setDescription(lang === 'fa' ? 'فرمول تخمگذاری با کلسیم و فسفر غنی شده' : lang === 'ps' ? 'د هګیو اچولو ځانګړی فورمول د کلسیم او فاسفورس سره' : 'Layer feed enriched with calcium and phosphorus');
-            setIngredients([
-                { rawMaterialId: corn.id, weightKg: 620 },
-                { rawMaterialId: soya.id, weightKg: 220 },
-                { rawMaterialId: oilCake.id, weightKg: 135 },
-                { rawMaterialId: premix.id, weightKg: 25 },
-            ]);
-        }
-    };
     const handleAddIngredientRow = () => {
         const defaultRm = db.rawMaterials[0]?.id || '';
         setIngredients(prev => [...prev, { rawMaterialId: defaultRm, weightKg: 100 }]);
@@ -115,17 +77,6 @@ export const FormulaPage = () => {
             updated[index] = { ...updated[index], [field]: val };
             return updated;
         });
-    };
-    // Batch Scaling: Scale current ingredients to exact target Tons
-    const handleScaleBatchToTons = (targetTons) => {
-        if (totalBatchWeight <= 0)
-            return;
-        const targetKg = targetTons * 1000;
-        const factor = targetKg / totalBatchWeight;
-        setIngredients(prev => prev.map(ing => ({
-            ...ing,
-            weightKg: Math.round(ing.weightKg * factor)
-        })));
     };
     // Calculations
     let totalBatchWeight = 0;
@@ -245,7 +196,7 @@ export const FormulaPage = () => {
           </p>
         </div>
 
-        {/* Action Controls & Presets */}
+        {/* Optional unit converter */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Quick Unit Converter Toggle Button */}
           <button type="button" onClick={() => setShowConverter(!showConverter)} className="px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs">
@@ -254,19 +205,6 @@ export const FormulaPage = () => {
             {showConverter ? <ChevronUp className="w-3.5 h-3.5"/> : <ChevronDown className="w-3.5 h-3.5"/>}
           </button>
 
-          <div className="h-5 w-px bg-slate-200 hidden sm:block"></div>
-
-          {/* Quick Formula Presets */}
-          <span className="text-xs font-semibold text-slate-500 hidden md:inline">{t.factoryPresets}</span>
-          <button type="button" onClick={() => applyTemplate('starter')} className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer">
-            {t.starter22}
-          </button>
-          <button type="button" onClick={() => applyTemplate('grower')} className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer">
-            {t.grower20}
-          </button>
-          <button type="button" onClick={() => applyTemplate('layer')} className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer">
-            {t.layerHen}
-          </button>
         </div>
       </div>
 
@@ -329,50 +267,24 @@ export const FormulaPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Formula Recipe Builder Form (2 Columns) */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+          <div className="flex items-center mb-4 pb-3 border-b border-slate-100">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Scale className="w-5 h-5 text-amber-600"/>
               <span>{t.recipeBuilderTitle}</span>
             </h3>
-
-            {/* Scale Batch to Exact Tons Shortcuts */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl text-xs">
-              <span className="text-[11px] text-slate-500 font-semibold">{t.scaleBatchTo}</span>
-              <button type="button" onClick={() => handleScaleBatchToTons(1)} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:border-amber-500 text-slate-700 hover:text-amber-700 font-bold transition-all cursor-pointer shadow-2xs">
-                {t.ton1}
-              </button>
-              <button type="button" onClick={() => handleScaleBatchToTons(2)} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:border-amber-500 text-slate-700 hover:text-amber-700 font-bold transition-all cursor-pointer shadow-2xs">
-                {t.ton2}
-              </button>
-              <button type="button" onClick={() => handleScaleBatchToTons(5)} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:border-amber-500 text-slate-700 hover:text-amber-700 font-bold transition-all cursor-pointer shadow-2xs">
-                {t.ton5}
-              </button>
-            </div>
           </div>
 
           <form onSubmit={handleProduce} className="space-y-4">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center">1</span>
+              <span>{t.formulaDetailsStep}</span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {t.formulaNameLabel}
                 </label>
                 <input type="text" required value={formulaName} onChange={(e) => setFormulaName(e.target.value)} placeholder={t.formulaNamePlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t.operatorNameLabel}
-                </label>
-                <input type="text" value={operatorName} onChange={(e) => setOperatorName(e.target.value)} placeholder={t.operatorPlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t.formulaDescriptionLabel}
-                </label>
-                <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.formulaDescPlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
               </div>
 
               {/* Batch Production Expenses Input */}
@@ -385,10 +297,26 @@ export const FormulaPage = () => {
               </div>
             </div>
 
+            <button type="button" onClick={() => setShowOptionalDetails(value => !value)} className="text-xs font-semibold text-slate-600 hover:text-amber-700 flex items-center gap-1.5">
+              {showOptionalDetails ? <ChevronUp className="w-3.5 h-3.5"/> : <ChevronDown className="w-3.5 h-3.5"/>}
+              {t.optionalFormulaDetails}
+            </button>
+            {showOptionalDetails && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.operatorNameLabel}</label>
+                <input type="text" value={operatorName} onChange={(e) => setOperatorName(e.target.value)} placeholder={t.operatorPlaceholder} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.formulaDescriptionLabel}</label>
+                <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.formulaDescPlaceholder} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/>
+              </div>
+            </div>}
+
             {/* Ingredients Table / Rows */}
             <div className="mt-5 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center">2</span>
                   {t.rawItemsInBatch}
                 </label>
                 <button type="button" onClick={handleAddIngredientRow} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer">
@@ -407,7 +335,7 @@ export const FormulaPage = () => {
                         <label className="block text-[10px] text-slate-500 mb-1">{t.selectRawIndex} #{idx + 1}</label>
                         <select value={ing.rawMaterialId} onChange={(e) => handleUpdateIngredient(idx, 'rawMaterialId', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium">
                           {db.rawMaterials.map(rm => (<option key={rm.id} value={rm.id}>
-                              {getLocalizedName(rm.name)} ({t.currentStockLabel}: {(rm.stockKg / 1000).toFixed(2)} {t.tons} / {rm.stockKg.toLocaleString()} {t.kilo} • {rm.unitPrice} {t.currency}/kg)
+                              {getLocalizedName(rm.name)} — {rm.stockKg.toLocaleString()} {t.kilo}
                             </option>))}
                         </select>
                       </div>
@@ -434,7 +362,12 @@ export const FormulaPage = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex flex-wrap items-start justify-end gap-2">
+            <div className="pt-4 border-t border-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-3">
+                <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center">3</span>
+                <span>{t.saveOrProduceStep}</span>
+              </div>
+              <div className="flex flex-wrap items-start justify-end gap-2">
               <div className="flex flex-col items-stretch sm:items-end">
                 <button type="button" onClick={handleSaveFormula} className="px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
                   <Bookmark className="w-4 h-4"/>
@@ -451,12 +384,13 @@ export const FormulaPage = () => {
                 </button>
                 {processStatus && <p className={`mt-2 text-xs font-semibold ${processStatus.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`} role="status">{processStatus.text}</p>}
               </div>
+              </div>
             </div>
           </form>
         </div>
 
         {/* Real-time Calculation Panel (1 Column) - Multi-Unit (Tons, Bags, Kg) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-6 lg:sticky lg:top-24 self-start">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
               <DollarSign className="w-4 h-4 text-emerald-600"/>
@@ -730,14 +664,9 @@ export const FormulaPage = () => {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <h4 className="font-bold text-slate-900 text-sm">{f.name}</h4>
-                      <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => handleLoadFormula(f)} className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer" title={lang === 'fa' ? 'بارگذاری فرمول' : lang === 'ps' ? 'فورمول پورته کول' : 'Load formula'}>
-                          <FolderOpen className="w-4 h-4"/>
-                        </button>
-                        <button type="button" onClick={() => setFormulaToDelete(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.deleteFormula}>
-                          <Trash2 className="w-4 h-4"/>
-                        </button>
-                      </div>
+                      <button type="button" onClick={() => setFormulaToDelete(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title={t.deleteFormula}>
+                        <Trash2 className="w-4 h-4"/>
+                      </button>
                     </div>
                     {f.description && (<p className="text-xs text-slate-600 mt-1">{f.description}</p>)}
                     <div className="mt-3 pt-2 border-t border-slate-200/60 space-y-1.5 text-xs">
@@ -771,6 +700,10 @@ export const FormulaPage = () => {
                   <div className="mt-3 pt-2 border-t border-slate-200 text-[11px] text-slate-400">
                     {t.date}: {f.createdDate}
                   </div>
+                  <button type="button" onClick={() => handleLoadFormula(f)} className="mt-3 w-full px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-2">
+                    <FolderOpen className="w-5 h-5"/>
+                    <span>{t.loadFormula}</span>
+                  </button>
                 </div>);
             })}
           </div>)}

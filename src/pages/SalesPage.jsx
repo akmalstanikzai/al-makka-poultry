@@ -40,6 +40,9 @@ export const SalesPage = () => {
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
     const totalCostOfGoods = costRatePerKg * totalQuantityKg;
     const estimatedProfit = totalInvoiceAmount - totalCostOfGoods;
+    const costPerSelectedUnit = unitType === 'bag'
+        ? costRatePerKg * 50
+        : unitType === 'ton' ? costRatePerKg * 1000 : costRatePerKg;
     // Handle selecting existing customer
     const handleCustomerNameChange = (name) => {
         setCustomerName(name);
@@ -366,13 +369,27 @@ export const SalesPage = () => {
                 </div>
               </div>
 
+              <div className="p-4 rounded-xl border-2 border-amber-300 bg-amber-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-amber-800 block">{t.costRateNotice}</span>
+                  <strong className="text-2xl font-black font-mono text-slate-950">
+                    {costRatePerKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.currency}/{t.kilo}
+                  </strong>
+                </div>
+                <div className="sm:text-end">
+                  <span className="text-[11px] font-semibold text-slate-600 block">{t.productionCostForSelectedUnit}</span>
+                  <strong className="text-base font-black font-mono text-amber-900">
+                    {costPerSelectedUnit.toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.currency}/{t[unitType] || unitType}
+                  </strong>
+                </div>
+              </div>
+
               {/* Calculation Summary Box */}
               <div className="p-4 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalSaleWeight}</span>
                   <strong className="font-mono text-slate-900">{totalQuantityKg.toLocaleString()} {t.kilo} ({qtyNumber} {t[unitType] || unitType})</strong>
                 </div>
-                {showCostRate && <div className="flex justify-between text-slate-500"><span>{t.costRateNotice}</span><span className="font-mono">{costRatePerKg.toFixed(2)} {t.currency}/{t.kilo}</span></div>}
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
                   <strong className="font-mono text-amber-800 text-sm">{totalInvoiceAmount.toLocaleString()} {t.currency}</strong>
