@@ -683,6 +683,12 @@ export const DatabaseProvider = ({ children }) => {
             };
         }
         const totalAmount = saleData.unitQuantity * saleData.salePricePerUnit;
+        if (saleData.customerPhone?.trim() && !/^\d{10}$/.test(saleData.customerPhone.trim())) {
+            return { success: false, error: t.phoneMustBe10Digits };
+        }
+        if (saleData.paidAmount > totalAmount) {
+            return { success: false, error: t.paidAmountExceedsTotal };
+        }
         const remainingAmount = Math.max(0, totalAmount - saleData.paidAmount);
         const costRatePerKg = product ? product.averageCostPerKg : 30;
         const totalCostOfGoods = costRatePerKg * quantityKg;

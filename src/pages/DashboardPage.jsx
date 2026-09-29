@@ -12,7 +12,7 @@ export const DashboardPage = ({ setActiveTab }) => {
     const totalRawStockValue = db.rawMaterials.reduce((acc, r) => acc + (r.stockKg * r.unitPrice || 0), 0);
     // 2. Processed Stock in kilo and bags (1 bag = 50 kg)
     const totalProcessedKg = db.processedStock.reduce((acc, p) => acc + (p.stockKg || 0), 0);
-    const totalProcessedBags = Math.round(totalProcessedKg / 50);
+    const totalProcessedBags = Math.round((totalProcessedKg / 50) * 100) / 100;
     // 3. Money we owe to suppliers
     const totalOwedToSuppliers = db.suppliers.reduce((acc, s) => acc + (s.balanceOwed || 0), 0);
     // 4. Money payable by customers
@@ -29,7 +29,7 @@ export const DashboardPage = ({ setActiveTab }) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const todayBatches = db.productionBatches.filter(b => b.date === todayStr);
     const dailyProcessedKg = todayBatches.reduce((acc, b) => acc + (b.totalWeightKg || 0), 0);
-    const dailyProcessedBags = Math.round(dailyProcessedKg / 50);
+    const dailyProcessedBags = Math.round((dailyProcessedKg / 50) * 100) / 100;
     // Chart data for trend
     const last7Days = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
@@ -130,7 +130,7 @@ export const DashboardPage = ({ setActiveTab }) => {
             id: 'total-processed-sold',
             title: t.totalProcessedSellCard,
             value: `${totalSalesAmount.toLocaleString()} ${t.currency}`,
-            subvalue: `${totalSalesKg.toLocaleString()} ${t.kilo} (${Math.round(totalSalesKg / 50)} ${t.bag})`,
+            subvalue: `${totalSalesKg.toLocaleString()} ${t.kilo} (${(Math.round((totalSalesKg / 50) * 100) / 100).toLocaleString()} ${t.bag})`,
             icon: TrendingUp,
             bg: 'bg-white hover:bg-cyan-50/40',
             border: 'border-slate-200 hover:border-cyan-400',

@@ -11,8 +11,6 @@ export const SalesPage = () => {
     const [selectedInvoice, setSelectedInvoice] = useState(null);
     // Form State
     const [productId, setProductId] = useState(db.processedStock[0]?.id || '');
-    const [customProductName, setCustomProductName] = useState('');
-    const [isCustomProduct, setIsCustomProduct] = useState(false);
     const [customerId, setCustomerId] = useState('');
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
@@ -36,31 +34,23 @@ export const SalesPage = () => {
     };
     const qtyNumber = Number(unitQuantity) || 0;
     const priceNumber = Number(salePricePerUnit) || 0;
-    const paidNumber = Number(paidAmount) || 0;
     const totalQuantityKg = getKg(unitType, qtyNumber);
     const totalInvoiceAmount = qtyNumber * priceNumber;
+    const paidNumber = paidAmount === '' ? totalInvoiceAmount : Number(paidAmount) || 0;
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
     const totalCostOfGoods = costRatePerKg * totalQuantityKg;
     const estimatedProfit = totalInvoiceAmount - totalCostOfGoods;
     // Handle selecting existing customer
-    const handleSelectCustomer = (selectedId) => {
-        setCustomerId(selectedId);
-        if (selectedId) {
-            const existing = db.customers.find(c => c.id === selectedId);
-            if (existing) {
-                setCustomerName(existing.name);
-                setCustomerPhone(existing.phone || '');
-            }
-        }
-        else {
-            setCustomerName('');
-            setCustomerPhone('');
-        }
+    const handleCustomerNameChange = (name) => {
+        setCustomerName(name);
+        const normalizedName = name.trim().toLowerCase();
+        const existing = db.customers.find(customer => customer.name.trim().toLowerCase() === normalizedName);
+        setCustomerId(existing?.id || '');
+        if (existing)
+            setCustomerPhone(existing.phone || '');
     };
     const handleOpenNewSale = () => {
         setProductId(db.processedStock[0]?.id || '');
-        setCustomProductName('');
-        setIsCustomProduct(false);
         setCustomerId('');
         setCustomerName('');
         setCustomerPhone('');
@@ -75,7 +65,7 @@ export const SalesPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setSaveStatus(null);
-        const productName = isCustomProduct ? customProductName.trim() : (selectedProduct ? selectedProduct.name : '');
+        const productName = selectedProduct ? selectedProduct.name : '';
         if (!productName) {
             setSaveStatus({ type: 'error', text: t.pleaseEnterFormulaName || 'Please specify feed name' });
             return;
@@ -84,12 +74,20 @@ export const SalesPage = () => {
             setSaveStatus({ type: 'error', text: t.invalidCredentials || 'Please enter customer name' });
             return;
         }
+        if (customerPhone.trim() && !/^\d{10}$/.test(customerPhone.trim())) {
+            setSaveStatus({ type: 'error', text: t.phoneMustBe10Digits });
+            return;
+        }
         if (qtyNumber <= 0 || priceNumber <= 0) {
             setSaveStatus({ type: 'error', text: t.totalWeightMustBePositive || 'Quantity and price must be greater than zero' });
             return;
         }
+        if (paidNumber > totalInvoiceAmount) {
+            setSaveStatus({ type: 'error', text: t.paidAmountExceedsTotal });
+            return;
+        }
         // Check stock if product exists in processed stock
-        if (!isCustomProduct && selectedProduct) {
+        if (selectedProduct) {
             if (selectedProduct.stockKg < totalQuantityKg) {
                 setSaveStatus({ type: 'error', text: `${t.insufficientStockOfItem} "${getLocalizedName(selectedProduct.name)}"! ${t.currentStockLabel}: ${selectedProduct.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${totalQuantityKg.toLocaleString()} ${t.kilo}.` });
                 return;
@@ -98,7 +96,7 @@ export const SalesPage = () => {
         setIsSaving(true);
         const result = await recordSale({
             productName,
-            productId: isCustomProduct ? undefined : productId,
+            productId,
             customerId: customerId || undefined,
             customerName: customerName.trim(),
             customerPhone: customerPhone.trim() || undefined,
@@ -173,7 +171,7 @@ export const SalesPage = () => {
             {totalSalesRevenue.toLocaleString()} {t.currency}
           </div>
           <span className="text-xs text-amber-700 font-medium">
-            {totalVolumeKg.toLocaleString()} {t.kilo} ({Math.round(totalVolumeKg / 50)} {t.bag})
+            {totalVolumeKg.toLocaleString()} {t.kilo} ({(totalVolumeKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})
           </span>
         </div>
 
@@ -305,7 +303,7 @@ export const SalesPage = () => {
 
       {/* Record New Sale Modal */}
       {isModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative max-h-[92vh] overflow-y-auto text-slate-900">
+          <div className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative max-h-[92vh] overflow-y-auto text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-100 text-amber-700">
@@ -322,99 +320,50 @@ export const SalesPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-              {/* Product Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.productName} *</label>
+                <select required value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium cursor-pointer">
+                  {!db.processedStock.length && <option value="">{t.noProcessedMaterials}</option>}
+                  {db.processedStock.map(p => (<option key={p.id} value={p.id}>{getLocalizedName(p.name)} — {p.stockKg.toLocaleString()} {t.kilo} ({(p.stockKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})</option>))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-slate-700">
-                      {t.productName} *
-                    </label>
-                    <button type="button" onClick={() => setIsCustomProduct(!isCustomProduct)} className="text-[11px] text-amber-700 hover:underline font-medium cursor-pointer">
-                      {isCustomProduct ? t.selectProduct : t.customProductPlaceholder}
-                    </button>
-                  </div>
-
-                  {!isCustomProduct ? (<select value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium cursor-pointer">
-                      {db.processedStock.map(p => (<option key={p.id} value={p.id}>
-                          {getLocalizedName(p.name)} ({t.currentStockLabel}: {(p.stockKg / 1000).toFixed(2)} {t.ton} • {p.stockKg.toLocaleString()} {t.kilo} • {t.costRateNotice} {(p.averageCostPerKg * 1000).toLocaleString()} {t.currency}/{t.ton})
-                        </option>))}
-                    </select>) : (<input type="text" required value={customProductName} onChange={(e) => setCustomProductName(e.target.value)} placeholder={t.customProductPlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>)}
-                </div>
-
-                {/* Customer Information */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.customerName} *
                   </label>
-                  <div className="flex gap-2">
-                    <select onChange={(e) => handleSelectCustomer(e.target.value)} value={customerId} className="w-1/3 bg-slate-50 border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-700 focus:outline-none shadow-2xs cursor-pointer">
-                      <option value="">{t.newCustomer}</option>
-                      {db.customers.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                    </select>
-                    <input type="text" required value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={t.customerNamePlaceholder} className="w-2/3 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
-                  </div>
+                  <input type="text" required list="sales-customers" value={customerName} onChange={(e) => handleCustomerNameChange(e.target.value)} placeholder={t.customerNamePlaceholder} className="w-full min-w-0 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <datalist id="sales-customers">
+                    {db.customers.map(customer => <option key={customer.id} value={customer.name}/>) }
+                  </datalist>
                 </div>
-              </div>
-
-              {/* Customer Phone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.customerPhoneLabel}
                   </label>
-                  <input type="text" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0700xxxxxx" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="0700000000" title={t.phoneMustBe10Digits} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.saleUnitAndQuantity}
-                  </label>
-                  <div className="flex gap-2">
-                    <select value={unitType} onChange={(e) => setUnitType(e.target.value)} className="w-1/3 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 text-xs text-slate-900 focus:outline-none shadow-2xs font-semibold cursor-pointer">
-                      <option value="bag">{t.unitBag50kg}</option>
-                      <option value="kg">{t.unitKg}</option>
-                      <option value="ton">{t.unitTon1000kg}</option>
-                    </select>
-                    <input type="number" min="1" step="any" required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value ? Number(e.target.value) : '')} className="w-2/3 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
-                  </div>
-                </div>
               </div>
 
-              {/* Automatic Cost of Goods Indicator */}
-              <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                <span className="text-slate-700 font-bold flex items-center gap-1.5">
-                  <span className="font-mono text-amber-700">★</span>
-                  <span>{t.costRateNotice}</span>
-                </span>
-                <span className="font-mono font-bold text-amber-900">
-                  {costRatePerKg.toFixed(2)} {t.currency}/{t.kilo}
-                  {unitType === 'bag' && ` (${t.equivalentTonRate} ${(costRatePerKg * 50).toFixed(0)} ${t.currency} ${t.perBagUnit})`}
-                  {unitType === 'ton' && ` (${t.equivalentTonRate} ${(costRatePerKg * 1000).toLocaleString()} ${t.currency} ${t.perTonUnit})`}
-                </span>
-              </div>
-
-              {/* Price and Paid Amount */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.unitSellingPrice} ({t.currency}) *
-                  </label>
-                  <input type="number" min="0" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label>
+                  <select value={unitType} onChange={(e) => { setUnitType(e.target.value); setUnitQuantity(''); setSalePricePerUnit(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select>
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.paidCashAmount} ({t.currency})
-                  </label>
-                  <input type="number" min="0" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value ? Number(e.target.value) : '')} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity} *</label>
+                  <input type="number" min={unitType === 'bag' ? 1 : 0.01} step={unitType === 'bag' ? 1 : 'any'} required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t.invoiceNotes}
-                </label>
-                <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t.invoiceNotesPlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} ({t.currency}) *</label>
+                  <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({t.currency})</label>
+                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                </div>
               </div>
 
               {/* Calculation Summary Box */}
@@ -423,6 +372,7 @@ export const SalesPage = () => {
                   <span className="text-slate-600">{t.totalSaleWeight}</span>
                   <strong className="font-mono text-slate-900">{totalQuantityKg.toLocaleString()} {t.kilo} ({qtyNumber} {t[unitType] || unitType})</strong>
                 </div>
+                {showCostRate && <div className="flex justify-between text-slate-500"><span>{t.costRateNotice}</span><span className="font-mono">{costRatePerKg.toFixed(2)} {t.currency}/{t.kilo}</span></div>}
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
                   <strong className="font-mono text-amber-800 text-sm">{totalInvoiceAmount.toLocaleString()} {t.currency}</strong>
@@ -436,6 +386,8 @@ export const SalesPage = () => {
                     <span className="font-mono">+{estimatedProfit.toLocaleString()} {t.currency}</span>
                   </div>)}
               </div>
+
+              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t.invoiceNotesPlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/>
 
               <div className="pt-4 border-t border-slate-100 flex flex-col items-end gap-2">
                 <div className="flex items-center justify-end gap-3">

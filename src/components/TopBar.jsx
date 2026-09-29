@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Menu, Bell, Wallet, AlertTriangle, SlidersHorizontal, CheckCircle2, Globe2, X } from 'lucide-react';
+import { Menu, Bell, AlertTriangle, SlidersHorizontal, CheckCircle2, Globe2, X } from 'lucide-react';
 export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestockModal, }) => {
-    const { lang, setLang, t, db, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
+    const { lang, setLang, t, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [editingThreshold, setEditingThreshold] = useState(false);
     const [thresholdInput, setThresholdInput] = useState(lowStockThreshold.toString());
@@ -58,17 +58,6 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
 
         {/* Right / End: Notification Bell, Cash Balance, Language & Profile */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Cash in Hand Quick Badge */}
-          <div onClick={() => setActiveTab('expenses')} className="cursor-pointer hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-400 transition-all text-xs shadow-2xs" title={t.moneyInHandCard}>
-            <Wallet className="w-4 h-4 text-emerald-600"/>
-            <div className="flex flex-col text-start">
-              <span className="text-[10px] text-slate-500 leading-none">{t.moneyInHandCard}</span>
-              <span className="font-bold text-emerald-700 font-mono">
-                {db.cashInHand.toLocaleString()} {t.currency}
-              </span>
-            </div>
-          </div>
-
           {/* Low Stock Notification Bell */}
           <button type="button" onClick={() => setShowNotificationModal(true)} className={`relative p-2 rounded-xl border transition-all ${lowStockMaterials.length > 0
             ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 animate-pulse'

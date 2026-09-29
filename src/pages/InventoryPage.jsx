@@ -83,6 +83,10 @@ export const InventoryPage = () => {
             setErrorMsg(t.invalidCredentials || 'Please fill in all required fields');
             return;
         }
+        if (supplierPhone.trim() && !/^\d{10}$/.test(supplierPhone.trim())) {
+            setErrorMsg(t.phoneMustBe10Digits);
+            return;
+        }
         const numericStock = Number(stockKg);
         const numericPrice = Number(unitPrice);
         const numericPaid = paidAmount === '' ? numericStock * numericPrice : Number(paidAmount);
@@ -130,6 +134,10 @@ export const InventoryPage = () => {
     const handleRestock = (event) => {
         event.preventDefault();
         setRestockError('');
+        if (restockPhone.trim() && !/^\d{10}$/.test(restockPhone.trim())) {
+            setRestockError(t.phoneMustBe10Digits);
+            return;
+        }
         const result = restockRawMaterial({
             materialId: restockItem.id,
             addedWeightKg: restockWeightKg,
@@ -407,7 +415,7 @@ export const InventoryPage = () => {
                   </label>
                   <input type="number" min="1" step="any" required value={stockKg} onChange={(e) => setStockKg(e.target.value ? Number(e.target.value) : '')} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   {Number(stockKg) > 0 && (<span className="text-[11px] text-slate-500 mt-1 block font-medium">
-                      = {(Number(stockKg) / 1000).toFixed(2)} {t.ton} ({Math.round(Number(stockKg) / 50)} {t.bag})
+                      = {(Number(stockKg) / 1000).toFixed(2)} {t.ton} ({(Math.round((Number(stockKg) / 50) * 100) / 100).toLocaleString()} {t.bag})
                     </span>)}
                 </div>
 
@@ -446,7 +454,7 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.supplierPhoneLabel}
                   </label>
-                  <input type="text" value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value)} placeholder="0700xxxxxx" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="0700000000" title={t.phoneMustBe10Digits} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
 
                 <div>
@@ -545,7 +553,7 @@ export const InventoryPage = () => {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.supplier}</label><input value={restockSupplier} onChange={(e) => { setRestockSupplier(e.target.value); const supplier = db.suppliers.find(value => value.name === e.target.value); if (supplier) setRestockPhone(supplier.phone || ''); }} list="restock-suppliers" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/><datalist id="restock-suppliers">{db.suppliers.map(supplier => <option key={supplier.id} value={supplier.name}/>)}</datalist></div>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.phone}</label><input value={restockPhone} onChange={(e) => setRestockPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" dir="ltr"/></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.phone}</label><input type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} value={restockPhone} onChange={(e) => setRestockPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} title={t.phoneMustBe10Digits} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" dir="ltr"/></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidAmount}</label><input type="number" min="0" step="any" value={restockPaid} onChange={(e) => setRestockPaid(e.target.value)} placeholder={restockTotal.toString()} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>

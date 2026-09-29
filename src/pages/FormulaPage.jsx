@@ -142,12 +142,12 @@ export const FormulaPage = () => {
     const costPerKg = totalBatchWeight > 0 ? totalBatchCost / totalBatchWeight : 0;
     const costPerBag = costPerKg * 50;
     const costPerTon = costPerKg * 1000;
-    const totalBags = Math.round(totalBatchWeight / 50);
+    const totalBags = Math.round((totalBatchWeight / 50) * 100) / 100;
     const totalTons = totalBatchWeight / 1000;
     // Processed Stock Aggregations
     const totalProcessedKg = db.processedStock.reduce((acc, p) => acc + (p.stockKg || 0), 0);
     const totalProcessedTons = totalProcessedKg / 1000;
-    const totalProcessedBags = Math.round(totalProcessedKg / 50);
+    const totalProcessedBags = Math.round((totalProcessedKg / 50) * 100) / 100;
     const totalProcessedValue = db.processedStock.reduce((acc, p) => acc + ((p.stockKg || 0) * (p.averageCostPerKg || 0)), 0);
     const handleLoadFormula = (formula) => {
         setLoadedFormulaId(formula.id);
@@ -618,7 +618,7 @@ export const FormulaPage = () => {
         {/* Processed Stock Items List */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
           {db.processedStock.map(p => {
-            const bags = Math.round(p.stockKg / 50);
+            const bags = Math.round((p.stockKg / 50) * 100) / 100;
             const tons = p.stockKg / 1000;
             const ratePerTon = p.averageCostPerKg * 1000;
             const ratePerBag = p.averageCostPerKg * 50;
@@ -723,7 +723,7 @@ export const FormulaPage = () => {
         {db.formulas.length === 0 ? (<p className="text-xs text-slate-500 p-4 text-center">{t.noFormulaRegistered}</p>) : (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {db.formulas.map(f => {
                 const formulaTons = f.totalWeightKg / 1000;
-                const formulaBags = Math.round(f.totalWeightKg / 50);
+                const formulaBags = Math.round((f.totalWeightKg / 50) * 100) / 100;
                 const costTon = f.costPerKg * 1000;
                 const costBag = f.costPerKg * 50;
                 return (<div key={f.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col justify-between">
@@ -786,7 +786,7 @@ export const FormulaPage = () => {
         <div className="space-y-2.5">
           {db.productionBatches.slice(0, 8).map(b => {
             const batchTons = b.totalWeightKg / 1000;
-            const batchBags = Math.round(b.totalWeightKg / 50);
+            const batchBags = Math.round((b.totalWeightKg / 50) * 100) / 100;
             return (<div key={b.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div>
                   <h4 className="font-bold text-slate-900">{getLocalizedName(b.formulaName)}</h4>

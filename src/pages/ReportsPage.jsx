@@ -35,7 +35,7 @@ export const ReportsPage = () => {
     const totalGrossProfit = totalSalesRevenue - totalSalesCogs;
     const netProfit = totalGrossProfit - totalExpensesSum;
     const totalProducedKg = filteredBatches.reduce((acc, b) => acc + b.totalWeightKg, 0);
-    const totalProducedBags = Math.round(totalProducedKg / 50);
+    const totalProducedBags = Math.round((totalProducedKg / 50) * 100) / 100;
     const handleFileUpload = (e) => {
         const file = e.target.files?.[0];
         if (!file)
