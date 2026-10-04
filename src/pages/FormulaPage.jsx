@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen } from 'lucide-react';
+import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen, Search, Check } from 'lucide-react';
 export const FormulaPage = () => {
     const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
     const [loadedFormulaId, setLoadedFormulaId] = useState(null);
@@ -333,11 +333,15 @@ export const FormulaPage = () => {
             return (<div key={idx} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isInsufficient ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex-1 min-w-0">
                         <label className="block text-[10px] text-slate-500 mb-1">{t.selectRawIndex} #{idx + 1}</label>
-                        <select value={ing.rawMaterialId} onChange={(e) => handleUpdateIngredient(idx, 'rawMaterialId', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium">
-                          {db.rawMaterials.map(rm => (<option key={rm.id} value={rm.id}>
-                              {getLocalizedName(rm.name)} — {rm.stockKg.toLocaleString()} {t.kilo}
-                            </option>))}
-                        </select>
+                        <RawMaterialCombobox
+                          key={`${idx}-${loadedFormulaId || 'new'}`}
+                          materials={db.rawMaterials}
+                          value={ing.rawMaterialId}
+                          onChange={(value) => handleUpdateIngredient(idx, 'rawMaterialId', value)}
+                          getLocalizedName={getLocalizedName}
+                          kiloLabel={t.kilo}
+                          lang={lang}
+                        />
                       </div>
 
                       <div className="w-full sm:w-36">
@@ -762,5 +766,78 @@ export const FormulaPage = () => {
             </div>
           </div>
         </div>)}
+    </div>);
+};
+
+const normalizeSearch = (value) => value?.toLocaleLowerCase().trim() || '';
+
+const RawMaterialCombobox = ({ materials, value, onChange, getLocalizedName, kiloLabel, lang }) => {
+    const selected = materials.find(material => material.id === value);
+    const selectedName = selected ? getLocalizedName(selected.name) : '';
+    const [query, setQuery] = useState(selectedName);
+    const [isOpen, setIsOpen] = useState(false);
+
+    const matches = useMemo(() => {
+        const keyword = normalizeSearch(query);
+        if (!keyword)
+            return materials.slice(0, 20);
+        return materials
+            .map((material, index) => {
+                const localizedName = normalizeSearch(getLocalizedName(material.name));
+                const storedName = normalizeSearch(material.name);
+                const searchableName = `${localizedName} ${storedName}`;
+                let score = 3;
+                if (localizedName === keyword || storedName === keyword)
+                    score = 0;
+                else if (localizedName.startsWith(keyword) || storedName.startsWith(keyword))
+                    score = 1;
+                else if (searchableName.includes(keyword))
+                    score = 2;
+                return { material, score, index };
+            })
+            .filter(result => result.score < 3)
+            .sort((a, b) => a.score - b.score || a.index - b.index)
+            .slice(0, 20)
+            .map(result => result.material);
+    }, [materials, query, getLocalizedName]);
+
+    const placeholder = lang === 'fa' ? 'نام مواد خام را بنویسید...' : lang === 'ps' ? 'د خامو موادو نوم ولیکئ...' : 'Type a raw material name...';
+    const noResults = lang === 'fa' ? 'مواد نزدیک به جستجو پیدا نشد.' : lang === 'ps' ? 'ورته خام مواد ونه موندل شول.' : 'No matching raw material found.';
+
+    return (<div className="relative">
+      <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"/>
+      <input
+        type="text"
+        value={query}
+        placeholder={placeholder}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+        onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(true);
+            if (event.target.value !== selectedName)
+                onChange('');
+        }}
+        className="w-full bg-white border border-slate-300 rounded-lg ps-8 pe-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium"
+      />
+      {isOpen && (<div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+        {matches.length ? matches.map(material => (<button
+          key={material.id}
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+              onChange(material.id);
+              setQuery(getLocalizedName(material.name));
+              setIsOpen(false);
+          }}
+          className="w-full flex items-center justify-between gap-3 px-3 py-2 text-start hover:bg-amber-50 border-b border-slate-100 last:border-0"
+        >
+          <span className="text-xs font-semibold text-slate-800 truncate">{getLocalizedName(material.name)}</span>
+          <span className="flex items-center gap-2 shrink-0 text-[10px] text-slate-500 font-mono">
+            {material.stockKg.toLocaleString()} {kiloLabel}
+            {material.id === value && <Check className="w-3.5 h-3.5 text-amber-700"/>}
+          </span>
+        </button>)) : <div className="px-3 py-4 text-center text-xs text-slate-500">{noResults}</div>}
+      </div>)}
     </div>);
 };
