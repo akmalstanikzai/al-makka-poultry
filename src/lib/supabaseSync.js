@@ -646,18 +646,12 @@ export async function sbSyncRawMaterial(item, supplier, supplierTx) {
         console.error('Supabase error syncing raw material:', err);
     }
 }
-export async function sbDeleteRawMaterial(id, supplierTransactionIds = [], supplierIdsToDelete = []) {
+export async function sbDeleteRawMaterial(id) {
     if (!supabase)
         return;
     return queueSync(async () => {
         try {
-            if (supplierTransactionIds.length > 0) {
-                await checked(supabase.from('supplier_transactions').delete().in('id', supplierTransactionIds), 'linked supplier transactions delete');
-            }
             await checked(supabase.from('raw_materials').delete().eq('id', id), 'raw_materials delete');
-            if (supplierIdsToDelete.length > 0) {
-                await checked(supabase.from('suppliers').delete().in('id', supplierIdsToDelete), 'empty linked suppliers delete');
-            }
         }
         catch (err) {
             console.error('Supabase error deleting raw material:', err);
