@@ -357,15 +357,15 @@ export const SalesPage = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity} *</label>
-                  <input type="number" min={unitType === 'bag' ? 1 : 0.01} step={unitType === 'bag' ? 1 : 'any'} required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                  <input type="number" min="0.001" step="any" required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} ({t.currency}) *</label>
-                  <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                  <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({t.currency})</label>
-                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
               </div>
 

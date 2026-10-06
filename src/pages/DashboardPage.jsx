@@ -213,7 +213,7 @@ export const DashboardPage = ({ setActiveTab }) => {
                   <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600"/>
                   <span>{t.lowStockThresholdLabel} {lowStockThreshold.toLocaleString()} {t.kilo}</span>
                 </button>) : (<form onSubmit={handleSaveThreshold} className="flex items-center gap-1.5">
-                  <input type="number" min="100" step="100" value={thresholdInput} onChange={(e) => setThresholdInput(e.target.value)} className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 font-mono shadow-2xs"/>
+                  <input type="number" min="0" step="any" value={thresholdInput} onChange={(e) => setThresholdInput(e.target.value)} className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 font-mono shadow-2xs"/>
                   <button type="submit" className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs">
                     {t.saveThreshold}
                   </button>

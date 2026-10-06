@@ -244,7 +244,7 @@ export const ExpensesPage = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {t.expenseAmount} ({t.currency}) *
                 </label>
-                <input type="number" min="1" step="any" required value={amount} onChange={(e) => setAmount(e.target.value ? Number(e.target.value) : '')} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                <input type="number" min="0.01" step="any" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
               </div>
 
               <div>

@@ -373,7 +373,7 @@ export const SuppliersPage = () => {
                   {t.paidAmountLabel} ({t.currency}) *
                 </label>
                 <div className="relative">
-                  <input type="number" required min="1" max={settleModalSupplier.balanceOwed} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" required min="0.01" step="any" max={settleModalSupplier.balanceOwed} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   <span className="absolute end-3 top-2.5 text-xs text-slate-500 font-medium">
                     {t.currency}
                   </span>

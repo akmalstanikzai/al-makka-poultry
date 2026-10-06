@@ -232,7 +232,7 @@ export const FormulaPage = () => {
                 <span className="text-[10px] text-amber-600 font-mono">1 Ton = 1000 Kg</span>
               </label>
               <div className="relative">
-                <input type="number" step="any" min="0" value={convTons} onChange={(e) => handleTonsChange(e.target.value === '' ? '' : Number(e.target.value))} placeholder="1" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-amber-600"/>
+                <input type="number" step="any" min="0" value={convTons} onChange={(e) => handleTonsChange(e.target.value)} placeholder="1" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-amber-600"/>
                 <span className="absolute end-3 top-2.5 text-xs font-bold text-slate-400">{t.tons}</span>
               </div>
             </div>
@@ -244,7 +244,7 @@ export const FormulaPage = () => {
                 <span className="text-[10px] text-amber-600 font-mono">1 Bag = 50 Kg</span>
               </label>
               <div className="relative">
-                <input type="number" step="any" min="0" value={convBags} onChange={(e) => handleBagsChange(e.target.value === '' ? '' : Number(e.target.value))} placeholder="20" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-amber-600"/>
+                <input type="number" step="any" min="0" value={convBags} onChange={(e) => handleBagsChange(e.target.value)} placeholder="20" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-amber-600"/>
                 <span className="absolute end-3 top-2.5 text-xs font-bold text-slate-400">{t.bags}</span>
               </div>
             </div>
@@ -256,7 +256,7 @@ export const FormulaPage = () => {
                 <span className="text-[10px] text-amber-600 font-mono">Standard Weight</span>
               </label>
               <div className="relative">
-                <input type="number" step="any" min="0" value={convKg} onChange={(e) => handleKgChange(e.target.value === '' ? '' : Number(e.target.value))} placeholder="1000" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-amber-600"/>
+                <input type="number" step="any" min="0" value={convKg} onChange={(e) => handleKgChange(e.target.value)} placeholder="1000" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-amber-600"/>
                 <span className="absolute end-3 top-2.5 text-xs font-bold text-slate-400">{t.kilos}</span>
               </div>
             </div>
@@ -293,7 +293,7 @@ export const FormulaPage = () => {
                   <Zap className="w-3.5 h-3.5 text-amber-600"/>
                   <span>{t.batchProductionExpense} ({t.currency})</span>
                 </label>
-                <input type="number" min="0" step="any" value={batchExpenses} onChange={(e) => setBatchExpenses(e.target.value ? Number(e.target.value) : '')} placeholder="0" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                <input type="number" min="0" step="any" value={batchExpenses} onChange={(e) => setBatchExpenses(e.target.value)} placeholder="0" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
               </div>
             </div>
 
@@ -346,7 +346,7 @@ export const FormulaPage = () => {
 
                       <div className="w-full sm:w-36">
                         <label className="block text-[10px] text-slate-500 mb-1">{t.weightKgLabel}</label>
-                        <input type="number" min="1" step="any" value={ing.weightKg} onChange={(e) => handleUpdateIngredient(idx, 'weightKg', e.target.value ? Number(e.target.value) : 0)} className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                        <input type="number" min="0.001" step="any" value={ing.weightKg} onChange={(e) => handleUpdateIngredient(idx, 'weightKg', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                       </div>
 
                       <div className="w-full sm:w-32 text-end sm:pt-4">

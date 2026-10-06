@@ -413,7 +413,7 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.stockInKilo} *
                   </label>
-                  <input type="number" min="1" step="any" required value={stockKg} onChange={(e) => setStockKg(e.target.value ? Number(e.target.value) : '')} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" min="0.001" step="any" required value={stockKg} onChange={(e) => setStockKg(e.target.value)} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   {Number(stockKg) > 0 && (<span className="text-[11px] text-slate-500 mt-1 block font-medium">
                       = {(Number(stockKg) / 1000).toFixed(2)} {t.ton} ({(Math.round((Number(stockKg) / 50) * 100) / 100).toLocaleString()} {t.bag})
                     </span>)}
@@ -423,7 +423,7 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.unitPriceKilo} ({t.currency}) *
                   </label>
-                  <input type="number" min="0" step="any" required value={unitPrice} onChange={(e) => setUnitPrice(e.target.value ? Number(e.target.value) : '')} placeholder="25" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" min="0" step="any" required value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="25" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
               </div>
 
@@ -432,7 +432,7 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.customThresholdOpt}
                   </label>
-                  <input type="number" min="0" step="any" value={threshold} onChange={(e) => setThreshold(e.target.value ? Number(e.target.value) : '')} placeholder={`${t.defaultPrefix} ${lowStockThreshold}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" min="0" step="any" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder={`${t.defaultPrefix} ${lowStockThreshold}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   <p className="text-[10px] text-slate-500 mt-1">
                     {t.lowStockExplExplanation}
                   </p>
@@ -461,7 +461,7 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.amountPaidLabel} ({t.currency})
                   </label>
-                  <input type="number" min="0" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value ? Number(e.target.value) : '')} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" min="0" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
               </div>
 
@@ -515,7 +515,7 @@ export const InventoryPage = () => {
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 {t.thresholdKgColon}
               </label>
-              <input type="number" min="0" value={newThresholdValue} onChange={(e) => setNewThresholdValue(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+              <input type="number" min="0" step="any" value={newThresholdValue} onChange={(e) => setNewThresholdValue(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
               <span className="text-[10px] text-slate-500 mt-1 block">
                 {t.thresholdNoticeText}
               </span>
