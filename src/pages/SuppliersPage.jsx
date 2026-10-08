@@ -369,19 +369,19 @@ export const SuppliersPage = () => {
         </div>
       </div>
 
-      {/* Supplier-only editor. It never changes inventory, stock, transactions, or cash. */}
+      {/* Supplier editor leaves inventory, stock, and transactions unchanged; paid differences adjust cash. */}
       {editingSupplier && supplierEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
-          <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-amber-600"/>Edit supplier</h3><p className="text-xs text-slate-500 mt-1">This edit affects only this supplier. Inventory, stock, transaction history, and cash remain unchanged.</p></div><button type="button" onClick={()=>setEditingSupplier(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-amber-600"/>{t.editSupplier}</h3><p className="text-xs text-slate-500 mt-1">{t.supplierEditNotice}</p></div><button type="button" onClick={()=>setEditingSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <form onSubmit={handleSupplierEdit} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <EditField label={t.supplierName}><input required value={supplierEdit.name} onChange={e=>setSupplierEdit({...supplierEdit,name:e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/></EditField>
               <EditField label={t.phone}><input inputMode="numeric" value={supplierEdit.phone} onChange={e=>setSupplierEdit({...supplierEdit,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/></EditField>
-              <div className="sm:col-span-2"><EditField label={t.address||'Address'}><textarea rows="2" value={supplierEdit.address} onChange={e=>setSupplierEdit({...supplierEdit,address:e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600 resize-none"/></EditField></div>
+              <div className="sm:col-span-2"><EditField label={t.address}><textarea rows="2" value={supplierEdit.address} onChange={e=>setSupplierEdit({...supplierEdit,address:e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600 resize-none"/></EditField></div>
             </div>
-            <div className="border-t border-slate-200 pt-4"><h4 className="font-bold text-sm mb-3">Financial amounts</h4><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <CurrencySupplierEdit currency="AFN" total={supplierEdit.totalPurchasedAmount} paid={supplierEdit.totalPaid} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmount:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaid:value})}/>
-              <CurrencySupplierEdit currency="USD" total={supplierEdit.totalPurchasedAmountUsd} paid={supplierEdit.totalPaidUsd} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmountUsd:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaidUsd:value})}/>
+            <div className="border-t border-slate-200 pt-4"><h4 className="font-bold text-sm mb-3">{t.financialAmounts}</h4><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <CurrencySupplierEdit t={t} currency="AFN" total={supplierEdit.totalPurchasedAmount} paid={supplierEdit.totalPaid} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmount:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaid:value})}/>
+              <CurrencySupplierEdit t={t} currency="USD" total={supplierEdit.totalPurchasedAmountUsd} paid={supplierEdit.totalPaidUsd} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmountUsd:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaidUsd:value})}/>
             </div></div>
             {supplierEditError&&<p className="text-xs font-semibold text-rose-700">{supplierEditError}</p>}
             <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setEditingSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" className="px-5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold">{t.save}</button></div>
@@ -543,7 +543,7 @@ export const SuppliersPage = () => {
 
 const controlClass = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600';
 const EditField = ({label,children}) => <label className="block"><span className="block text-xs font-semibold text-slate-700 mb-1">{label}</span>{children}</label>;
-const CurrencySupplierEdit = ({currency,total,paid,onTotal,onPaid}) => {
+const CurrencySupplierEdit = ({t,currency,total,paid,onTotal,onPaid}) => {
     const remaining = Math.max(0, (Number(total)||0) - (Number(paid)||0));
-    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label="Total Amount"><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label="Amount Paid"><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">Remaining (calculated automatically)</span><strong className="font-mono text-rose-700">{remaining.toLocaleString()} {currency}</strong></div></div></div>;
+    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label={t.totalAmount}><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label={t.amountPaidLabel}><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingAutoCalculated}</span><strong className="font-mono text-rose-700">{remaining.toLocaleString()} {currency}</strong></div></div></div>;
 };

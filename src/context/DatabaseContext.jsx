@@ -492,10 +492,10 @@ export const DatabaseProvider = ({ children }) => {
         const paidAfn = Number(updates.totalPaid);
         const totalUsd = Number(updates.totalPurchasedAmountUsd);
         const paidUsd = Number(updates.totalPaidUsd);
-        if (!name) return { success: false, error: 'Supplier name is required.' };
+        if (!name) return { success: false, error: t.supplierNameRequired };
         if (phone && !/^\d{10}$/.test(phone)) return { success: false, error: t.phoneMustBe10Digits };
-        if (![totalAfn, paidAfn, totalUsd, paidUsd].every(value => Number.isFinite(value) && value >= 0)) return { success: false, error: 'Financial values must be zero or greater.' };
-        if (paidAfn > totalAfn || paidUsd > totalUsd) return { success: false, error: 'Amount paid cannot be greater than the total amount.' };
+        if (![totalAfn, paidAfn, totalUsd, paidUsd].every(value => Number.isFinite(value) && value >= 0)) return { success: false, error: t.financialValuesNonNegative };
+        if (paidAfn > totalAfn || paidUsd > totalUsd) return { success: false, error: t.paidCannotExceedTotal };
         setDb(prev => {
             const currentSupplier = prev.suppliers.find(supplier => supplier.id === id);
             if (!currentSupplier) return prev;
