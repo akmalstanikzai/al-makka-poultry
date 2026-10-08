@@ -29,11 +29,11 @@ export const ReportsPage = () => {
     const filteredBatches = db.productionBatches.filter(b => period === 'all' || (b.date >= startDate && b.date <= todayStr));
     const filteredExpenses = db.expenses.filter(e => period === 'all' || (e.date >= startDate && e.date <= todayStr));
     // Financial aggregates
-    const totalSalesRevenue = filteredSales.reduce((acc, s) => acc + s.totalAmount, 0);
-    const totalSalesCogs = filteredSales.reduce((acc, s) => acc + s.totalCostOfGoods, 0);
-    const totalExpensesSum = filteredExpenses.reduce((acc, e) => acc + e.amount, 0);
-    const totalGrossProfit = totalSalesRevenue - totalSalesCogs;
-    const netProfit = totalGrossProfit - totalExpensesSum;
+    const totalSalesRevenue = filteredSales.reduce((a,s)=>{a[s.currency === 'USD' ? 'USD' : 'AFN']+=s.totalAmount;return a;},{AFN:0,USD:0});
+    const totalSalesCogs = filteredSales.reduce((a,s)=>{a.AFN += s.totalCostOfGoods || 0; a.USD += s.totalCostOfGoodsUsd || 0; return a;},{AFN:0,USD:0});
+    const totalExpensesSum = filteredExpenses.reduce((a,e)=>{a[e.currency === 'USD' ? 'USD' : 'AFN']+=e.amount;return a;},{AFN:0,USD:0});
+    const totalGrossProfit = { AFN: totalSalesRevenue.AFN-totalSalesCogs.AFN, USD: totalSalesRevenue.USD-totalSalesCogs.USD };
+    const netProfit = { AFN: totalGrossProfit.AFN-totalExpensesSum.AFN, USD: totalGrossProfit.USD-totalExpensesSum.USD };
     const totalProducedKg = filteredBatches.reduce((acc, b) => acc + b.totalWeightKg, 0);
     const totalProducedBags = Math.round((totalProducedKg / 50) * 100) / 100;
     const handleFileUpload = (e) => {
@@ -118,7 +118,7 @@ export const ReportsPage = () => {
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-500">{t.periodSalesTotal}</span>
             <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-              {totalSalesRevenue.toLocaleString()} {t.currency}
+              {totalSalesRevenue.AFN.toLocaleString()} AFN · {totalSalesRevenue.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-amber-700 font-medium">
               {filteredSales.length} {t.recordedInvoicesCount}
@@ -128,7 +128,7 @@ export const ReportsPage = () => {
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-500">{t.factoryExpensesTotal}</span>
             <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-              {totalExpensesSum.toLocaleString()} {t.currency}
+              {totalExpensesSum.AFN.toLocaleString()} AFN · {totalExpensesSum.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-rose-600 font-medium">
               {filteredExpenses.length} {t.expensesCountLabel}
@@ -138,15 +138,15 @@ export const ReportsPage = () => {
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-500">{t.operationalGrossProfit}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalGrossProfit.toLocaleString()} {t.currency}
+              {totalGrossProfit.AFN.toLocaleString()} AFN · {totalGrossProfit.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-emerald-600 font-medium">{t.cogsDeductedLabel}</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-500">{t.netProfit}</span>
-            <div className={`text-xl font-bold font-mono mt-1 ${netProfit >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
-              {netProfit.toLocaleString()} {t.currency}
+            <div className={`text-xl font-bold font-mono mt-1 ${netProfit.AFN >= 0 && netProfit.USD >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
+              {netProfit.AFN.toLocaleString()} AFN · {netProfit.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-slate-500">{t.afterAllExpenses}</span>
           </div>

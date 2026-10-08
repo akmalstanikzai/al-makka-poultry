@@ -8,6 +8,7 @@ export const CustomersPage = () => {
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
     const [receivedAmount, setReceivedAmount] = useState('');
+    const [paymentCurrency, setPaymentCurrency] = useState('AFN');
     const [paymentNote, setPaymentNote] = useState('');
     const [paymentStatus, setPaymentStatus] = useState(null);
     const [isSavingPayment, setIsSavingPayment] = useState(false);
@@ -25,7 +26,8 @@ export const CustomersPage = () => {
     };
     const handleOpenReceiveModal = (c) => {
         setReceiveModalCustomer(c);
-        setReceivedAmount(c.balanceOwed);
+        setPaymentCurrency((c.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
+        setReceivedAmount((c.balanceOwed || 0) > 0 ? c.balanceOwed : (c.balanceOwedUsd || 0));
         setPaymentNote('');
         setPaymentStatus(null);
     };
@@ -40,17 +42,17 @@ export const CustomersPage = () => {
         }
         setIsSavingPayment(true);
         setPaymentStatus(null);
-        const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote);
+        const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote, paymentCurrency);
         setIsSavingPayment(false);
         setPaymentStatus(result.success
             ? { type: 'success', text: 'Customer payment saved to the database.' }
             : { type: 'error', text: result.error || 'Customer payment was not saved.' });
     };
     // Aggregated totals
-    const totalSalesAll = db.customers.reduce((acc, c) => acc + (c.totalPurchasedAmount || 0), 0);
-    const totalPaidAll = db.customers.reduce((acc, c) => acc + (c.totalPaid || 0), 0);
-    const totalReceivableDebtAll = db.customers.reduce((acc, c) => acc + (c.balanceOwed || 0), 0);
-    const debtorCount = db.customers.filter(c => (c.balanceOwed || 0) > 0).length;
+    const totalSalesAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };
+    const totalPaidAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPaid||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPaidUsd||0),0) };
+    const totalReceivableDebtAll = { AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
+    const debtorCount = db.customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length;
     const filteredCustomers = db.customers.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (c.phone && c.phone.includes(searchTerm)) ||
@@ -58,10 +60,10 @@ export const CustomersPage = () => {
         if (!matchesSearch)
             return false;
         if (statusFilter === 'debtors') {
-            return (c.balanceOwed || 0) > 0;
+            return (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0;
         }
         if (statusFilter === 'settled') {
-            return (c.balanceOwed || 0) <= 0;
+            return (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0;
         }
         return true;
     });
@@ -98,7 +100,7 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalCustomerPurchases}</span>
             <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-              {totalSalesAll.toLocaleString()} {t.currency}
+              {totalSalesAll.AFN.toLocaleString()} AFN · {totalSalesAll.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-slate-500">{db.customers.length} {t.navCustomers}</span>
           </div>
@@ -111,7 +113,7 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.cashReceived}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalPaidAll.toLocaleString()} {t.currency}
+              {totalPaidAll.AFN.toLocaleString()} AFN · {totalPaidAll.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-emerald-600">{t.receivedFromCustomers}</span>
           </div>
@@ -124,7 +126,7 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.balanceOwedToCustomer}</span>
             <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-              {totalReceivableDebtAll.toLocaleString()} {t.currency}
+              {totalReceivableDebtAll.AFN.toLocaleString()} AFN · {totalReceivableDebtAll.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-rose-600 font-medium">
               {debtorCount} {t.debtorFarmsCount}
@@ -184,7 +186,7 @@ export const CustomersPage = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredCustomers.map((cust) => {
-            const hasDebt = cust.balanceOwed > 0;
+            const hasDebt = cust.balanceOwed > 0 || (cust.balanceOwedUsd || 0) > 0;
             const isExpanded = !!expandedCustomerIds[cust.id];
             const transactionsCount = cust.transactions?.length || 0;
             return (<React.Fragment key={cust.id}>
@@ -228,23 +230,23 @@ export const CustomersPage = () => {
 
                       {/* Total Purchases */}
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        {cust.totalPurchasedAmount.toLocaleString()} {t.currency}
+                        {cust.totalPurchasedAmount.toLocaleString()} AFN · {(cust.totalPurchasedAmountUsd || 0).toLocaleString()} USD
                       </td>
 
                       {/* Total Payments */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
-                        {cust.totalPaid.toLocaleString()} {t.currency}
+                        {cust.totalPaid.toLocaleString()} AFN · {(cust.totalPaidUsd || 0).toLocaleString()} USD
                       </td>
 
                       {/* Remaining Debt */}
                       <td className="py-3.5 px-4">
                         {hasDebt ? (<div className="inline-flex flex-col">
                             <span className="font-mono font-bold text-rose-700 text-sm">
-                              {cust.balanceOwed.toLocaleString()} {t.currency}
+                              {cust.balanceOwed.toLocaleString()} AFN · {(cust.balanceOwedUsd || 0).toLocaleString()} USD
                             </span>
                             <span className="text-[10px] text-rose-600 font-medium">{t.customerDebtBadge}</span>
                           </div>) : (<span className="font-mono text-slate-500 text-xs">
-                            0 {t.currency}
+                            0 AFN · 0 USD
                           </span>)}
                       </td>
 
@@ -324,13 +326,13 @@ export const CustomersPage = () => {
                                           {getLocalizedTxDesc(tr.description)}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                                          {tr.amount ? `${tr.amount.toLocaleString()} ${t.currency}` : '-'}
+                                          {tr.amount ? `${tr.amount.toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                                          {tr.paidAmount.toLocaleString()} {t.currency}
+                                          {tr.paidAmount.toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-rose-700">
-                                          {tr.remainingAmount.toLocaleString()} {t.currency}
+                                          {tr.remainingAmount.toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                       </tr>))}
                                   </tbody>
@@ -368,7 +370,7 @@ export const CustomersPage = () => {
                     {t.receivePayment}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {receiveModalCustomer.name} ({t.remainingDebt}: {receiveModalCustomer.balanceOwed.toLocaleString()} {t.currency})
+                    {receiveModalCustomer.name} ({t.remainingDebt}: {receiveModalCustomer.balanceOwed.toLocaleString()} AFN · {(receiveModalCustomer.balanceOwedUsd || 0).toLocaleString()} USD)
                   </p>
                 </div>
               </div>
@@ -380,10 +382,11 @@ export const CustomersPage = () => {
             <form onSubmit={handleReceiveSubmit} className="space-y-4 mt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t.cashReceived} ({t.currency}) *
+                  {t.cashReceived} ({paymentCurrency}) *
                 </label>
                 <div className="relative">
-                  <input type="number" required min="0.01" step="any" max={receiveModalCustomer.balanceOwed} value={receivedAmount} onChange={(e) => setReceivedAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setReceivedAmount(e.target.value === 'USD' ? (receiveModalCustomer.balanceOwedUsd || 0) : (receiveModalCustomer.balanceOwed || 0)); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
+                  <input type="number" required min="0.01" step="any" max={paymentCurrency === 'USD' ? (receiveModalCustomer.balanceOwedUsd || 0) : receiveModalCustomer.balanceOwed} value={receivedAmount} onChange={(e) => setReceivedAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   <span className="absolute end-3 top-2.5 text-xs text-slate-500 font-medium">
                     {t.currency}
                   </span>
@@ -423,7 +426,7 @@ export const CustomersPage = () => {
                     {t.accountStatementAndHistory} ({selectedHistoryCustomer.name})
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {t.phone}: {selectedHistoryCustomer.phone || '-'} • {t.remainingDebt}: {selectedHistoryCustomer.balanceOwed.toLocaleString()} {t.currency}
+                    {t.phone}: {selectedHistoryCustomer.phone || '-'} • {t.remainingDebt}: {selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD
                   </span>
                 </div>
               </div>
@@ -443,9 +446,9 @@ export const CustomersPage = () => {
               <div className="grid grid-cols-2 gap-3 my-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                 <div><span className="text-slate-500 block">{t.customerNameLabel}</span><strong>{selectedHistoryCustomer.name}</strong></div>
                 <div><span className="text-slate-500 block">{t.phone}</span><strong dir="ltr">{selectedHistoryCustomer.phone || '-'}</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistoryCustomer.totalPurchasedAmount.toLocaleString()} {t.currency}</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistoryCustomer.totalPaid.toLocaleString()} {t.currency}</strong></div>
-                <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistoryCustomer.balanceOwed.toLocaleString()} {t.currency}</strong></div>
+                <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistoryCustomer.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistoryCustomer.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistoryCustomer.totalPaid.toLocaleString()} AFN · {(selectedHistoryCustomer.totalPaidUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
               {selectedHistoryCustomer.transactions && selectedHistoryCustomer.transactions.length > 0 ? (selectedHistoryCustomer.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs shadow-2xs">
@@ -458,10 +461,10 @@ export const CustomersPage = () => {
                     </div>
                     <div className="text-end">
                       <div className="font-bold font-mono text-emerald-700 text-sm">
-                        {t.cashPaid}: {h.paidAmount.toLocaleString()} {t.currency}
+                        {t.cashPaid}: {h.paidAmount.toLocaleString()} {h.currency || 'AFN'}
                       </div>
                       <div className="text-[11px] text-rose-700 font-mono mt-0.5">
-                        {t.remainingDebt}: {h.remainingAmount.toLocaleString()} {t.currency}
+                        {t.remainingDebt}: {h.remainingAmount.toLocaleString()} {h.currency || 'AFN'}
                       </div>
                     </div>
                   </div>))) : (<div className="p-8 text-center text-slate-500 text-xs">

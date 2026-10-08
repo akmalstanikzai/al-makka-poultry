@@ -17,13 +17,14 @@ export const SalesPage = () => {
     const [unitType, setUnitType] = useState('bag');
     const [unitQuantity, setUnitQuantity] = useState('');
     const [salePricePerUnit, setSalePricePerUnit] = useState('');
+    const [currency, setCurrency] = useState('AFN');
     const [paidAmount, setPaidAmount] = useState('');
     const [notes, setNotes] = useState('');
     const [saveStatus, setSaveStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     // Selected Product details
     const selectedProduct = db.processedStock.find(p => p.id === productId);
-    const costRatePerKg = selectedProduct ? selectedProduct.averageCostPerKg : 30;
+    const costRatePerKg = { AFN: selectedProduct?.averageCostPerKg || 0, USD: selectedProduct?.averageCostPerKgUsd || 0 };
     // Quantity in kg calculation
     const getKg = (unit, qty) => {
         if (unit === 'bag')
@@ -38,11 +39,10 @@ export const SalesPage = () => {
     const totalInvoiceAmount = qtyNumber * priceNumber;
     const paidNumber = paidAmount === '' ? totalInvoiceAmount : Number(paidAmount) || 0;
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
-    const totalCostOfGoods = costRatePerKg * totalQuantityKg;
-    const estimatedProfit = totalInvoiceAmount - totalCostOfGoods;
-    const costPerSelectedUnit = unitType === 'bag'
-        ? costRatePerKg * 50
-        : unitType === 'ton' ? costRatePerKg * 1000 : costRatePerKg;
+    const totalCostOfGoods = { AFN: costRatePerKg.AFN * totalQuantityKg, USD: costRatePerKg.USD * totalQuantityKg };
+    const estimatedProfit = { AFN: (currency === 'AFN' ? totalInvoiceAmount : 0) - totalCostOfGoods.AFN, USD: (currency === 'USD' ? totalInvoiceAmount : 0) - totalCostOfGoods.USD };
+    const unitMultiplier = unitType === 'bag' ? 50 : unitType === 'ton' ? 1000 : 1;
+    const costPerSelectedUnit = { AFN: costRatePerKg.AFN * unitMultiplier, USD: costRatePerKg.USD * unitMultiplier };
     // Handle selecting existing customer
     const handleCustomerNameChange = (name) => {
         setCustomerName(name);
@@ -106,6 +106,7 @@ export const SalesPage = () => {
             unitType,
             unitQuantity: qtyNumber,
             salePricePerUnit: priceNumber,
+            currency,
             paidAmount: paidNumber,
             notes: notes.trim() || undefined,
         });
@@ -133,9 +134,9 @@ export const SalesPage = () => {
             matchesPayment = s.remainingAmount > 0;
         return matchesSearch && matchesPayment;
     });
-    const totalSalesRevenue = db.sales.reduce((acc, s) => acc + s.totalAmount, 0);
-    const totalSalesProfit = db.sales.reduce((acc, s) => acc + s.profit, 0);
-    const totalReceivables = db.sales.reduce((acc, s) => acc + s.remainingAmount, 0);
+    const totalSalesRevenue = db.sales.reduce((acc, s) => { acc[s.currency === 'USD' ? 'USD' : 'AFN'] += s.totalAmount; return acc; }, { AFN: 0, USD: 0 });
+    const totalSalesProfit = db.sales.reduce((acc, s) => { acc[s.currency === 'USD' ? 'USD' : 'AFN'] += s.profit; return acc; }, { AFN: 0, USD: 0 });
+    const totalReceivables = db.sales.reduce((acc, s) => { acc[s.currency === 'USD' ? 'USD' : 'AFN'] += s.remainingAmount; return acc; }, { AFN: 0, USD: 0 });
     const totalVolumeKg = db.sales.reduce((acc, s) => acc + s.quantityKg, 0);
     return (<div className="space-y-6">
       {/* Header */}
@@ -171,7 +172,7 @@ export const SalesPage = () => {
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.totalSaleAmount}</span>
           <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-            {totalSalesRevenue.toLocaleString()} {t.currency}
+            {totalSalesRevenue.AFN.toLocaleString()} AFN · {totalSalesRevenue.USD.toLocaleString()} USD
           </div>
           <span className="text-xs text-amber-700 font-medium">
             {totalVolumeKg.toLocaleString()} {t.kilo} ({(totalVolumeKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})
@@ -181,7 +182,7 @@ export const SalesPage = () => {
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.netProfit}</span>
           <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-            {totalSalesProfit.toLocaleString()} {t.currency}
+            {totalSalesProfit.AFN.toLocaleString()} AFN · {totalSalesProfit.USD.toLocaleString()} USD
           </div>
           <span className="text-xs text-emerald-600 font-medium">{t.operationalGrossProfit}</span>
         </div>
@@ -189,7 +190,7 @@ export const SalesPage = () => {
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.receivableCustomersCard}</span>
           <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-            {totalReceivables.toLocaleString()} {t.currency}
+            {totalReceivables.AFN.toLocaleString()} AFN · {totalReceivables.USD.toLocaleString()} USD
           </div>
           <span className="text-xs text-rose-600 font-medium">{t.remainingCustomerDebt}</span>
         </div>
@@ -272,18 +273,18 @@ export const SalesPage = () => {
                       <span className="block text-[10px] text-slate-500">({sale.quantityKg.toLocaleString()} {t.kilo})</span>
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                      {sale.totalAmount.toLocaleString()} {t.currency}
+                      {sale.totalAmount.toLocaleString()} {sale.currency || 'AFN'}
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-mono text-emerald-700 font-semibold">{sale.paidAmount.toLocaleString()} {t.currency}</div>
+                      <div className="font-mono text-emerald-700 font-semibold">{sale.paidAmount.toLocaleString()} {sale.currency || 'AFN'}</div>
                       {!isPaidInFull ? (<span className="inline-block mt-0.5 text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-bold">
-                          {t.remainingDebt}: {sale.remainingAmount.toLocaleString()} {t.currency}
+                          {t.remainingDebt}: {sale.remainingAmount.toLocaleString()} {sale.currency || 'AFN'}
                         </span>) : (<span className="inline-block mt-0.5 text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">
                           {t.statusPaid}
                         </span>)}
                     </td>
                     {showCostRate && (<td className="py-3.5 px-4 font-mono text-emerald-700 font-bold">
-                        +{sale.profit.toLocaleString()} {t.currency}
+                        +{(sale.profit || 0).toLocaleString()} AFN · {(sale.profitUsd || 0).toLocaleString()} USD
                       </td>)}
                     <td className="py-3.5 px-4 text-center">
                       <button type="button" onClick={() => setSelectedInvoice(sale)} className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 mx-auto transition-colors cursor-pointer">
@@ -360,11 +361,12 @@ export const SalesPage = () => {
                   <input type="number" min="0.001" step="any" required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} ({t.currency}) *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} ({currency}) *</label>
+                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
                   <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({t.currency})</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({currency})</label>
                   <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
               </div>
@@ -373,13 +375,13 @@ export const SalesPage = () => {
                 <div>
                   <span className="text-xs font-bold text-amber-800 block">{t.costRateNotice}</span>
                   <strong className="text-2xl font-black font-mono text-slate-950">
-                    {costRatePerKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.currency}/{t.kilo}
+                    {costRatePerKg.AFN.toFixed(2)} AFN · {costRatePerKg.USD.toFixed(4)} USD/{t.kilo}
                   </strong>
                 </div>
                 <div className="sm:text-end">
                   <span className="text-[11px] font-semibold text-slate-600 block">{t.productionCostForSelectedUnit}</span>
                   <strong className="text-base font-black font-mono text-amber-900">
-                    {costPerSelectedUnit.toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.currency}/{t[unitType] || unitType}
+                    {costPerSelectedUnit.AFN.toFixed(2)} AFN · {costPerSelectedUnit.USD.toFixed(4)} USD/{t[unitType] || unitType}
                   </strong>
                 </div>
               </div>
@@ -392,15 +394,15 @@ export const SalesPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
-                  <strong className="font-mono text-amber-800 text-sm">{totalInvoiceAmount.toLocaleString()} {t.currency}</strong>
+                  <strong className="font-mono text-amber-800 text-sm">{totalInvoiceAmount.toLocaleString()} {currency}</strong>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.remainingDebtAmount}</span>
-                  <strong className="font-mono text-rose-700">{remainingDebt.toLocaleString()} {t.currency}</strong>
+                  <strong className="font-mono text-rose-700">{remainingDebt.toLocaleString()} {currency}</strong>
                 </div>
                 {showCostRate && (<div className="flex justify-between pt-2 border-t border-amber-200 text-emerald-700 font-bold">
                     <span>{t.estimatedGrossProfit}</span>
-                    <span className="font-mono">+{estimatedProfit.toLocaleString()} {t.currency}</span>
+                    <span className="font-mono">+{estimatedProfit.AFN.toLocaleString()} AFN · {estimatedProfit.USD.toLocaleString()} USD</span>
                   </div>)}
               </div>
 
@@ -483,15 +485,15 @@ export const SalesPage = () => {
                     <tr>
                       <th className="py-2 px-3 text-start">{t.itemDescription}</th>
                       <th className="py-2 px-3 text-start">{t.quantityCol}</th>
-                      <th className="py-2 px-3 text-start">{t.unitPriceCol} ({t.currency})</th>
-                      <th className="py-2 px-3 text-end">{t.totalCol} ({t.currency})</th>
+                      <th className="py-2 px-3 text-start">{t.unitPriceCol}</th>
+                      <th className="py-2 px-3 text-end">{t.totalCol}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 print:divide-stone-300">
                     <tr>
                       <td className="py-2.5 px-3 font-semibold text-slate-900">{getLocalizedName(selectedInvoice.productName)}</td>
                       <td className="py-2.5 px-3 font-mono">{selectedInvoice.unitQuantity} {t[selectedInvoice.unitType] || selectedInvoice.unitType} ({selectedInvoice.quantityKg.toLocaleString()} {t.kilo})</td>
-                      <td className="py-2.5 px-3 font-mono">{selectedInvoice.salePricePerUnit.toLocaleString()}</td>
+                      <td className="py-2.5 px-3 font-mono">{selectedInvoice.salePricePerUnit.toLocaleString()} {selectedInvoice.currency || 'AFN'}</td>
                       <td className="py-2.5 px-3 font-mono font-bold text-end">{selectedInvoice.totalAmount.toLocaleString()}</td>
                     </tr>
                   </tbody>
@@ -502,15 +504,15 @@ export const SalesPage = () => {
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5 text-xs print:bg-stone-50 print:border-stone-300">
                 <div className="flex justify-between py-1 border-b border-slate-200">
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
-                  <strong className="font-mono text-sm text-slate-900">{selectedInvoice.totalAmount.toLocaleString()} {t.currency}</strong>
+                  <strong className="font-mono text-sm text-slate-900">{selectedInvoice.totalAmount.toLocaleString()} {selectedInvoice.currency || 'AFN'}</strong>
                 </div>
                 <div className="flex justify-between py-1 text-emerald-700 font-semibold">
                   <span>{t.receivedCashReceipt}</span>
-                  <span className="font-mono">{selectedInvoice.paidAmount.toLocaleString()} {t.currency}</span>
+                  <span className="font-mono">{selectedInvoice.paidAmount.toLocaleString()} {selectedInvoice.currency || 'AFN'}</span>
                 </div>
                 <div className="flex justify-between py-1 text-rose-700 font-bold">
                   <span>{t.remainingDebtAmount}</span>
-                  <span className="font-mono">{selectedInvoice.remainingAmount.toLocaleString()} {t.currency}</span>
+                  <span className="font-mono">{selectedInvoice.remainingAmount.toLocaleString()} {selectedInvoice.currency || 'AFN'}</span>
                 </div>
               </div>
 

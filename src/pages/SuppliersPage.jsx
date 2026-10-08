@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
-import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
 export const SuppliersPage = () => {
-    const { db, t, deleteSupplier, settleSupplierPayment, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, deleteSupplier, settleSupplierPayment, updateSupplier, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);
     const [settleModalSupplier, setSettleModalSupplier] = useState(null);
     const [paymentAmount, setPaymentAmount] = useState('');
+    const [paymentCurrency, setPaymentCurrency] = useState('AFN');
     const [paymentNote, setPaymentNote] = useState('');
+    const [editingSupplier, setEditingSupplier] = useState(null);
+    const [supplierEdit, setSupplierEdit] = useState(null);
+    const [supplierEditError, setSupplierEditError] = useState('');
     // Delete supplier modal
     const [supplierToDelete, setSupplierToDelete] = useState(null);
     // Status Filter: 'all' | 'creditors' | 'settled'
@@ -23,7 +27,8 @@ export const SuppliersPage = () => {
     };
     const handleOpenSettleModal = (s) => {
         setSettleModalSupplier(s);
-        setPaymentAmount(s.balanceOwed);
+        setPaymentCurrency((s.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
+        setPaymentAmount((s.balanceOwed || 0) > 0 ? s.balanceOwed : (s.balanceOwedUsd || 0));
         setPaymentNote('');
     };
     const handleSettleSubmit = (e) => {
@@ -33,14 +38,31 @@ export const SuppliersPage = () => {
         const amount = Number(paymentAmount);
         if (isNaN(amount) || amount <= 0)
             return;
-        settleSupplierPayment(settleModalSupplier.id, amount, paymentNote);
+        settleSupplierPayment(settleModalSupplier.id, amount, paymentNote, paymentCurrency);
         setSettleModalSupplier(null);
     };
+    const openSupplierEdit = supplier => {
+        setEditingSupplier(supplier);
+        setSupplierEdit({
+            name: supplier.name || '', phone: supplier.phone || '', address: supplier.address || '',
+            totalPurchasedAmount: supplier.totalPurchasedAmount || 0,
+            totalPaid: supplier.totalPaid || 0,
+            totalPurchasedAmountUsd: supplier.totalPurchasedAmountUsd || 0,
+            totalPaidUsd: supplier.totalPaidUsd || 0,
+        });
+        setSupplierEditError('');
+    };
+    const handleSupplierEdit = event => {
+        event.preventDefault();
+        const result = updateSupplier(editingSupplier.id, supplierEdit);
+        if (!result.success) { setSupplierEditError(result.error); return; }
+        setEditingSupplier(null); setSupplierEdit(null);
+    };
     // Aggregated totals
-    const totalPurchasesAll = db.suppliers.reduce((acc, s) => acc + (s.totalPurchasedAmount || 0), 0);
-    const totalPaidAll = db.suppliers.reduce((acc, s) => acc + (s.totalPaid || 0), 0);
-    const totalOwedAll = db.suppliers.reduce((acc, s) => acc + (s.balanceOwed || 0), 0);
-    const creditorCount = db.suppliers.filter(s => (s.balanceOwed || 0) > 0).length;
+    const totalPurchasesAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmount||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmountUsd||0),0) };
+    const totalPaidAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPaid||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPaidUsd||0),0) };
+    const totalOwedAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.balanceOwed||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.balanceOwedUsd||0),0) };
+    const creditorCount = db.suppliers.filter(s => (s.balanceOwed || 0) > 0 || (s.balanceOwedUsd || 0) > 0).length;
     const filteredSuppliers = db.suppliers.filter(s => {
         const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (s.phone && s.phone.includes(searchTerm)) ||
@@ -48,10 +70,10 @@ export const SuppliersPage = () => {
         if (!matchesSearch)
             return false;
         if (statusFilter === 'creditors') {
-            return (s.balanceOwed || 0) > 0;
+            return (s.balanceOwed || 0) > 0 || (s.balanceOwedUsd || 0) > 0;
         }
         if (statusFilter === 'settled') {
-            return (s.balanceOwed || 0) <= 0;
+            return (s.balanceOwed || 0) <= 0 && (s.balanceOwedUsd || 0) <= 0;
         }
         return true;
     });
@@ -88,7 +110,7 @@ export const SuppliersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalPurchasedAmount}</span>
             <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-              {totalPurchasesAll.toLocaleString()} {t.currency}
+              {totalPurchasesAll.AFN.toLocaleString()} AFN · {totalPurchasesAll.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-slate-500">{db.suppliers.length} {t.navSuppliers}</span>
           </div>
@@ -101,7 +123,7 @@ export const SuppliersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalPaid}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalPaidAll.toLocaleString()} {t.currency}
+              {totalPaidAll.AFN.toLocaleString()} AFN · {totalPaidAll.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-emerald-600">{t.paidToSuppliers}</span>
           </div>
@@ -114,7 +136,7 @@ export const SuppliersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.balanceOwedToSupplier}</span>
             <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-              {totalOwedAll.toLocaleString()} {t.currency}
+              {totalOwedAll.AFN.toLocaleString()} AFN · {totalOwedAll.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-rose-600 font-medium">
               {creditorCount} {t.creditorSuppliersCount}
@@ -174,7 +196,7 @@ export const SuppliersPage = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredSuppliers.map((sup) => {
-            const hasDebt = sup.balanceOwed > 0;
+            const hasDebt = sup.balanceOwed > 0 || (sup.balanceOwedUsd || 0) > 0;
             const isExpanded = !!expandedSupplierIds[sup.id];
             const transactionsCount = sup.transactions?.length || 0;
             return (<React.Fragment key={sup.id}>
@@ -218,23 +240,23 @@ export const SuppliersPage = () => {
 
                       {/* Total Purchases from Supplier */}
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        {sup.totalPurchasedAmount.toLocaleString()} {t.currency}
+                        {sup.totalPurchasedAmount.toLocaleString()} AFN · {(sup.totalPurchasedAmountUsd || 0).toLocaleString()} USD
                       </td>
 
                       {/* Total Paid to Supplier */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
-                        {sup.totalPaid.toLocaleString()} {t.currency}
+                        {sup.totalPaid.toLocaleString()} AFN · {(sup.totalPaidUsd || 0).toLocaleString()} USD
                       </td>
 
                       {/* Remaining Debt / Balance Owed */}
                       <td className="py-3.5 px-4">
                         {hasDebt ? (<div className="inline-flex flex-col">
                             <span className="font-mono font-bold text-rose-700 text-sm">
-                              {sup.balanceOwed.toLocaleString()} {t.currency}
+                              {sup.balanceOwed.toLocaleString()} AFN · {(sup.balanceOwedUsd || 0).toLocaleString()} USD
                             </span>
                             <span className="text-[10px] text-rose-600 font-medium">{t.ourRemainingDebt}</span>
                           </div>) : (<span className="font-mono text-slate-500 text-xs">
-                            0 {t.currency}
+                            0 AFN · 0 USD
                           </span>)}
                       </td>
 
@@ -257,6 +279,8 @@ export const SuppliersPage = () => {
                           {hasDebt && (<button type="button" onClick={() => handleOpenSettleModal(sup)} className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.settlePayment}
                             </button>)}
+
+                          <button type="button" onClick={() => openSupplierEdit(sup)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title="Edit supplier"><Pencil className="w-4 h-4"/></button>
 
                           <button type="button" onClick={() => setSelectedHistorySupplier(sup)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
                             <Printer className="w-4 h-4"/>
@@ -314,13 +338,13 @@ export const SuppliersPage = () => {
                                           {getLocalizedTxDesc(tr.description)}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                                          {tr.amount ? `${tr.amount.toLocaleString()} ${t.currency}` : '-'}
+                                          {tr.amount ? `${tr.amount.toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                                          {tr.paidAmount.toLocaleString()} {t.currency}
+                                          {tr.paidAmount.toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-rose-700">
-                                          {tr.remainingAmount.toLocaleString()} {t.currency}
+                                          {tr.remainingAmount.toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                       </tr>))}
                                   </tbody>
@@ -345,6 +369,26 @@ export const SuppliersPage = () => {
         </div>
       </div>
 
+      {/* Supplier-only editor. It never changes inventory, stock, transactions, or cash. */}
+      {editingSupplier && supplierEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
+          <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-amber-600"/>Edit supplier</h3><p className="text-xs text-slate-500 mt-1">This edit affects only this supplier. Inventory, stock, transaction history, and cash remain unchanged.</p></div><button type="button" onClick={()=>setEditingSupplier(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <form onSubmit={handleSupplierEdit} className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <EditField label={t.supplierName}><input required value={supplierEdit.name} onChange={e=>setSupplierEdit({...supplierEdit,name:e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/></EditField>
+              <EditField label={t.phone}><input inputMode="numeric" value={supplierEdit.phone} onChange={e=>setSupplierEdit({...supplierEdit,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/></EditField>
+              <div className="sm:col-span-2"><EditField label={t.address||'Address'}><textarea rows="2" value={supplierEdit.address} onChange={e=>setSupplierEdit({...supplierEdit,address:e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600 resize-none"/></EditField></div>
+            </div>
+            <div className="border-t border-slate-200 pt-4"><h4 className="font-bold text-sm mb-3">Financial amounts</h4><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <CurrencySupplierEdit currency="AFN" total={supplierEdit.totalPurchasedAmount} paid={supplierEdit.totalPaid} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmount:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaid:value})}/>
+              <CurrencySupplierEdit currency="USD" total={supplierEdit.totalPurchasedAmountUsd} paid={supplierEdit.totalPaidUsd} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmountUsd:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaidUsd:value})}/>
+            </div></div>
+            {supplierEditError&&<p className="text-xs font-semibold text-rose-700">{supplierEditError}</p>}
+            <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setEditingSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" className="px-5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold">{t.save}</button></div>
+          </form>
+        </div>
+      </div>)}
+
       {/* Settle Supplier Payment Modal */}
       {settleModalSupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative text-slate-900">
@@ -358,7 +402,7 @@ export const SuppliersPage = () => {
                     {t.settlePayment}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {settleModalSupplier.name} ({t.remainingDebt}: {settleModalSupplier.balanceOwed.toLocaleString()} {t.currency})
+                    {settleModalSupplier.name} ({t.remainingDebt}: {settleModalSupplier.balanceOwed.toLocaleString()} AFN · {(settleModalSupplier.balanceOwedUsd || 0).toLocaleString()} USD)
                   </p>
                 </div>
               </div>
@@ -370,10 +414,11 @@ export const SuppliersPage = () => {
             <form onSubmit={handleSettleSubmit} className="space-y-4 mt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t.paidAmountLabel} ({t.currency}) *
+                  {t.paidAmountLabel} ({paymentCurrency}) *
                 </label>
                 <div className="relative">
-                  <input type="number" required min="0.01" step="any" max={settleModalSupplier.balanceOwed} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setPaymentAmount(e.target.value === 'USD' ? (settleModalSupplier.balanceOwedUsd || 0) : (settleModalSupplier.balanceOwed || 0)); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
+                  <input type="number" required min="0.01" step="any" max={paymentCurrency === 'USD' ? (settleModalSupplier.balanceOwedUsd || 0) : settleModalSupplier.balanceOwed} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   <span className="absolute end-3 top-2.5 text-xs text-slate-500 font-medium">
                     {t.currency}
                   </span>
@@ -412,7 +457,7 @@ export const SuppliersPage = () => {
                     {t.accountStatementAndHistory} ({selectedHistorySupplier.name})
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {t.phone}: {selectedHistorySupplier.phone || '-'} • {t.remainingDebt}: {selectedHistorySupplier.balanceOwed.toLocaleString()} {t.currency}
+                    {t.phone}: {selectedHistorySupplier.phone || '-'} • {t.remainingDebt}: {selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD
                   </span>
                 </div>
               </div>
@@ -432,9 +477,9 @@ export const SuppliersPage = () => {
               <div className="grid grid-cols-2 gap-3 my-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                 <div><span className="text-slate-500 block">{t.supplier}</span><strong>{selectedHistorySupplier.name}</strong></div>
                 <div><span className="text-slate-500 block">{t.phone}</span><strong dir="ltr">{selectedHistorySupplier.phone || '-'}</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistorySupplier.totalPurchasedAmount.toLocaleString()} {t.currency}</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistorySupplier.totalPaid.toLocaleString()} {t.currency}</strong></div>
-                <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistorySupplier.balanceOwed.toLocaleString()} {t.currency}</strong></div>
+                <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistorySupplier.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistorySupplier.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistorySupplier.totalPaid.toLocaleString()} AFN · {(selectedHistorySupplier.totalPaidUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
               {selectedHistorySupplier.transactions && selectedHistorySupplier.transactions.length > 0 ? (selectedHistorySupplier.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs shadow-2xs">
@@ -447,10 +492,10 @@ export const SuppliersPage = () => {
                     </div>
                     <div className="text-end">
                       <div className="font-bold font-mono text-emerald-700 text-sm">
-                        {t.paidAmountLabel}: {h.paidAmount.toLocaleString()} {t.currency}
+                        {t.paidAmountLabel}: {h.paidAmount.toLocaleString()} {h.currency || 'AFN'}
                       </div>
                       <div className="text-[11px] text-rose-700 font-mono mt-0.5">
-                        {t.remainingDebt}: {h.remainingAmount.toLocaleString()} {t.currency}
+                        {t.remainingDebt}: {h.remainingAmount.toLocaleString()} {h.currency || 'AFN'}
                       </div>
                     </div>
                   </div>))) : (<div className="p-8 text-center text-slate-500 text-xs">
@@ -494,4 +539,11 @@ export const SuppliersPage = () => {
           </div>
         </div>)}
     </div>);
+};
+
+const controlClass = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600';
+const EditField = ({label,children}) => <label className="block"><span className="block text-xs font-semibold text-slate-700 mb-1">{label}</span>{children}</label>;
+const CurrencySupplierEdit = ({currency,total,paid,onTotal,onPaid}) => {
+    const remaining = Math.max(0, (Number(total)||0) - (Number(paid)||0));
+    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label="Total Amount"><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label="Amount Paid"><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">Remaining (calculated automatically)</span><strong className="font-mono text-rose-700">{remaining.toLocaleString()} {currency}</strong></div></div></div>;
 };

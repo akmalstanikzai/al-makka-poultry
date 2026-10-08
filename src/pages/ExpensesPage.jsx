@@ -9,6 +9,7 @@ export const ExpensesPage = () => {
     // Form State
     const [category, setCategory] = useState('fuel');
     const [amount, setAmount] = useState('');
+    const [currency, setCurrency] = useState('AFN');
     const [description, setDescription] = useState('');
     const [paidBy, setPaidBy] = useState('');
     const [notes, setNotes] = useState('');
@@ -81,6 +82,7 @@ export const ExpensesPage = () => {
         addExpense({
             category,
             amount: Number(amount),
+            currency,
             description: description.trim() || categoryConfig[category].name,
             paidBy: paidBy.trim() || undefined,
             notes: notes.trim() || undefined,
@@ -93,7 +95,7 @@ export const ExpensesPage = () => {
         setErrorMsg('');
     };
     const filteredExpenses = db.expenses.filter(e => selectedCategoryFilter === 'all' || e.category === selectedCategoryFilter);
-    const totalExpenses = db.expenses.reduce((acc, e) => acc + e.amount, 0);
+    const totalExpenses = db.expenses.reduce((acc, e) => { acc[e.currency === 'USD' ? 'USD' : 'AFN'] += e.amount; return acc; }, { AFN: 0, USD: 0 });
     return (<div className="space-y-6">
       {/* Header */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -124,7 +126,7 @@ export const ExpensesPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalExpenses}</span>
             <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
-              {totalExpenses.toLocaleString()} {t.currency}
+              {totalExpenses.AFN.toLocaleString()} AFN · {totalExpenses.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-slate-500">{db.expenses.length} {t.records}</span>
           </div>
@@ -186,7 +188,7 @@ export const ExpensesPage = () => {
                       {exp.notes && <span className="block text-[11px] text-slate-500 font-normal">{exp.notes}</span>}
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold text-rose-700">
-                      {exp.amount.toLocaleString()} {t.currency}
+                      {exp.amount.toLocaleString()} {exp.currency || 'AFN'}
                     </td>
                     <td className="py-3.5 px-4 text-slate-700">
                       {exp.paidBy || '---'}
@@ -242,8 +244,9 @@ export const ExpensesPage = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t.expenseAmount} ({t.currency}) *
+                  {t.expenseAmount} ({currency}) *
                 </label>
+                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
                 <input type="number" min="0.01" step="any" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
               </div>
 

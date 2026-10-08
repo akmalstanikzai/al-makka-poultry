@@ -69,7 +69,7 @@ async function loadCashInHand() {
         return null;
     const { data, error } = await supabase
         .from('factory_state')
-        .select('cash_in_hand')
+        .select('cash_in_hand, cash_in_hand_usd')
         .eq('id', 'default')
         .maybeSingle();
     if (error) {
@@ -79,14 +79,16 @@ async function loadCashInHand() {
         return null;
     }
     const value = Number(data?.cash_in_hand);
-    return Number.isFinite(value) ? value : null;
+    const usdValue = Number(data?.cash_in_hand_usd);
+    return Number.isFinite(value) ? { AFN: value, USD: Number.isFinite(usdValue) ? usdValue : 0 } : null;
 }
-async function saveCashInHand(cashInHand) {
+async function saveCashInHand(cashInHand, cashInHandUsd = 0) {
     if (!supabase)
         return;
     const { error } = await supabase.from('factory_state').upsert({
         id: 'default',
         cash_in_hand: cashInHand,
+        cash_in_hand_usd: cashInHandUsd,
         updated_at: new Date().toISOString(),
     });
     if (error) {
@@ -137,6 +139,7 @@ export async function loadStateFromSupabase() {
             category: r.category || 'Grains',
             stockKg: Number(r.stock_kg) || 0,
             unitPrice: Number(r.unit_price) || 0,
+            currency: r.currency || 'AFN',
             supplierId: r.supplier_id || undefined,
             supplierName: r.supplier_name || undefined,
             dateAdded: r.date_added || new Date().toISOString().split('T')[0],
@@ -150,8 +153,11 @@ export async function loadStateFromSupabase() {
             phone: s.phone || '',
             address: s.address || '',
             totalPurchasedAmount: Number(s.total_purchased_amount) || 0,
+            totalPurchasedAmountUsd: Number(s.total_purchased_amount_usd) || 0,
             totalPaid: Number(s.total_paid) || 0,
+            totalPaidUsd: Number(s.total_paid_usd) || 0,
             balanceOwed: Number(s.balance_owed) || 0,
+            balanceOwedUsd: Number(s.balance_owed_usd) || 0,
             createdAt: s.created_at || '',
             transactions: supplierTransactions
                 .filter(tx => tx.supplier_id === s.id)
@@ -164,6 +170,7 @@ export async function loadStateFromSupabase() {
                 amount: Number(tx.amount) || 0,
                 paidAmount: Number(tx.paid_amount) || 0,
                 remainingAmount: Number(tx.remaining_amount) || 0,
+                currency: tx.currency || 'AFN',
             })),
         }));
         const customerTransactions = custTxRes.data || [];
@@ -173,8 +180,11 @@ export async function loadStateFromSupabase() {
             phone: c.phone || '',
             address: c.address || '',
             totalPurchasedAmount: Number(c.total_purchased_amount) || 0,
+            totalPurchasedAmountUsd: Number(c.total_purchased_amount_usd) || 0,
             totalPaid: Number(c.total_paid) || 0,
+            totalPaidUsd: Number(c.total_paid_usd) || 0,
             balanceOwed: Number(c.balance_owed) || 0,
+            balanceOwedUsd: Number(c.balance_owed_usd) || 0,
             createdAt: c.created_at || '',
             transactions: customerTransactions
                 .filter(tx => tx.customer_id === c.id)
@@ -186,6 +196,7 @@ export async function loadStateFromSupabase() {
                 amount: Number(tx.amount) || 0,
                 paidAmount: Number(tx.paid_amount) || 0,
                 remainingAmount: Number(tx.remaining_amount) || 0,
+                currency: tx.currency || 'AFN',
             })),
         }));
         const processedStock = (procRes.data || []).map(p => ({
@@ -194,6 +205,8 @@ export async function loadStateFromSupabase() {
             formulaId: p.formula_id || undefined,
             stockKg: Number(p.stock_kg) || 0,
             averageCostPerKg: Number(p.average_cost_per_kg) || 0,
+            averageCostPerKgUsd: Number(p.average_cost_per_kg_usd) || 0,
+            currency: p.currency || 'AFN',
             lastUpdated: p.last_updated || new Date().toISOString().split('T')[0],
         }));
         const sales = (salesRes.data || []).map(s => ({
@@ -211,33 +224,32 @@ export async function loadStateFromSupabase() {
             totalAmount: Number(s.total_amount) || 0,
             costRatePerKg: Number(s.quantity_kg) > 0 ? (Number(s.total_cost_of_goods) || 0) / Number(s.quantity_kg) : 30,
             totalCostOfGoods: Number(s.total_cost_of_goods) || 0,
+            totalCostOfGoodsUsd: Number(s.total_cost_of_goods_usd) || 0,
             profit: Number(s.profit) || 0,
+            profitUsd: Number(s.profit_usd) || 0,
             paidAmount: Number(s.paid_amount) || 0,
             remainingAmount: Number(s.remaining_amount) || 0,
             notes: s.notes || undefined,
+            currency: s.currency || 'AFN',
         }));
         // Customer totals may already include payments from an older app
         // version that failed before updating the sales table. Reconstruct the
         // invoice paid/remaining values oldest-first so both pages agree.
         let salesReconciliationNeeded = false;
         customers.forEach(customer => {
-            let paidToAllocate = customer.totalPaid;
-            sales
-                .filter(sale => sale.customerId === customer.id || (
-                    !sale.customerId && (
-                        sale.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase() ||
-                        (customer.phone && sale.customerPhone === customer.phone)
-                    )
-                ))
-                .sort((first, second) => first.date.localeCompare(second.date))
-                .forEach(sale => {
-                    const invoicePaid = Math.min(paidToAllocate, sale.totalAmount);
-                    if (sale.paidAmount !== invoicePaid || sale.remainingAmount !== Math.max(0, sale.totalAmount - invoicePaid))
-                        salesReconciliationNeeded = true;
-                    sale.paidAmount = invoicePaid;
-                    sale.remainingAmount = Math.max(0, sale.totalAmount - invoicePaid);
-                    paidToAllocate -= invoicePaid;
-                });
+            ['AFN', 'USD'].forEach(currency => {
+                let paidToAllocate = currency === 'USD' ? customer.totalPaidUsd : customer.totalPaid;
+                sales
+                    .filter(sale => (sale.currency || 'AFN') === currency && (sale.customerId === customer.id || (!sale.customerId && (sale.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase() || (customer.phone && sale.customerPhone === customer.phone)))))
+                    .sort((first, second) => first.date.localeCompare(second.date))
+                    .forEach(sale => {
+                        const invoicePaid = Math.min(paidToAllocate, sale.totalAmount);
+                        if (sale.paidAmount !== invoicePaid || sale.remainingAmount !== Math.max(0, sale.totalAmount - invoicePaid)) salesReconciliationNeeded = true;
+                        sale.paidAmount = invoicePaid;
+                        sale.remainingAmount = Math.max(0, sale.totalAmount - invoicePaid);
+                        paidToAllocate -= invoicePaid;
+                    });
+            });
         });
         const expenses = (expRes.data || []).map(e => ({
             id: e.id,
@@ -247,11 +259,13 @@ export async function loadStateFromSupabase() {
             amount: Number(e.amount) || 0,
             paidBy: e.paid_by || undefined,
             notes: e.notes || undefined,
+            currency: e.currency || 'AFN',
         }));
         const formulas = (formRes.data || []).map(f => {
             const ings = Array.isArray(f.ingredients) ? f.ingredients : [];
             const totalWeight = ings.reduce((acc, ing) => acc + (Number(ing.weightKg) || 0), 0);
-            const totalCost = ings.reduce((acc, ing) => acc + (Number(ing.totalCost) || 0), 0);
+            const totalCost = ings.filter(ing => (ing.currency || 'AFN') === 'AFN').reduce((acc, ing) => acc + (Number(ing.totalCost) || 0), 0);
+            const totalCostUsd = ings.filter(ing => ing.currency === 'USD').reduce((acc, ing) => acc + (Number(ing.totalCost) || 0), 0);
             return {
                 id: f.id,
                 name: f.name,
@@ -259,7 +273,9 @@ export async function loadStateFromSupabase() {
                 ingredients: ings,
                 totalWeightKg: totalWeight,
                 totalBatchCost: totalCost,
+                totalBatchCostUsd: totalCostUsd,
                 costPerKg: totalWeight > 0 ? totalCost / totalWeight : 0,
+                costPerKgUsd: totalWeight > 0 ? totalCostUsd / totalWeight : 0,
                 createdDate: f.date_created || '',
             };
         });
@@ -270,9 +286,12 @@ export async function loadStateFromSupabase() {
             date: b.date,
             totalWeightKg: Number(b.total_weight_kg) || 0,
             costPerKg: Number(b.cost_per_kg) || 0,
+            costPerKgUsd: Number(b.cost_per_kg_usd) || 0,
             totalCost: Number(b.total_cost) || 0,
+            totalCostUsd: Number(b.total_cost_usd) || 0,
             operatorName: b.operator_name || undefined,
             notes: b.notes || undefined,
+            currency: b.currency || 'AFN',
         }));
         const persistedCash = await loadCashInHand();
         const hasData = [
@@ -299,7 +318,8 @@ export async function loadStateFromSupabase() {
                 expenses,
                 // Old installations did not persist cash separately.  Keep a
                 // sensible value until the included factory_state migration runs.
-                cashInHand: persistedCash ?? DEFAULT_CASH_IN_HAND,
+                cashInHand: persistedCash?.AFN ?? DEFAULT_CASH_IN_HAND,
+                cashInHandUsd: persistedCash?.USD ?? 0,
             },
         };
     }
@@ -327,8 +347,11 @@ export async function seedInitialDataToSupabase(state) {
                 phone: s.phone || null,
                 address: s.address || null,
                 total_purchased_amount: s.totalPurchasedAmount,
+                total_purchased_amount_usd: s.totalPurchasedAmountUsd || 0,
                 total_paid: s.totalPaid,
+                total_paid_usd: s.totalPaidUsd || 0,
                 balance_owed: s.balanceOwed,
+                balance_owed_usd: s.balanceOwedUsd || 0,
                 created_at: s.createdAt,
             }));
             await checked(supabase.from('suppliers').upsert(supRows), 'suppliers seed');
@@ -342,6 +365,7 @@ export async function seedInitialDataToSupabase(state) {
                 amount: t.amount,
                 paid_amount: t.paidAmount,
                 remaining_amount: t.remainingAmount,
+                currency: t.currency || 'AFN',
             })));
             if (txRows.length > 0) {
                 await checked(supabase.from('supplier_transactions').upsert(txRows), 'supplier_transactions seed');
@@ -355,6 +379,7 @@ export async function seedInitialDataToSupabase(state) {
                 category: rm.category,
                 stock_kg: rm.stockKg,
                 unit_price: rm.unitPrice,
+                currency: rm.currency || 'AFN',
                 supplier_id: rm.supplierId || null,
                 supplier_name: rm.supplierName || null,
                 date_added: rm.dateAdded,
@@ -371,8 +396,11 @@ export async function seedInitialDataToSupabase(state) {
                 phone: c.phone || null,
                 address: c.address || null,
                 total_purchased_amount: c.totalPurchasedAmount,
+                total_purchased_amount_usd: c.totalPurchasedAmountUsd || 0,
                 total_paid: c.totalPaid,
+                total_paid_usd: c.totalPaidUsd || 0,
                 balance_owed: c.balanceOwed,
+                balance_owed_usd: c.balanceOwedUsd || 0,
                 created_at: c.createdAt,
             }));
             await checked(supabase.from('customers').upsert(custRows), 'customers seed');
@@ -385,6 +413,7 @@ export async function seedInitialDataToSupabase(state) {
                 amount: t.amount,
                 paid_amount: t.paidAmount,
                 remaining_amount: t.remainingAmount,
+                currency: t.currency || 'AFN',
             })));
             if (custTxRows.length > 0) {
                 await checked(supabase.from('customer_transactions').upsert(custTxRows), 'customer_transactions seed');
@@ -410,9 +439,12 @@ export async function seedInitialDataToSupabase(state) {
                 date: b.date,
                 total_weight_kg: b.totalWeightKg,
                 cost_per_kg: b.costPerKg,
+                cost_per_kg_usd: b.costPerKgUsd || 0,
                 total_cost: b.totalCost,
+                total_cost_usd: b.totalCostUsd || 0,
                 operator_name: b.operatorName || null,
                 notes: b.notes || null,
+                currency: b.currency || 'AFN',
             }));
             await checked(supabase.from('production_batches').upsert(batchRows), 'production_batches seed');
         }
@@ -424,6 +456,8 @@ export async function seedInitialDataToSupabase(state) {
                 formula_id: p.formulaId && validFormulaIds.has(p.formulaId) ? p.formulaId : null,
                 stock_kg: p.stockKg,
                 average_cost_per_kg: p.averageCostPerKg,
+                average_cost_per_kg_usd: p.averageCostPerKgUsd || 0,
+                currency: p.currency || 'AFN',
                 last_updated: p.lastUpdated,
             }));
             await checked(supabase.from('processed_stock').upsert(procRows), 'processed_stock seed');
@@ -446,8 +480,11 @@ export async function seedInitialDataToSupabase(state) {
                 paid_amount: s.paidAmount,
                 remaining_amount: s.remainingAmount,
                 total_cost_of_goods: s.totalCostOfGoods,
+                total_cost_of_goods_usd: s.totalCostOfGoodsUsd || 0,
                 profit: s.profit,
+                profit_usd: s.profitUsd || 0,
                 notes: s.notes || null,
+                currency: s.currency || 'AFN',
             }));
             await checked(supabase.from('sales').upsert(saleRows), 'sales seed');
         }
@@ -461,10 +498,11 @@ export async function seedInitialDataToSupabase(state) {
                 description: e.description,
                 paid_by: e.paidBy || null,
                 notes: e.notes || null,
+                currency: e.currency || 'AFN',
             }));
             await checked(supabase.from('expenses').upsert(expRows), 'expenses seed');
         }
-        await saveCashInHand(state.cashInHand);
+        await saveCashInHand(state.cashInHand, state.cashInHandUsd || 0);
     }).then(() => true).catch(err => {
         reportDatabaseError(`Database write failed: ${err.message || err}`);
         return false;
@@ -528,7 +566,9 @@ export async function sbSyncSale(sale, customer, customerTx, processedStockItem)
             paid_amount: sale.paidAmount,
             remaining_amount: sale.remainingAmount,
             total_cost_of_goods: sale.totalCostOfGoods,
+            total_cost_of_goods_usd: sale.totalCostOfGoodsUsd || 0,
             profit: sale.profit,
+            profit_usd: sale.profitUsd || 0,
             notes: sale.notes || null,
         }), 'sales sync');
         // Insert customer transaction after its customer.
@@ -550,6 +590,7 @@ export async function sbSyncSale(sale, customer, customerTx, processedStockItem)
                 formula_id: processedStockItem.formulaId || null,
                 stock_kg: processedStockItem.stockKg,
                 average_cost_per_kg: processedStockItem.averageCostPerKg,
+                average_cost_per_kg_usd: processedStockItem.averageCostPerKgUsd || 0,
                 last_updated: processedStockItem.lastUpdated,
             }), 'processed_stock sync');
         }
@@ -751,7 +792,9 @@ export async function sbSyncFormulaProduction(formula, batch, updatedRawMaterial
             formula_name: batch.formulaName,
             total_weight_kg: batch.totalWeightKg,
             cost_per_kg: batch.costPerKg,
+            cost_per_kg_usd: batch.costPerKgUsd || 0,
             total_cost: batch.totalCost,
+            total_cost_usd: batch.totalCostUsd || 0,
             operator_name: batch.operatorName || null,
             notes: batch.notes || null,
         }), 'production_batches sync');
@@ -762,6 +805,7 @@ export async function sbSyncFormulaProduction(formula, batch, updatedRawMaterial
             formula_id: processedItem.formulaId || null,
             stock_kg: processedItem.stockKg,
             average_cost_per_kg: processedItem.averageCostPerKg,
+            average_cost_per_kg_usd: processedItem.averageCostPerKgUsd || 0,
             last_updated: processedItem.lastUpdated,
         }), 'processed_stock production sync');
         // 4. Raw materials updated stock

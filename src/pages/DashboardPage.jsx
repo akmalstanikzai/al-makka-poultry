@@ -9,22 +9,22 @@ export const DashboardPage = ({ setActiveTab }) => {
     const isRtl = lang === 'fa' || lang === 'ps';
     // 1. RAW stock in kilo
     const totalRawStockKg = db.rawMaterials.reduce((acc, r) => acc + (r.stockKg || 0), 0);
-    const totalRawStockValue = db.rawMaterials.reduce((acc, r) => acc + (r.stockKg * r.unitPrice || 0), 0);
+    const totalRawStockValue = db.rawMaterials.reduce((acc,r)=>{acc[r.currency === 'USD' ? 'USD' : 'AFN'] += r.stockKg*r.unitPrice||0;return acc;},{AFN:0,USD:0});
     // 2. Processed Stock in kilo and bags (1 bag = 50 kg)
     const totalProcessedKg = db.processedStock.reduce((acc, p) => acc + (p.stockKg || 0), 0);
     const totalProcessedBags = Math.round((totalProcessedKg / 50) * 100) / 100;
     // 3. Money we owe to suppliers
-    const totalOwedToSuppliers = db.suppliers.reduce((acc, s) => acc + (s.balanceOwed || 0), 0);
+    const totalOwedToSuppliers = { AFN: db.suppliers.reduce((a,s)=>a+(s.balanceOwed||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.balanceOwedUsd||0),0) };
     // 4. Money payable by customers
-    const totalReceivableFromCustomers = db.customers.reduce((acc, c) => acc + (c.balanceOwed || 0), 0);
+    const totalReceivableFromCustomers = { AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
     // 5. Total processed material sold
-    const totalSalesAmount = db.sales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
+    const totalSalesAmount = db.sales.reduce((a,s)=>{a[s.currency === 'USD' ? 'USD' : 'AFN']+=s.totalAmount||0;return a;},{AFN:0,USD:0});
     const totalSalesKg = db.sales.reduce((acc, s) => acc + (s.quantityKg || 0), 0);
-    const totalGrossProfit = db.sales.reduce((acc, s) => acc + (s.profit || 0), 0);
+    const totalGrossProfit = db.sales.reduce((a,s)=>{a.AFN += s.profit || 0; a.USD += s.profitUsd || 0; return a;},{AFN:0,USD:0});
     // 6. Money in Hand
-    const moneyInHand = db.cashInHand;
+    const moneyInHand = { AFN: db.cashInHand || 0, USD: db.cashInHandUsd || 0 };
     // 7. Total expenses
-    const totalExpenses = db.expenses.reduce((acc, e) => acc + (e.amount || 0), 0);
+    const totalExpenses = db.expenses.reduce((a,e)=>{a[e.currency === 'USD' ? 'USD' : 'AFN']+=e.amount||0;return a;},{AFN:0,USD:0});
     // 8. Daily Processed material (today's batches)
     const todayStr = new Date().toISOString().split('T')[0];
     const todayBatches = db.productionBatches.filter(b => b.date === todayStr);
@@ -77,7 +77,7 @@ export const DashboardPage = ({ setActiveTab }) => {
             id: 'raw-stock',
             title: t.rawStockCard,
             value: `${totalRawStockKg.toLocaleString()} ${t.kilo}`,
-            subvalue: `${(totalRawStockKg / 1000).toFixed(1)} ${t.ton} (${totalRawStockValue.toLocaleString()} ${t.currency})`,
+            subvalue: `${(totalRawStockKg / 1000).toFixed(1)} ${t.ton} (${totalRawStockValue.AFN.toLocaleString()} AFN · ${totalRawStockValue.USD.toLocaleString()} USD)`,
             icon: Wheat,
             bg: 'bg-white hover:bg-amber-50/40',
             border: 'border-slate-200 hover:border-amber-400',
@@ -103,7 +103,7 @@ export const DashboardPage = ({ setActiveTab }) => {
         {
             id: 'owe-suppliers',
             title: t.oweSuppliersCard,
-            value: `${totalOwedToSuppliers.toLocaleString()} ${t.currency}`,
+            value: `${totalOwedToSuppliers.AFN.toLocaleString()} AFN · ${totalOwedToSuppliers.USD.toLocaleString()} USD`,
             subvalue: `${db.suppliers.filter(s => s.balanceOwed > 0).length} ${t.navSuppliers}`,
             icon: Truck,
             bg: 'bg-white hover:bg-rose-50/40',
@@ -111,12 +111,12 @@ export const DashboardPage = ({ setActiveTab }) => {
             textColor: 'text-rose-700',
             iconBg: 'bg-rose-100 text-rose-700',
             tab: 'suppliers',
-            badge: totalOwedToSuppliers > 0 ? t.statusUnpaid : t.statusPaid,
+            badge: totalOwedToSuppliers.AFN > 0 || totalOwedToSuppliers.USD > 0 ? t.statusUnpaid : t.statusPaid,
         },
         {
             id: 'payable-customers',
             title: t.receivableCustomersCard,
-            value: `${totalReceivableFromCustomers.toLocaleString()} ${t.currency}`,
+            value: `${totalReceivableFromCustomers.AFN.toLocaleString()} AFN · ${totalReceivableFromCustomers.USD.toLocaleString()} USD`,
             subvalue: `${db.customers.filter(c => c.balanceOwed > 0).length} ${t.navCustomers}`,
             icon: Users,
             bg: 'bg-white hover:bg-blue-50/40',
@@ -124,12 +124,12 @@ export const DashboardPage = ({ setActiveTab }) => {
             textColor: 'text-blue-700',
             iconBg: 'bg-blue-100 text-blue-700',
             tab: 'customers',
-            badge: totalReceivableFromCustomers > 0 ? t.statusUnpaid : t.statusPaid,
+            badge: totalReceivableFromCustomers.AFN > 0 || totalReceivableFromCustomers.USD > 0 ? t.statusUnpaid : t.statusPaid,
         },
         {
             id: 'total-processed-sold',
             title: t.totalProcessedSellCard,
-            value: `${totalSalesAmount.toLocaleString()} ${t.currency}`,
+            value: `${totalSalesAmount.AFN.toLocaleString()} AFN · ${totalSalesAmount.USD.toLocaleString()} USD`,
             subvalue: `${totalSalesKg.toLocaleString()} ${t.kilo} (${(Math.round((totalSalesKg / 50) * 100) / 100).toLocaleString()} ${t.bag})`,
             icon: TrendingUp,
             bg: 'bg-white hover:bg-cyan-50/40',
@@ -137,12 +137,12 @@ export const DashboardPage = ({ setActiveTab }) => {
             textColor: 'text-cyan-700',
             iconBg: 'bg-cyan-100 text-cyan-700',
             tab: 'sales',
-            badge: `${totalGrossProfit.toLocaleString()} ${t.currency}`,
+            badge: `${totalGrossProfit.AFN.toLocaleString()} AFN · ${totalGrossProfit.USD.toLocaleString()} USD`,
         },
         {
             id: 'money-in-hand',
             title: t.moneyInHandCard,
-            value: `${moneyInHand.toLocaleString()} ${t.currency}`,
+            value: `${moneyInHand.AFN.toLocaleString()} AFN · ${moneyInHand.USD.toLocaleString()} USD`,
             subvalue: t.moneyInHandCard,
             icon: Wallet,
             bg: 'bg-white hover:bg-emerald-50/40',
@@ -150,12 +150,12 @@ export const DashboardPage = ({ setActiveTab }) => {
             textColor: 'text-emerald-800',
             iconBg: 'bg-emerald-100 text-emerald-800',
             tab: 'expenses',
-            badge: t.currency,
+            badge: 'AFN / USD',
         },
         {
             id: 'total-expenses',
             title: t.totalExpensesCard,
-            value: `${totalExpenses.toLocaleString()} ${t.currency}`,
+            value: `${totalExpenses.AFN.toLocaleString()} AFN · ${totalExpenses.USD.toLocaleString()} USD`,
             subvalue: `${db.expenses.length} ${t.records}`,
             icon: Receipt,
             bg: 'bg-white hover:bg-amber-50/40',
@@ -299,7 +299,7 @@ export const DashboardPage = ({ setActiveTab }) => {
               <p className="text-xs text-slate-500">{t.periodWeekly}</p>
             </div>
             <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-semibold">
-              {t.netProfit}: {totalGrossProfit.toLocaleString()} {t.currency}
+              {t.netProfit}: {totalGrossProfit.AFN.toLocaleString()} AFN · {totalGrossProfit.USD.toLocaleString()} USD
             </span>
           </div>
 

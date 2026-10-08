@@ -13,6 +13,7 @@ export const InventoryPage = () => {
     const [restockUnit, setRestockUnit] = useState('kg');
     const [restockQuantity, setRestockQuantity] = useState('');
     const [restockPrice, setRestockPrice] = useState('');
+    const [restockCurrency, setRestockCurrency] = useState('AFN');
     const [restockSupplier, setRestockSupplier] = useState('');
     const [restockPhone, setRestockPhone] = useState('');
     const [restockPaid, setRestockPaid] = useState('');
@@ -23,6 +24,7 @@ export const InventoryPage = () => {
     const [category, setCategory] = useState('Grains');
     const [stockKg, setStockKg] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
+    const [currency, setCurrency] = useState('AFN');
     const [supplierName, setSupplierName] = useState('');
     const [supplierPhone, setSupplierPhone] = useState('');
     const [paidAmount, setPaidAmount] = useState('');
@@ -96,6 +98,7 @@ export const InventoryPage = () => {
             category,
             stockKg: numericStock,
             unitPrice: numericPrice,
+            currency,
             supplierName: supplierName.trim() || undefined,
             notes: notes.trim() || undefined,
             lowStockThreshold: numericThreshold,
@@ -119,6 +122,7 @@ export const InventoryPage = () => {
         setRestockUnit('kg');
         setRestockQuantity('');
         setRestockPrice(item.unitPrice);
+        setRestockCurrency(item.currency || 'AFN');
         setRestockSupplier(item.supplierName || supplier?.name || '');
         setRestockPhone(supplier?.phone || '');
         setRestockPaid('');
@@ -146,6 +150,7 @@ export const InventoryPage = () => {
             supplierPhone: restockPhone.trim() || undefined,
             paidAmount: restockPaidAmount,
             notes: restockNotes.trim() || undefined,
+            currency: restockCurrency,
         });
         if (result.success)
             setRestockItem(null);
@@ -165,7 +170,7 @@ export const InventoryPage = () => {
         return matchesSearch && matchesCategory;
     });
     const totalWarehouseKg = db.rawMaterials.reduce((acc, i) => acc + i.stockKg, 0);
-    const totalWarehouseValue = db.rawMaterials.reduce((acc, i) => acc + (i.stockKg * i.unitPrice), 0);
+    const totalWarehouseValue = db.rawMaterials.reduce((acc, i) => { const code = i.currency === 'USD' ? 'USD' : 'AFN'; acc[code] += i.stockKg * i.unitPrice; return acc; }, { AFN: 0, USD: 0 });
     const lowStockCount = db.rawMaterials.filter(i => i.stockKg <= (i.lowStockThreshold ?? lowStockThreshold)).length;
     const categories = ['all', 'Grains', 'Protein', 'Fuel', 'Fiber', 'Supplements'];
     return (<div className="space-y-6">
@@ -212,7 +217,7 @@ export const InventoryPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalValue}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalWarehouseValue.toLocaleString()} {t.currency}
+              {totalWarehouseValue.AFN.toLocaleString()} AFN · {totalWarehouseValue.USD.toLocaleString()} USD
             </div>
             <span className="text-xs text-slate-500">{t.activeFactory}</span>
           </div>
@@ -301,14 +306,14 @@ export const InventoryPage = () => {
 
               <div>
                 <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.unitPriceKilo}</span>
-                <span className="text-sm font-bold text-amber-700 font-mono">{item.unitPrice.toLocaleString()}</span>
-                <span className="block text-[10px] text-slate-400">{t.currency}/kg</span>
+                <span className="text-sm font-bold text-amber-700 font-mono">{item.unitPrice.toLocaleString()} {item.currency || 'AFN'}</span>
+                <span className="block text-[10px] text-slate-400">AFN / USD</span>
               </div>
 
               <div>
                 <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.totalValue}</span>
                 <span className="text-sm font-bold text-emerald-700 font-mono">{totalVal.toLocaleString()}</span>
-                <span className="block text-[10px] text-slate-400">{t.currency}</span>
+                <span className="block text-[10px] text-slate-400">AFN / USD</span>
               </div>
 
               <div className="lg:col-span-2">
@@ -421,8 +426,9 @@ export const InventoryPage = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.unitPriceKilo} ({t.currency}) *
+                    {t.unitPriceKilo} ({currency}) *
                   </label>
+                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
                   <input type="number" min="0" step="any" required value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="25" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
               </div>
@@ -459,7 +465,7 @@ export const InventoryPage = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.amountPaidLabel} ({t.currency})
+                    {t.amountPaidLabel} ({currency})
                   </label>
                   <input type="number" min="0" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
@@ -475,13 +481,13 @@ export const InventoryPage = () => {
               {/* Total Calculation Banner */}
               <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-slate-600 block">{t.totalBill}: <strong className="font-mono text-slate-900">{totalBillCalculated.toLocaleString()} {t.currency}</strong></span>
-                  <span className="text-xs text-rose-700 block mt-0.5">{t.remainingDebt}: <strong className="font-mono">{remainingCalculated.toLocaleString()} {t.currency}</strong></span>
+                  <span className="text-xs text-slate-600 block">{t.totalBill}: <strong className="font-mono text-slate-900">{totalBillCalculated.toLocaleString()} {currency}</strong></span>
+                  <span className="text-xs text-rose-700 block mt-0.5">{t.remainingDebt}: <strong className="font-mono">{remainingCalculated.toLocaleString()} {currency}</strong></span>
                 </div>
                 <div className="text-end">
                   <span className="text-[10px] text-slate-500 block">{t.totalWarehouseValueLabel}</span>
                   <span className="text-base font-bold text-amber-700 font-mono">
-                    {totalBillCalculated.toLocaleString()} {t.currency}
+                    {totalBillCalculated.toLocaleString()} {currency}
                   </span>
                 </div>
               </div>
@@ -549,7 +555,7 @@ export const InventoryPage = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={restockUnit} onChange={(e) => setRestockUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="kg">{t.kg}</option><option value="bag">{t.bag}</option><option value="ton">{t.ton}</option></select></div>
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity}</label><input required type="number" min="0.001" step="any" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo}</label><input required type="number" min="0" step="any" value={restockPrice} onChange={(e) => setRestockPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo} ({restockCurrency})</label><select value={restockCurrency} onChange={(e) => setRestockCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select><input required type="number" min="0" step="any" value={restockPrice} onChange={(e) => setRestockPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.supplier}</label><input value={restockSupplier} onChange={(e) => { setRestockSupplier(e.target.value); const supplier = db.suppliers.find(value => value.name === e.target.value); if (supplier) setRestockPhone(supplier.phone || ''); }} list="restock-suppliers" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/><datalist id="restock-suppliers">{db.suppliers.map(supplier => <option key={supplier.id} value={supplier.name}/>)}</datalist></div>
@@ -560,8 +566,8 @@ export const InventoryPage = () => {
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.notesDescriptionLabel}</label><input value={restockNotes} onChange={(e) => setRestockNotes(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/></div>
               </div>
               <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 grid grid-cols-2 gap-3 text-xs">
-                <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{restockTotal.toLocaleString()} {t.currency}</strong></div>
-                <div><span className="text-slate-500 block">{t.remainingSupplierBill}</span><strong className="font-mono text-rose-700">{Math.max(0, restockTotal - restockPaidAmount).toLocaleString()} {t.currency}</strong></div>
+                <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{restockTotal.toLocaleString()} {restockCurrency}</strong></div>
+                <div><span className="text-slate-500 block">{t.remainingSupplierBill}</span><strong className="font-mono text-rose-700">{Math.max(0, restockTotal - restockPaidAmount).toLocaleString()} {restockCurrency}</strong></div>
               </div>
               <div className="flex gap-3 pt-2"><button type="button" onClick={() => setRestockItem(null)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-700">{t.cancel}</button><button type="submit" className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold">{lang === 'fa' ? 'ثبت افزایش موجودی' : lang === 'ps' ? 'ذخیره ثبتول' : 'Save restock'}</button></div>
               {restockError && (<div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs" role="status">{restockError}</div>)}
