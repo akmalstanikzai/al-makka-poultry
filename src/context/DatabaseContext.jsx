@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { translations, getLocalizedItemName, getLocalizedCategory, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
-import { clearAllDataFromSupabase, loadFactorySettings, loadStateFromSupabase, saveLowStockThreshold, seedInitialDataToSupabase, sbDeleteCustomer, sbDeleteRawMaterial, sbDeleteSupplier, sbDeleteExpense, sbDeleteFormula } from '../lib/supabaseSync';
+import { clearAllDataFromSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
     rawMaterials: [],
@@ -34,10 +34,8 @@ export const DatabaseProvider = ({ children }) => {
     const [databaseError, setDatabaseError] = useState(supabase ? null : `Supabase configuration error: ${supabaseConfigurationError || 'unknown configuration problem'}`);
     const isRemoteStateReady = useRef(false);
     const lastSyncedState = useRef(null);
-    const localWritesInProgress = useRef(0);
+    const persistedStateRef = useRef(null);
     const pendingStateRef = useRef(null);
-    const connectionRef = useRef(false);
-    const reconnectTimerRef = useRef(null);
     const manualLogoutRef = useRef(false);
     // User-defined Low Stock Threshold
     const [lowStockThreshold, setLowStockThresholdState] = useState(5000);
@@ -71,10 +69,9 @@ export const DatabaseProvider = ({ children }) => {
                         const authUser = data.session.user;
                         setUser({ email: authUser.email || '', name: String(authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email || ''), role: String(authUser.user_metadata?.role || authUser.app_metadata?.role || 'User'), loginTime: new Date().toISOString() });
                         setDatabaseError(null);
-                        window.dispatchEvent(new Event('supabase-reconnect-request'));
                     }
                 });
-            } else window.dispatchEvent(new Event('supabase-reconnect-request'));
+            }
         };
         window.addEventListener('supabase-database-error', handleDatabaseError);
         return () => window.removeEventListener('supabase-database-error', handleDatabaseError);
@@ -125,114 +122,52 @@ export const DatabaseProvider = ({ children }) => {
         });
         return () => { isMounted = false; listener.subscription.unsubscribe(); };
     }, []);
-    useEffect(() => { connectionRef.current = isSupabaseConnected; }, [isSupabaseConnected]);
-    // Initial load, health checks, and automatic reconnection.
+    // Load once after authentication. The browser talks directly to Supabase;
+    // deliberately do not subscribe to broad Realtime changes or refetch on
+    // focus/visibility, since either pattern redownloads the complete database.
     useEffect(() => {
-        if (!supabase || isAuthLoading || !user) {
+        if (!supabase || isAuthLoading || !user?.email) {
             setIsSupabaseConnected(false);
             if (!isAuthLoading) setIsDatabaseLoading(false);
             return;
         }
         let isMounted = true;
-        let isInitialLoadComplete = false;
-        let retryDelay = 1500;
         isRemoteStateReady.current = false;
         lastSyncedState.current = null;
+        persistedStateRef.current = null;
         setIsDatabaseLoading(true);
-
-        const clearReconnectTimer = () => {
-            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-            reconnectTimerRef.current = null;
-        };
-        const scheduleReconnect = () => {
-            if (!isMounted || reconnectTimerRef.current) return;
-            reconnectTimerRef.current = setTimeout(() => {
-                reconnectTimerRef.current = null;
-                void reconnect();
-            }, retryDelay);
-            retryDelay = Math.min(retryDelay * 2, 30000);
-        };
-        const reconnect = async () => {
-            if (!isMounted || !navigator.onLine) { scheduleReconnect(); return; }
-            // Pending local data is always saved before accepting a remote snapshot.
-            if (pendingStateRef.current) {
-                localWritesInProgress.current += 1;
-                const pending = pendingStateRef.current;
-                const saved = await seedInitialDataToSupabase(pending).finally(() => {
-                    localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
-                });
-                if (!isMounted) return;
-                if (!saved) { setIsSupabaseConnected(false); scheduleReconnect(); return; }
-                pendingStateRef.current = null;
-                lastSyncedState.current = JSON.stringify(pending);
+        const loadDatabase = async () => {
+            if (!navigator.onLine) {
+                setIsDatabaseLoading(false);
+                setDatabaseError('You are offline. Reconnect and sign in again to load the database.');
+                return;
             }
             const result = await loadStateFromSupabase();
             if (!isMounted) return;
             if (!result) {
                 setIsSupabaseConnected(false);
-                setDatabaseError('Supabase connection was interrupted. Reconnecting automatically…');
+                setDatabaseError('Could not load data directly from Supabase.');
                 setIsDatabaseLoading(false);
-                scheduleReconnect();
                 return;
             }
-            clearReconnectTimer();
-            retryDelay = 1500;
             setIsSupabaseConnected(true);
             setDatabaseError(null);
-            isInitialLoadComplete = true;
             isRemoteStateReady.current = true;
             setIsDatabaseLoading(false);
-            // Do not replace local data after saving a pending snapshot.
-            if (!pendingStateRef.current) {
-                lastSyncedState.current = JSON.stringify(result.state);
-                setDb(result.state);
-            }
+            lastSyncedState.current = JSON.stringify(result.state);
+            persistedStateRef.current = result.state;
+            setDb(result.state);
             if (result.salesReconciliationNeeded) {
-                localWritesInProgress.current += 1;
-                void seedInitialDataToSupabase(result.state).finally(() => {
-                    localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
-                });
+                void writeStateToSupabase(result.state);
             }
             void loadFactorySettings().then(settings => {
                 if (isMounted && settings?.lowStockThreshold) setLowStockThresholdState(settings.lowStockThreshold);
             });
         };
 
-        void reconnect();
-        const channel = supabase.channel('supabase-live-sync')
-            .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-                if (!isInitialLoadComplete || localWritesInProgress.current > 0 || pendingStateRef.current) return;
-                void loadStateFromSupabase().then(result => {
-                    if (isMounted && result) {
-                        setIsSupabaseConnected(true); setDatabaseError(null);
-                        lastSyncedState.current = JSON.stringify(result.state); setDb(result.state);
-                    } else if (isMounted) scheduleReconnect();
-                });
-            })
-            .subscribe(status => {
-                if (!isMounted) return;
-                if (status === 'SUBSCRIBED' && isInitialLoadComplete && isRemoteStateReady.current) {
-                    setIsSupabaseConnected(true);
-                    if (!pendingStateRef.current) setDatabaseError(null);
-                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-                    setIsSupabaseConnected(false);
-                    scheduleReconnect();
-                }
-            });
-        const retryNow = () => { clearReconnectTimer(); retryDelay = 1500; void reconnect(); };
-        const handleVisibility = () => { if (document.visibilityState === 'visible') retryNow(); };
-        window.addEventListener('online', retryNow);
-        window.addEventListener('focus', retryNow);
-        window.addEventListener('supabase-reconnect-request', retryNow);
-        document.addEventListener('visibilitychange', handleVisibility);
-        const healthInterval = setInterval(() => { if (!connectionRef.current || pendingStateRef.current) retryNow(); }, 30000);
+        void loadDatabase();
         return () => {
-            isMounted = false; clearReconnectTimer(); clearInterval(healthInterval);
-            window.removeEventListener('online', retryNow);
-            window.removeEventListener('focus', retryNow);
-            window.removeEventListener('supabase-reconnect-request', retryNow);
-            document.removeEventListener('visibilitychange', handleVisibility);
-            supabase.removeChannel(channel);
+            isMounted = false;
         };
     }, [isAuthLoading, user?.email]);
     // Persist completed state changes. Failed writes remain pending and retry automatically.
@@ -244,14 +179,12 @@ export const DatabaseProvider = ({ children }) => {
         pendingStateRef.current = db;
         const saveWithRetry = async () => {
             for (let attempt = 0; attempt < 3 && !cancelled; attempt += 1) {
-                localWritesInProgress.current += 1;
-                const saved = await seedInitialDataToSupabase(db).finally(() => {
-                    localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
-                });
+                const saved = await persistStateChanges(persistedStateRef.current, db);
                 if (saved) {
                     if (cancelled) return;
                     pendingStateRef.current = null;
                     lastSyncedState.current = stateHash;
+                    persistedStateRef.current = db;
                     setIsSupabaseConnected(true);
                     setDatabaseError(null);
                     return;
@@ -261,7 +194,6 @@ export const DatabaseProvider = ({ children }) => {
             if (!cancelled) {
                 setIsSupabaseConnected(false);
                 setDatabaseError('The database connection was interrupted. Your change is retained and will be saved automatically when Supabase reconnects.');
-                window.dispatchEvent(new Event('supabase-reconnect-request'));
             }
         };
         void saveWithRetry();
@@ -538,7 +470,7 @@ export const DatabaseProvider = ({ children }) => {
             ...prev,
             rawMaterials: prev.rawMaterials.filter(rm => rm.id !== id),
         }));
-        void sbDeleteRawMaterial(id);
+        void deleteRawMaterialFromSupabase(id);
     };
     // SETTLE PAYMENT TO SUPPLIER
     const settleSupplierPayment = (supplierId, amountToPay, note, currency = 'AFN') => {
@@ -698,10 +630,10 @@ export const DatabaseProvider = ({ children }) => {
             return { ...db, processedStock: updatedProcessedStock, suppliers: updatedSuppliers, customers: updatedCustomers, sales: [sale, ...db.sales] };
         })();
 
-        localWritesInProgress.current += 1;
-        const saved = await seedInitialDataToSupabase(nextState).finally(() => { localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1); });
+        const saved = await writeStateToSupabase(nextState);
         if (!saved) return { success: false, error: t.supplierGoodsSettlementSaveFailed };
         lastSyncedState.current = JSON.stringify(nextState);
+        persistedStateRef.current = nextState;
         setDb(nextState);
         setIsSupabaseConnected(true);
         setDatabaseError(null);
@@ -719,7 +651,7 @@ export const DatabaseProvider = ({ children }) => {
             cashInHand: db.cashInHand + Number(supplier.totalPaid || 0),
             cashInHandUsd: (db.cashInHandUsd || 0) + Number(supplier.totalPaidUsd || 0),
         });
-        void sbDeleteSupplier(supplierId);
+        void deleteSupplierFromSupabase(supplierId);
     };
     // 2. PRODUCE A BATCH. A formula is saved only through saveFormulaTemplate.
     const createFormulaAndProduce = async (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0, savedFormulaId = null, batchExpenseCurrency = 'AFN') => {
@@ -763,10 +695,9 @@ export const DatabaseProvider = ({ children }) => {
         }
         const expense = Number(batchExpenses) > 0 ? { id: `exp-${operationTimestamp}`, date: today, category: 'electricity', description: `مصارف تولید بچ: ${name}`, amount: Number(batchExpenses), currency: expenseCurrency, paidBy: operatorName || 'مسئول فابریکه' } : null;
         const nextState = { ...db, rawMaterials: updatedRaw, processedStock: updatedProcessedStock, formulas: db.formulas, productionBatches: produceBatchImmediately ? [newBatch, ...db.productionBatches] : db.productionBatches, expenses: expense ? [expense, ...db.expenses] : db.expenses, ...(expense ? cashPatch(db, -expense.amount, expense.currency) : {}) };
-        localWritesInProgress.current += 1;
-        const saved = await seedInitialDataToSupabase(nextState).finally(() => { localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1); });
+        const saved = await writeStateToSupabase(nextState);
         if (!saved) return { success: false, error: 'The production batch was not saved to the database.' };
-        lastSyncedState.current = JSON.stringify(nextState); setDb(nextState); setIsSupabaseConnected(true); setDatabaseError(null);
+        lastSyncedState.current = JSON.stringify(nextState); persistedStateRef.current = nextState; setDb(nextState); setIsSupabaseConnected(true); setDatabaseError(null);
         return { success: true };
     };
     // SAVE OR UPDATE A REUSABLE FORMULA WITHOUT PRODUCING A BATCH
@@ -815,13 +746,11 @@ export const DatabaseProvider = ({ children }) => {
                 ? db.formulas.map(item => item.id === id ? formula : item)
                 : [formula, ...db.formulas],
         };
-        localWritesInProgress.current += 1;
-        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
-            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
-        });
+        const saved = await writeStateToSupabase(nextState);
         if (!saved)
             return { success: false, error: 'The formula was not saved to the database.' };
         lastSyncedState.current = JSON.stringify(nextState);
+        persistedStateRef.current = nextState;
         setDb(nextState);
         setIsSupabaseConnected(true);
         setDatabaseError(null);
@@ -839,7 +768,7 @@ export const DatabaseProvider = ({ children }) => {
                 ? { ...item, formulaId: null }
                 : item),
         }));
-        sbDeleteFormula(formulaId);
+        deleteFormulaFromSupabase(formulaId);
     };
     // 3. RECORD SALE (DEDUCT PROCESSED STOCK, AUTO-UPDATE CUSTOMER, ADD CASH)
     const recordSale = async (saleData) => {
@@ -966,13 +895,11 @@ export const DatabaseProvider = ({ children }) => {
                 ...cashPatch(prev, saleData.paidAmount, currency),
             };
         })();
-        localWritesInProgress.current += 1;
-        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
-            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
-        });
+        const saved = await writeStateToSupabase(nextState);
         if (!saved)
             return { success: false, error: 'The sale was not saved to the database.' };
         lastSyncedState.current = JSON.stringify(nextState);
+        persistedStateRef.current = nextState;
         setDb(nextState);
         setIsSupabaseConnected(true);
         setDatabaseError(null);
@@ -1126,10 +1053,10 @@ export const DatabaseProvider = ({ children }) => {
             return { ...db, customers: updatedCustomers, suppliers: updatedSuppliers, rawMaterials: updatedRawMaterials };
         })();
 
-        localWritesInProgress.current += 1;
-        const saved = await seedInitialDataToSupabase(nextState).finally(() => { localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1); });
+        const saved = await writeStateToSupabase(nextState);
         if (!saved) return { success: false, error: t.customerRawSettlementSaveFailed };
         lastSyncedState.current = JSON.stringify(nextState);
+        persistedStateRef.current = nextState;
         setDb(nextState);
         setIsSupabaseConnected(true);
         setDatabaseError(null);
@@ -1214,13 +1141,11 @@ export const DatabaseProvider = ({ children }) => {
         })();
         if (!nextState)
             return { success: false, error: 'Customer was not found.' };
-        localWritesInProgress.current += 1;
-        const saved = await seedInitialDataToSupabase(nextState).finally(() => {
-            localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1);
-        });
+        const saved = await writeStateToSupabase(nextState);
         if (!saved)
             return { success: false, error: 'The customer payment was not saved to the database.' };
         lastSyncedState.current = JSON.stringify(nextState);
+        persistedStateRef.current = nextState;
         setDb(nextState);
         setIsSupabaseConnected(true);
         setDatabaseError(null);
@@ -1232,7 +1157,7 @@ export const DatabaseProvider = ({ children }) => {
             ...prev,
             customers: prev.customers.filter(c => c.id !== customerId),
         }));
-        sbDeleteCustomer(customerId);
+        deleteCustomerFromSupabase(customerId);
     };
     // 4. ADD EXPENSE (AUTOMATICALLY DEDUCT FROM CASH IN HAND)
     const addExpense = (expense) => {
@@ -1259,7 +1184,7 @@ export const DatabaseProvider = ({ children }) => {
                 ...cashPatch(prev, restoreCash, exp?.currency),
             };
         });
-        sbDeleteExpense(id);
+        deleteExpenseFromSupabase(id);
     };
     // BACKUP & RESTORE
     const exportDatabase = () => {
@@ -1276,7 +1201,7 @@ export const DatabaseProvider = ({ children }) => {
             const parsed = JSON.parse(jsonData);
             if (parsed.rawMaterials && parsed.processedStock && parsed.suppliers && parsed.customers) {
                 setDb(parsed);
-                seedInitialDataToSupabase(parsed);
+                writeStateToSupabase(parsed);
                 return true;
             }
             return false;

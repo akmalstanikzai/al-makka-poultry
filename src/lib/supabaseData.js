@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
-export const isSupabaseConfigured = () => !!supabase;
-let syncQueue = Promise.resolve();
+let writeQueue = Promise.resolve();
 function reportDatabaseError(message) {
     console.error(message);
     if (typeof window !== 'undefined') {
@@ -17,9 +16,9 @@ async function checked(operation, label) {
         throw new Error(message);
     }
 }
-function queueSync(operation) {
-    const next = syncQueue.then(operation);
-    syncQueue = next.catch(() => undefined);
+function queueWrite(operation) {
+    const next = writeQueue.then(operation);
+    writeQueue = next.catch(() => undefined);
     return next;
 }
 const DEFAULT_CASH_IN_HAND = 0;
@@ -338,11 +337,10 @@ export async function loadStateFromSupabase() {
 /**
  * Seeds initial factory data to Supabase if tables are newly created and empty.
  */
-export async function seedInitialDataToSupabase(state) {
+export async function writeStateToSupabase(state) {
     if (!supabase)
         return false;
-    return queueSync(async () => {
-        const validFormulaIds = new Set(state.formulas.map(formula => formula.id));
+    return queueWrite(async () => {
         // Parents are always written before their dependants. This matters when
         // foreign keys are enabled and fixes writes that previously failed only
         // after a page refresh.
@@ -446,7 +444,7 @@ export async function seedInitialDataToSupabase(state) {
         if (state.productionBatches.length > 0) {
             const batchRows = state.productionBatches.map(b => ({
                 id: b.id,
-                formula_id: b.formulaId && validFormulaIds.has(b.formulaId) ? b.formulaId : null,
+                formula_id: b.formulaId || null,
                 formula_name: b.formulaName,
                 date: b.date,
                 total_weight_kg: b.totalWeightKg,
@@ -465,7 +463,7 @@ export async function seedInitialDataToSupabase(state) {
             const procRows = state.processedStock.map(p => ({
                 id: p.id,
                 name: p.name,
-                formula_id: p.formulaId && validFormulaIds.has(p.formulaId) ? p.formulaId : null,
+                formula_id: p.formulaId || null,
                 stock_kg: p.stockKg,
                 average_cost_per_kg: p.averageCostPerKg,
                 average_cost_per_kg_usd: p.averageCostPerKgUsd || 0,
@@ -521,10 +519,31 @@ export async function seedInitialDataToSupabase(state) {
     });
 }
 
+// Persist only records that changed. This keeps ordinary frontend edits from
+// resending every historical sale, transaction, batch, and inventory row.
+export async function persistStateChanges(previousState, nextState) {
+    if (!previousState) return writeStateToSupabase(nextState);
+    const changed = (before, after) => {
+        const previousById = new Map(before.map(item => [item.id, JSON.stringify(item)]));
+        return after.filter(item => previousById.get(item.id) !== JSON.stringify(item));
+    };
+    return writeStateToSupabase({
+        ...nextState,
+        rawMaterials: changed(previousState.rawMaterials, nextState.rawMaterials),
+        processedStock: changed(previousState.processedStock, nextState.processedStock),
+        suppliers: changed(previousState.suppliers, nextState.suppliers),
+        customers: changed(previousState.customers, nextState.customers),
+        formulas: changed(previousState.formulas, nextState.formulas),
+        productionBatches: changed(previousState.productionBatches, nextState.productionBatches),
+        sales: changed(previousState.sales, nextState.sales),
+        expenses: changed(previousState.expenses, nextState.expenses),
+    });
+}
+
 export async function clearAllDataFromSupabase() {
     if (!supabase)
         return false;
-    return queueSync(async () => {
+    return queueWrite(async () => {
         const tables = [
             'customer_transactions', 'supplier_transactions', 'sales',
             'production_batches', 'processed_stock', 'raw_materials',
@@ -544,106 +563,10 @@ export async function clearAllDataFromSupabase() {
         return false;
     });
 }
-// -------------------------------------------------------------
-// Real-time Entity Sync Handlers
-// -------------------------------------------------------------
-export async function sbSyncSale(sale, customer, customerTx, processedStockItem) {
+export async function deleteCustomerFromSupabase(customerId) {
     if (!supabase)
         return;
-    try {
-        // Write the customer before the sale when database foreign keys are used.
-        await checked(supabase.from('customers').upsert({
-            id: customer.id,
-            name: customer.name,
-            phone: customer.phone || null,
-            address: customer.address || null,
-            total_purchased_amount: customer.totalPurchasedAmount,
-            total_paid: customer.totalPaid,
-            balance_owed: customer.balanceOwed,
-            created_at: customer.createdAt,
-        }), 'customers sync');
-        await checked(supabase.from('sales').upsert({
-            id: sale.id,
-            date: sale.date,
-            product_id: sale.productId || null,
-            product_name: sale.productName,
-            customer_id: sale.customerId || null,
-            customer_name: sale.customerName,
-            customer_phone: sale.customerPhone || null,
-            unit_type: sale.unitType,
-            unit_quantity: sale.unitQuantity,
-            quantity_kg: sale.quantityKg,
-            sale_price_per_unit: sale.salePricePerUnit,
-            total_amount: sale.totalAmount,
-            paid_amount: sale.paidAmount,
-            remaining_amount: sale.remainingAmount,
-            total_cost_of_goods: sale.totalCostOfGoods,
-            total_cost_of_goods_usd: sale.totalCostOfGoodsUsd || 0,
-            profit: sale.profit,
-            profit_usd: sale.profitUsd || 0,
-            notes: sale.notes || null,
-        }), 'sales sync');
-        // Insert customer transaction after its customer.
-        await checked(supabase.from('customer_transactions').upsert({
-            id: customerTx.id,
-            customer_id: customer.id,
-            date: customerTx.date,
-            type: customerTx.type,
-            description: customerTx.description,
-            amount: customerTx.amount,
-            paid_amount: customerTx.paidAmount,
-            remaining_amount: customerTx.remainingAmount,
-        }), 'customer_transactions sync');
-        // 4. Update processed stock if applicable
-        if (processedStockItem) {
-            await checked(supabase.from('processed_stock').upsert({
-                id: processedStockItem.id,
-                name: processedStockItem.name,
-                formula_id: processedStockItem.formulaId || null,
-                stock_kg: processedStockItem.stockKg,
-                average_cost_per_kg: processedStockItem.averageCostPerKg,
-                average_cost_per_kg_usd: processedStockItem.averageCostPerKgUsd || 0,
-                last_updated: processedStockItem.lastUpdated,
-            }), 'processed_stock sync');
-        }
-    }
-    catch (err) {
-        console.error('Supabase error syncing sale:', err);
-    }
-}
-export async function sbSyncCustomerPayment(customer, transaction) {
-    if (!supabase)
-        return;
-    try {
-        await checked(supabase.from('customers').upsert({
-            id: customer.id,
-            name: customer.name,
-            phone: customer.phone || null,
-            address: customer.address || null,
-            total_purchased_amount: customer.totalPurchasedAmount,
-            total_paid: customer.totalPaid,
-            balance_owed: customer.balanceOwed,
-            created_at: customer.createdAt,
-        }), 'customers payment sync');
-        await checked(supabase.from('customer_transactions').upsert({
-            id: transaction.id,
-            customer_id: customer.id,
-            date: transaction.date,
-            type: transaction.type,
-            description: transaction.description,
-            amount: transaction.amount,
-            paid_amount: transaction.paidAmount,
-            remaining_amount: transaction.remainingAmount,
-        }), 'customer_transactions payment sync');
-    }
-    catch (err) {
-        console.error('Supabase error syncing customer payment:', err);
-    }
-}
-export async function sbDeleteCustomer(customerId) {
-    if (!supabase)
-        return;
-    return queueSync(async () => {
+    return queueWrite(async () => {
         try {
             await checked(supabase.from('customer_transactions').delete().eq('customer_id', customerId), 'customer_transactions delete');
             await checked(supabase.from('customers').delete().eq('id', customerId), 'customers delete');
@@ -653,56 +576,10 @@ export async function sbDeleteCustomer(customerId) {
         }
     });
 }
-export async function sbSyncRawMaterial(item, supplier, supplierTx) {
+export async function deleteRawMaterialFromSupabase(id) {
     if (!supabase)
         return;
-    try {
-        if (supplier) {
-            await checked(supabase.from('suppliers').upsert({
-                id: supplier.id,
-                name: supplier.name,
-                phone: supplier.phone || null,
-                address: supplier.address || null,
-                total_purchased_amount: supplier.totalPurchasedAmount,
-                total_paid: supplier.totalPaid,
-                balance_owed: supplier.balanceOwed,
-                created_at: supplier.createdAt,
-            }), 'suppliers sync');
-        }
-        await checked(supabase.from('raw_materials').upsert({
-            id: item.id,
-            name: item.name,
-            category: item.category,
-            stock_kg: item.stockKg,
-            unit_price: item.unitPrice,
-            supplier_id: item.supplierId || null,
-            supplier_name: item.supplierName || null,
-            date_added: item.dateAdded,
-            notes: item.notes || null,
-            low_stock_threshold: item.lowStockThreshold || 5000,
-        }), 'raw_materials sync');
-        if (supplierTx && supplier) {
-            await checked(supabase.from('supplier_transactions').upsert({
-                id: supplierTx.id,
-                supplier_id: supplier.id,
-                raw_material_id: supplierTx.rawMaterialId || null,
-                date: supplierTx.date,
-                type: supplierTx.type,
-                description: supplierTx.description,
-                amount: supplierTx.amount,
-                paid_amount: supplierTx.paidAmount,
-                remaining_amount: supplierTx.remainingAmount,
-            }), 'supplier_transactions sync');
-        }
-    }
-    catch (err) {
-        console.error('Supabase error syncing raw material:', err);
-    }
-}
-export async function sbDeleteRawMaterial(id) {
-    if (!supabase)
-        return;
-    return queueSync(async () => {
+    return queueWrite(async () => {
         try {
             await checked(supabase.from('raw_materials').delete().eq('id', id), 'raw_materials delete');
         }
@@ -711,39 +588,10 @@ export async function sbDeleteRawMaterial(id) {
         }
     });
 }
-export async function sbSyncSupplierPayment(supplier, transaction) {
+export async function deleteSupplierFromSupabase(supplierId) {
     if (!supabase)
         return;
-    try {
-        await checked(supabase.from('suppliers').upsert({
-            id: supplier.id,
-            name: supplier.name,
-            phone: supplier.phone || null,
-            address: supplier.address || null,
-            total_purchased_amount: supplier.totalPurchasedAmount,
-            total_paid: supplier.totalPaid,
-            balance_owed: supplier.balanceOwed,
-            created_at: supplier.createdAt,
-        }), 'suppliers payment sync');
-        await checked(supabase.from('supplier_transactions').upsert({
-            id: transaction.id,
-            supplier_id: supplier.id,
-            date: transaction.date,
-            type: transaction.type,
-            description: transaction.description,
-            amount: transaction.amount,
-            paid_amount: transaction.paidAmount,
-            remaining_amount: transaction.remainingAmount,
-        }), 'supplier_transactions payment sync');
-    }
-    catch (err) {
-        console.error('Supabase error syncing supplier payment:', err);
-    }
-}
-export async function sbDeleteSupplier(supplierId) {
-    if (!supabase)
-        return;
-    return queueSync(async () => {
+    return queueWrite(async () => {
         try {
             await checked(supabase.from('raw_materials').delete().eq('supplier_id', supplierId), 'supplier raw materials delete');
             await checked(supabase.from('supplier_transactions').delete().eq('supplier_id', supplierId), 'supplier_transactions delete');
@@ -754,28 +602,10 @@ export async function sbDeleteSupplier(supplierId) {
         }
     });
 }
-export async function sbSyncExpense(expense) {
+export async function deleteExpenseFromSupabase(id) {
     if (!supabase)
         return;
-    try {
-        await checked(supabase.from('expenses').upsert({
-            id: expense.id,
-            date: expense.date,
-            category: expense.category,
-            amount: expense.amount,
-            description: expense.description,
-            paid_by: expense.paidBy || null,
-            notes: expense.notes || null,
-        }), 'expenses sync');
-    }
-    catch (err) {
-        console.error('Supabase error syncing expense:', err);
-    }
-}
-export async function sbDeleteExpense(id) {
-    if (!supabase)
-        return;
-    return queueSync(async () => {
+    return queueWrite(async () => {
         try {
             await checked(supabase.from('expenses').delete().eq('id', id), 'expenses delete');
         }
@@ -784,55 +614,10 @@ export async function sbDeleteExpense(id) {
         }
     });
 }
-export async function sbSyncFormulaProduction(formula, batch, updatedRawMaterials, processedItem) {
+export async function deleteFormulaFromSupabase(formulaId) {
     if (!supabase)
         return;
-    try {
-        // 1. Formula
-        await checked(supabase.from('formulas').upsert({
-            id: formula.id,
-            name: formula.name,
-            description: formula.description || null,
-            ingredients: formula.ingredients,
-            date_created: formula.createdDate,
-        }), 'formulas sync');
-        // 2. Production Batch
-        await checked(supabase.from('production_batches').upsert({
-            id: batch.id,
-            formula_id: batch.formulaId,
-            date: batch.date,
-            formula_name: batch.formulaName,
-            total_weight_kg: batch.totalWeightKg,
-            cost_per_kg: batch.costPerKg,
-            cost_per_kg_usd: batch.costPerKgUsd || 0,
-            total_cost: batch.totalCost,
-            total_cost_usd: batch.totalCostUsd || 0,
-            operator_name: batch.operatorName || null,
-            notes: batch.notes || null,
-        }), 'production_batches sync');
-        // 3. Processed Stock
-        await checked(supabase.from('processed_stock').upsert({
-            id: processedItem.id,
-            name: processedItem.name,
-            formula_id: processedItem.formulaId || null,
-            stock_kg: processedItem.stockKg,
-            average_cost_per_kg: processedItem.averageCostPerKg,
-            average_cost_per_kg_usd: processedItem.averageCostPerKgUsd || 0,
-            last_updated: processedItem.lastUpdated,
-        }), 'processed_stock production sync');
-        // 4. Raw materials updated stock
-        for (const rm of updatedRawMaterials) {
-            await checked(supabase.from('raw_materials').update({ stock_kg: rm.stockKg }).eq('id', rm.id), 'raw_materials production update');
-        }
-    }
-    catch (err) {
-        console.error('Supabase error syncing formula & batch:', err);
-    }
-}
-export async function sbDeleteFormula(formulaId) {
-    if (!supabase)
-        return;
-    return queueSync(async () => {
+    return queueWrite(async () => {
         try {
             await checked(supabase.from('formulas').delete().eq('id', formulaId), 'formulas delete');
         }

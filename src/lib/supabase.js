@@ -21,6 +21,5 @@ export const supabaseConfigurationError = validateSupabaseConfiguration();
 export const supabase = !supabaseConfigurationError
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-        realtime: { params: { eventsPerSecond: 10 } },
     })
     : null;

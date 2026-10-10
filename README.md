@@ -1,7 +1,8 @@
 # Al-Makka Poultry Feed Factory
 
 React/Vite factory management application backed by Supabase Auth, Postgres,
-Row Level Security, and Realtime.
+and Row Level Security. The browser reads from and writes to Supabase directly;
+the application does not use a backend synchronization service.
 
 ## Environment
 
@@ -16,8 +17,11 @@ Migrations are stored in `supabase/migrations` in execution order:
 
 1. `20260928000000_rebuild_public_schema.sql` destructively replaces the old
    public application schema while preserving Supabase Auth accounts.
-2. `20260928000001_enable_realtime.sql` adds all application tables to the
-   Supabase Realtime publication.
+2. The dated follow-up migrations add the supplier/customer settlement and
+   dual-currency columns used by the frontend.
+3. `20261010000000_disable_realtime.sql` removes the application tables from
+   Realtime because the UI loads once and performs targeted REST writes. Apply
+   this migration to existing projects to stop unused replication traffic.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration
