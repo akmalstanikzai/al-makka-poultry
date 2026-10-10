@@ -362,6 +362,8 @@ export const DatabaseProvider = ({ children }) => {
                         totalPaidUsd: currency === 'USD' ? paidAmount : 0,
                         balanceOwed: currency === 'AFN' ? remaining : 0,
                         balanceOwedUsd: currency === 'USD' ? remaining : 0,
+                        goodsSettledAmount: 0,
+                        goodsSettledAmountUsd: 0,
                         transactions: [transaction],
                         createdAt: today,
                     };
@@ -434,6 +436,8 @@ export const DatabaseProvider = ({ children }) => {
                         totalPaidUsd: currency === 'USD' ? paid : 0,
                         balanceOwed: currency === 'AFN' ? remaining : 0,
                         balanceOwedUsd: currency === 'USD' ? remaining : 0,
+                        goodsSettledAmount: 0,
+                        goodsSettledAmountUsd: 0,
                         transactions: [transaction],
                         createdAt: today,
                     });
@@ -495,7 +499,7 @@ export const DatabaseProvider = ({ children }) => {
         if (!name) return { success: false, error: t.supplierNameRequired };
         if (phone && !/^\d{10}$/.test(phone)) return { success: false, error: t.phoneMustBe10Digits };
         if (![totalAfn, paidAfn, totalUsd, paidUsd].every(value => Number.isFinite(value) && value >= 0)) return { success: false, error: t.financialValuesNonNegative };
-        if (paidAfn > totalAfn || paidUsd > totalUsd) return { success: false, error: t.paidCannotExceedTotal };
+        if (paidAfn + Number(db.suppliers.find(supplier => supplier.id === id)?.goodsSettledAmount || 0) > totalAfn || paidUsd + Number(db.suppliers.find(supplier => supplier.id === id)?.goodsSettledAmountUsd || 0) > totalUsd) return { success: false, error: t.paidCannotExceedTotal };
         setDb(prev => {
             const currentSupplier = prev.suppliers.find(supplier => supplier.id === id);
             if (!currentSupplier) return prev;
@@ -514,10 +518,10 @@ export const DatabaseProvider = ({ children }) => {
                     address: String(updates.address || '').trim(),
                     totalPurchasedAmount: totalAfn,
                     totalPaid: paidAfn,
-                    balanceOwed: Math.max(0, totalAfn - paidAfn),
+                    balanceOwed: Math.max(0, totalAfn - paidAfn - Number(currentSupplier.goodsSettledAmount || 0)),
                     totalPurchasedAmountUsd: totalUsd,
                     totalPaidUsd: paidUsd,
-                    balanceOwedUsd: Math.max(0, totalUsd - paidUsd),
+                    balanceOwedUsd: Math.max(0, totalUsd - paidUsd - Number(currentSupplier.goodsSettledAmountUsd || 0)),
                 } : supplier),
             };
         });
@@ -575,6 +579,133 @@ export const DatabaseProvider = ({ children }) => {
                 ...cashPatch(prev, -actualPay, currency),
             };
         });
+    };
+    // SETTLE A SUPPLIER BALANCE WITH PROCESSED GOODS. Any sale value above
+    // our debt becomes a customer balance owed by the same supplier.
+    const settleSupplierWithProcessedStock = async (settlement) => {
+        const supplier = db.suppliers.find(item => item.id === settlement.supplierId);
+        const product = db.processedStock.find(item => item.id === settlement.productId);
+        const unitQuantity = Number(settlement.unitQuantity);
+        const salePricePerUnit = Number(settlement.salePricePerUnit);
+        const quantityKg = convertToKg(settlement.unitType, unitQuantity);
+        if (!supplier || !product) return { success: false, error: t.invalidSupplierOrProduct };
+        if (!Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(salePricePerUnit) || salePricePerUnit <= 0) return { success: false, error: t.quantityPriceMustBePositive };
+        if (product.stockKg < quantityKg) return { success: false, error: `${t.insufficientStockOfItem} ${product.stockKg.toLocaleString()} ${t.kilo}. ${t.requestedAmount} ${quantityKg.toLocaleString()} ${t.kilo}.` };
+
+        const currency = currencyCode(settlement.currency);
+        const balanceField = currencyField('balanceOwed', currency);
+        const goodsSettledField = currencyField('goodsSettledAmount', currency);
+        const totalAmount = unitQuantity * salePricePerUnit;
+        const offsetAmount = Math.min(totalAmount, Number(supplier[balanceField]) || 0);
+        const customerDebt = Math.max(0, totalAmount - offsetAmount);
+        const timestamp = Date.now();
+        const today = new Date().toISOString().split('T')[0];
+        const costRatePerKg = Number(product.averageCostPerKg) || 0;
+        const costRatePerKgUsd = Number(product.averageCostPerKgUsd) || 0;
+        const totalCostOfGoods = costRatePerKg * quantityKg;
+        const totalCostOfGoodsUsd = costRatePerKgUsd * quantityKg;
+        const sale = {
+            id: `sale-${timestamp}`,
+            date: today,
+            customerId: '',
+            customerName: supplier.name,
+            customerPhone: supplier.phone || '',
+            productId: product.id,
+            productName: product.name,
+            unitType: settlement.unitType,
+            unitQuantity,
+            quantityKg,
+            salePricePerUnit,
+            totalAmount,
+            costRatePerKg,
+            totalCostOfGoods,
+            totalCostOfGoodsUsd,
+            profit: (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods,
+            profitUsd: (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd,
+            paidAmount: offsetAmount,
+            remainingAmount: customerDebt,
+            notes: settlement.notes?.trim() || t.supplierGoodsSettlement,
+            currency,
+            paymentMethod: 'supplier_balance_offset',
+            supplierId: supplier.id,
+            supplierOffsetAmount: offsetAmount,
+        };
+        const nextState = (() => {
+            const updatedProcessedStock = db.processedStock.map(item => item.id === product.id ? { ...item, stockKg: Math.max(0, item.stockKg - quantityKg), lastUpdated: today } : item);
+            const newSupplierBalance = Math.max(0, (Number(supplier[balanceField]) || 0) - offsetAmount);
+            const supplierTransaction = {
+                id: `st-${timestamp}`,
+                date: today,
+                type: 'goods_settlement',
+                description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
+                amount: totalAmount,
+                paidAmount: offsetAmount,
+                remainingAmount: newSupplierBalance,
+                currency,
+                productId: product.id,
+                quantityKg,
+                customerDebt,
+            };
+            const updatedSuppliers = db.suppliers.map(item => item.id === supplier.id ? {
+                ...item,
+                [goodsSettledField]: (Number(item[goodsSettledField]) || 0) + offsetAmount,
+                [balanceField]: newSupplierBalance,
+                transactions: [supplierTransaction, ...(item.transactions || [])],
+            } : item);
+
+            const normalizedName = supplier.name.trim().toLowerCase();
+            const existingCustomerIndex = db.customers.findIndex(customer => customer.name.trim().toLowerCase() === normalizedName || (supplier.phone && customer.phone === supplier.phone));
+            const updatedCustomers = [...db.customers];
+            const customerTransaction = {
+                id: `ct-${timestamp}`,
+                date: today,
+                type: 'sale',
+                description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
+                amount: totalAmount,
+                paidAmount: offsetAmount,
+                remainingAmount: customerDebt,
+                currency,
+            };
+            let customerId;
+            if (existingCustomerIndex >= 0) {
+                const customer = updatedCustomers[existingCustomerIndex];
+                customerId = customer.id;
+                updatedCustomers[existingCustomerIndex] = {
+                    ...customer,
+                    phone: supplier.phone || customer.phone,
+                    ...addCurrencyValue(addCurrencyValue(addCurrencyValue(customer, 'totalPurchasedAmount', totalAmount, currency), 'totalPaid', offsetAmount, currency), 'balanceOwed', customerDebt, currency),
+                    transactions: [customerTransaction, ...(customer.transactions || [])],
+                };
+            } else {
+                customerId = `cust-${timestamp}`;
+                updatedCustomers.unshift({
+                    id: customerId,
+                    supplierId: supplier.id,
+                    name: supplier.name,
+                    phone: supplier.phone || '',
+                    address: supplier.address || '',
+                    totalPurchasedAmount: currency === 'AFN' ? totalAmount : 0,
+                    totalPurchasedAmountUsd: currency === 'USD' ? totalAmount : 0,
+                    totalPaid: currency === 'AFN' ? offsetAmount : 0,
+                    totalPaidUsd: currency === 'USD' ? offsetAmount : 0,
+                    balanceOwed: currency === 'AFN' ? customerDebt : 0,
+                    balanceOwedUsd: currency === 'USD' ? customerDebt : 0,
+                    transactions: [customerTransaction],
+                    createdAt: today,
+                });
+            }
+            sale.customerId = customerId;
+            return { ...db, processedStock: updatedProcessedStock, suppliers: updatedSuppliers, customers: updatedCustomers, sales: [sale, ...db.sales] };
+        })();
+
+        localWritesInProgress.current += 1;
+        const saved = await seedInitialDataToSupabase(nextState).finally(() => { localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1); });
+        if (!saved) return { success: false, error: t.supplierGoodsSettlementSaveFailed };
+        lastSyncedState.current = JSON.stringify(nextState);
+        setDb(nextState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
+        return { success: true, offsetAmount, customerDebt };
     };
     // DELETE SUPPLIER
     const deleteSupplier = (supplierId) => {
@@ -817,6 +948,8 @@ export const DatabaseProvider = ({ children }) => {
                     totalPurchasedAmountUsd: currency === 'USD' ? totalAmount : 0,
                     totalPaid: currency === 'AFN' ? saleData.paidAmount : 0,
                     totalPaidUsd: currency === 'USD' ? saleData.paidAmount : 0,
+                    rawSettledAmount: 0,
+                    rawSettledAmountUsd: 0,
                     balanceOwed: currency === 'AFN' ? remainingAmount : 0,
                     balanceOwedUsd: currency === 'USD' ? remainingAmount : 0,
                     transactions: [customerTransaction],
@@ -845,6 +978,163 @@ export const DatabaseProvider = ({ children }) => {
         setDatabaseError(null);
         return { success: true };
     };
+    // RECEIVE RAW MATERIAL FROM A CUSTOMER AS A NON-CASH DEBT SETTLEMENT.
+    // Any value above the customer debt becomes a supplier balance we owe.
+    const settleCustomerWithRawMaterial = async (settlement) => {
+        const customer = db.customers.find(item => item.id === settlement.customerId);
+        const name = String(settlement.materialName || '').trim();
+        const category = String(settlement.category || 'Grains');
+        const unitQuantity = Number(settlement.unitQuantity);
+        const unitPrice = Number(settlement.unitPrice);
+        const quantityKg = convertToKg(settlement.unitType, unitQuantity);
+        if (!customer || !name) return { success: false, error: t.invalidCustomerOrMaterial };
+        if (!Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) return { success: false, error: t.quantityPriceMustBePositive };
+
+        const currency = currencyCode(settlement.currency);
+        const customerBalanceField = currencyField('balanceOwed', currency);
+        const rawSettledField = currencyField('rawSettledAmount', currency);
+        const supplierPurchaseField = currencyField('totalPurchasedAmount', currency);
+        const supplierBalanceField = currencyField('balanceOwed', currency);
+        const supplierGoodsSettledField = currencyField('goodsSettledAmount', currency);
+        const totalValue = quantityKg * unitPrice;
+        const customerOffset = Math.min(totalValue, Number(customer[customerBalanceField]) || 0);
+        const supplierDebt = Math.max(0, totalValue - customerOffset);
+        const timestamp = Date.now();
+        const today = new Date().toISOString().split('T')[0];
+
+        const nextState = (() => {
+            const newCustomerBalance = Math.max(0, (Number(customer[customerBalanceField]) || 0) - customerOffset);
+            const customerTransaction = {
+                id: `ct-${timestamp}`,
+                date: today,
+                type: 'raw_goods_settlement',
+                description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
+                amount: totalValue,
+                paidAmount: customerOffset,
+                remainingAmount: newCustomerBalance,
+                currency,
+            };
+            const updatedCustomers = db.customers.map(item => item.id === customer.id ? {
+                ...item,
+                [rawSettledField]: (Number(item[rawSettledField]) || 0) + customerOffset,
+                [customerBalanceField]: newCustomerBalance,
+                transactions: [customerTransaction, ...(item.transactions || [])],
+            } : item);
+
+            const normalizedName = customer.name.trim().toLowerCase();
+            const supplierIndex = db.suppliers.findIndex(supplier => supplier.id === customer.supplierId || supplier.name.trim().toLowerCase() === normalizedName || (customer.phone && supplier.phone === customer.phone));
+            const updatedSuppliers = [...db.suppliers];
+            let supplierId;
+            let newSupplierBalance;
+            if (supplierIndex >= 0) {
+                const supplier = updatedSuppliers[supplierIndex];
+                supplierId = supplier.id;
+                newSupplierBalance = (Number(supplier[supplierBalanceField]) || 0) + supplierDebt;
+                const supplierTransaction = {
+                    id: `st-${timestamp}`,
+                    rawMaterialId: '',
+                    date: today,
+                    type: 'customer_raw_settlement',
+                    description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
+                    amount: totalValue,
+                    paidAmount: customerOffset,
+                    remainingAmount: newSupplierBalance,
+                    currency,
+                };
+                updatedSuppliers[supplierIndex] = {
+                    ...supplier,
+                    phone: customer.phone || supplier.phone,
+                    address: customer.address || supplier.address,
+                    [supplierPurchaseField]: (Number(supplier[supplierPurchaseField]) || 0) + totalValue,
+                    [supplierGoodsSettledField]: (Number(supplier[supplierGoodsSettledField]) || 0) + customerOffset,
+                    [supplierBalanceField]: newSupplierBalance,
+                    transactions: [supplierTransaction, ...(supplier.transactions || [])],
+                };
+            } else {
+                supplierId = `sup-${timestamp}`;
+                newSupplierBalance = supplierDebt;
+                updatedSuppliers.unshift({
+                    id: supplierId,
+                    name: customer.name,
+                    phone: customer.phone || '',
+                    address: customer.address || '',
+                    totalPurchasedAmount: currency === 'AFN' ? totalValue : 0,
+                    totalPurchasedAmountUsd: currency === 'USD' ? totalValue : 0,
+                    totalPaid: 0,
+                    totalPaidUsd: 0,
+                    goodsSettledAmount: currency === 'AFN' ? customerOffset : 0,
+                    goodsSettledAmountUsd: currency === 'USD' ? customerOffset : 0,
+                    balanceOwed: currency === 'AFN' ? supplierDebt : 0,
+                    balanceOwedUsd: currency === 'USD' ? supplierDebt : 0,
+                    transactions: [{
+                        id: `st-${timestamp}`,
+                        rawMaterialId: '',
+                        date: today,
+                        type: 'customer_raw_settlement',
+                        description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
+                        amount: totalValue,
+                        paidAmount: customerOffset,
+                        remainingAmount: supplierDebt,
+                        currency,
+                    }],
+                    createdAt: today,
+                });
+            }
+
+            const existingMaterialIndex = db.rawMaterials.findIndex(material => material.name.trim().toLowerCase() === name.toLowerCase() && currencyCode(material.currency) === currency);
+            const updatedRawMaterials = [...db.rawMaterials];
+            let rawMaterialId;
+            if (existingMaterialIndex >= 0) {
+                const material = updatedRawMaterials[existingMaterialIndex];
+                rawMaterialId = material.id;
+                const oldWeight = Number(material.stockKg) || 0;
+                const newWeight = oldWeight + quantityKg;
+                const averageUnitPrice = newWeight > 0 ? ((oldWeight * (Number(material.unitPrice) || 0)) + totalValue) / newWeight : unitPrice;
+                updatedRawMaterials[existingMaterialIndex] = {
+                    ...material,
+                    stockKg: newWeight,
+                    unitPrice: averageUnitPrice,
+                    category,
+                    currency,
+                    supplierId,
+                    supplierName: customer.name,
+                    customerId: customer.id,
+                    notes: settlement.notes?.trim() || material.notes,
+                    dateAdded: today,
+                };
+            } else {
+                rawMaterialId = `rm-${timestamp}`;
+                updatedRawMaterials.unshift({
+                    id: rawMaterialId,
+                    name,
+                    category,
+                    stockKg: quantityKg,
+                    unitPrice,
+                    currency,
+                    supplierId,
+                    supplierName: customer.name,
+                    customerId: customer.id,
+                    dateAdded: today,
+                    notes: settlement.notes?.trim() || t.customerRawSettlement,
+                    lowStockThreshold: settlement.lowStockThreshold === '' || settlement.lowStockThreshold == null ? undefined : Number(settlement.lowStockThreshold),
+                });
+            }
+            updatedSuppliers.forEach(supplier => {
+                const transaction = supplier.transactions?.[0];
+                if (supplier.id === supplierId && transaction?.id === `st-${timestamp}`) transaction.rawMaterialId = rawMaterialId;
+            });
+            return { ...db, customers: updatedCustomers, suppliers: updatedSuppliers, rawMaterials: updatedRawMaterials };
+        })();
+
+        localWritesInProgress.current += 1;
+        const saved = await seedInitialDataToSupabase(nextState).finally(() => { localWritesInProgress.current = Math.max(0, localWritesInProgress.current - 1); });
+        if (!saved) return { success: false, error: t.customerRawSettlementSaveFailed };
+        lastSyncedState.current = JSON.stringify(nextState);
+        setDb(nextState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
+        return { success: true, customerOffset, supplierDebt };
+    };
     // RECEIVE PAYMENT FROM CUSTOMER
     const receiveCustomerPayment = async (customerId, amount, note, currency = 'AFN') => {
         if (amount <= 0)
@@ -859,6 +1149,7 @@ export const DatabaseProvider = ({ children }) => {
             currency = currencyCode(currency);
             const balanceField = currencyField('balanceOwed', currency);
             const paidField = currencyField('totalPaid', currency);
+            const rawSettledField = currencyField('rawSettledAmount', currency);
             const actualReceived = Math.min(amount, Number(cust[balanceField]) || 0);
             const newRemaining = Math.max(0, (Number(cust[balanceField]) || 0) - actualReceived);
             const transaction = {
@@ -888,11 +1179,11 @@ export const DatabaseProvider = ({ children }) => {
                 )
             );
             const alreadyAppliedToInvoices = prev.sales
-                .filter(belongsToCustomer)
+                .filter(sale => belongsToCustomer(sale) && (sale.currency || 'AFN') === currency)
                 .reduce((sum, sale) => sum + sale.paidAmount, 0);
             // Reconcile any older customer payments that reached the customer
             // ledger but were blocked before the related invoice update.
-            let paymentToAllocate = Math.max(0, (Number(updatedCust[paidField]) || 0) - alreadyAppliedToInvoices);
+            let paymentToAllocate = Math.max(0, (Number(updatedCust[paidField]) || 0) + (Number(updatedCust[rawSettledField]) || 0) - alreadyAppliedToInvoices);
             const invoicePayments = new Map();
             [...prev.sales]
                 .filter(sale => belongsToCustomer(sale) && (sale.currency || 'AFN') === currency && sale.remainingAmount > 0)
@@ -1035,12 +1326,14 @@ export const DatabaseProvider = ({ children }) => {
             restockRawMaterial,
             deleteRawMaterial,
             settleSupplierPayment,
+            settleSupplierWithProcessedStock,
             deleteSupplier,
             createFormulaAndProduce,
             saveFormulaTemplate,
             deleteFormula,
             recordSale,
             receiveCustomerPayment,
+            settleCustomerWithRawMaterial,
             deleteCustomer,
             addExpense,
             deleteExpense,

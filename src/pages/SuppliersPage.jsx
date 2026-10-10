@@ -3,7 +3,7 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
 export const SuppliersPage = () => {
-    const { db, t, deleteSupplier, settleSupplierPayment, updateSupplier, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);
     const [settleModalSupplier, setSettleModalSupplier] = useState(null);
@@ -13,6 +13,15 @@ export const SuppliersPage = () => {
     const [editingSupplier, setEditingSupplier] = useState(null);
     const [supplierEdit, setSupplierEdit] = useState(null);
     const [supplierEditError, setSupplierEditError] = useState('');
+    const [goodsSupplier, setGoodsSupplier] = useState(null);
+    const [goodsProductId, setGoodsProductId] = useState('');
+    const [goodsUnit, setGoodsUnit] = useState('bag');
+    const [goodsQuantity, setGoodsQuantity] = useState('');
+    const [goodsPrice, setGoodsPrice] = useState('');
+    const [goodsCurrency, setGoodsCurrency] = useState('AFN');
+    const [goodsNotes, setGoodsNotes] = useState('');
+    const [goodsError, setGoodsError] = useState('');
+    const [isSavingGoods, setIsSavingGoods] = useState(false);
     // Delete supplier modal
     const [supplierToDelete, setSupplierToDelete] = useState(null);
     // Status Filter: 'all' | 'creditors' | 'settled'
@@ -49,6 +58,8 @@ export const SuppliersPage = () => {
             totalPaid: supplier.totalPaid || 0,
             totalPurchasedAmountUsd: supplier.totalPurchasedAmountUsd || 0,
             totalPaidUsd: supplier.totalPaidUsd || 0,
+            goodsSettledAmount: supplier.goodsSettledAmount || 0,
+            goodsSettledAmountUsd: supplier.goodsSettledAmountUsd || 0,
         });
         setSupplierEditError('');
     };
@@ -57,6 +68,41 @@ export const SuppliersPage = () => {
         const result = updateSupplier(editingSupplier.id, supplierEdit);
         if (!result.success) { setSupplierEditError(result.error); return; }
         setEditingSupplier(null); setSupplierEdit(null);
+    };
+    const openGoodsSettlement = supplier => {
+        setGoodsSupplier(supplier);
+        setGoodsProductId(db.processedStock[0]?.id || '');
+        setGoodsUnit('bag');
+        setGoodsQuantity('');
+        setGoodsPrice('');
+        setGoodsCurrency((supplier.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
+        setGoodsNotes('');
+        setGoodsError('');
+    };
+    const goodsProduct = db.processedStock.find(product => product.id === goodsProductId);
+    const goodsQuantityNumber = Number(goodsQuantity) || 0;
+    const goodsPriceNumber = Number(goodsPrice) || 0;
+    const goodsWeightKg = goodsUnit === 'ton' ? goodsQuantityNumber * 1000 : goodsUnit === 'bag' ? goodsQuantityNumber * 50 : goodsQuantityNumber;
+    const goodsTotal = goodsQuantityNumber * goodsPriceNumber;
+    const supplierDebtForGoods = goodsSupplier ? Number(goodsCurrency === 'USD' ? goodsSupplier.balanceOwedUsd : goodsSupplier.balanceOwed) || 0 : 0;
+    const goodsDebtOffset = Math.min(goodsTotal, supplierDebtForGoods);
+    const goodsCustomerDebt = Math.max(0, goodsTotal - goodsDebtOffset);
+    const handleGoodsSettlement = async event => {
+        event.preventDefault();
+        setGoodsError('');
+        setIsSavingGoods(true);
+        const result = await settleSupplierWithProcessedStock({
+            supplierId: goodsSupplier.id,
+            productId: goodsProductId,
+            unitType: goodsUnit,
+            unitQuantity: goodsQuantityNumber,
+            salePricePerUnit: goodsPriceNumber,
+            currency: goodsCurrency,
+            notes: goodsNotes,
+        });
+        setIsSavingGoods(false);
+        if (!result.success) { setGoodsError(result.error); return; }
+        setGoodsSupplier(null);
     };
     // Aggregated totals
     const totalPurchasesAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmount||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmountUsd||0),0) };
@@ -246,6 +292,7 @@ export const SuppliersPage = () => {
                       {/* Total Paid to Supplier */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
                         {sup.totalPaid.toLocaleString()} AFN · {(sup.totalPaidUsd || 0).toLocaleString()} USD
+                        {((sup.goodsSettledAmount || 0) > 0 || (sup.goodsSettledAmountUsd || 0) > 0) && <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashGoodsSettled}: {(sup.goodsSettledAmount || 0).toLocaleString()} AFN · {(sup.goodsSettledAmountUsd || 0).toLocaleString()} USD</span>}
                       </td>
 
                       {/* Remaining Debt / Balance Owed */}
@@ -276,11 +323,12 @@ export const SuppliersPage = () => {
                       {/* Action Buttons */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button type="button" onClick={() => openGoodsSettlement(sup)} className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors cursor-pointer" title={t.settleWithProcessedGoods}><Package className="w-4 h-4"/></button>
                           {hasDebt && (<button type="button" onClick={() => handleOpenSettleModal(sup)} className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.settlePayment}
                             </button>)}
 
-                          <button type="button" onClick={() => openSupplierEdit(sup)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title="Edit supplier"><Pencil className="w-4 h-4"/></button>
+                          <button type="button" onClick={() => openSupplierEdit(sup)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.editSupplier}><Pencil className="w-4 h-4"/></button>
 
                           <button type="button" onClick={() => setSelectedHistorySupplier(sup)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
                             <Printer className="w-4 h-4"/>
@@ -380,8 +428,8 @@ export const SuppliersPage = () => {
               <div className="sm:col-span-2"><EditField label={t.address}><textarea rows="2" value={supplierEdit.address} onChange={e=>setSupplierEdit({...supplierEdit,address:e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600 resize-none"/></EditField></div>
             </div>
             <div className="border-t border-slate-200 pt-4"><h4 className="font-bold text-sm mb-3">{t.financialAmounts}</h4><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <CurrencySupplierEdit t={t} currency="AFN" total={supplierEdit.totalPurchasedAmount} paid={supplierEdit.totalPaid} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmount:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaid:value})}/>
-              <CurrencySupplierEdit t={t} currency="USD" total={supplierEdit.totalPurchasedAmountUsd} paid={supplierEdit.totalPaidUsd} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmountUsd:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaidUsd:value})}/>
+              <CurrencySupplierEdit t={t} currency="AFN" total={supplierEdit.totalPurchasedAmount} paid={supplierEdit.totalPaid} settled={supplierEdit.goodsSettledAmount} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmount:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaid:value})}/>
+              <CurrencySupplierEdit t={t} currency="USD" total={supplierEdit.totalPurchasedAmountUsd} paid={supplierEdit.totalPaidUsd} settled={supplierEdit.goodsSettledAmountUsd} onTotal={value=>setSupplierEdit({...supplierEdit,totalPurchasedAmountUsd:value})} onPaid={value=>setSupplierEdit({...supplierEdit,totalPaidUsd:value})}/>
             </div></div>
             {supplierEditError&&<p className="text-xs font-semibold text-rose-700">{supplierEditError}</p>}
             <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setEditingSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" className="px-5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold">{t.save}</button></div>
@@ -389,6 +437,33 @@ export const SuppliersPage = () => {
         </div>
       </div>)}
 
+      {/* Settle supplier debt by transferring processed stock. */}
+      {goodsSupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
+          <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Package className="w-5 h-5 text-emerald-600"/>{t.settleWithProcessedGoods}</h3><p className="text-xs text-slate-500 mt-1">{goodsSupplier.name} · {t.remainingDebt}: {(goodsSupplier.balanceOwed || 0).toLocaleString()} AFN · {(goodsSupplier.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setGoodsSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">{t.goodsSettlementNotice}</p>
+          <form onSubmit={handleGoodsSettlement} className="space-y-4">
+            <div><EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{getLocalizedName(product.name)} — {product.stockKg.toLocaleString()} {t.kilo}</option>)}</select></EditField></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>setGoodsUnit(event.target.value)} className={controlClass}><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></EditField>
+              <EditField label={t.quantity}><input required type="number" min="0.001" step="any" value={goodsQuantity} onChange={event=>setGoodsQuantity(event.target.value)} className={controlClass}/></EditField>
+              <EditField label={`${t.salePrice} (${goodsCurrency})`}><input required type="number" min="0.001" step="any" value={goodsPrice} onChange={event=>setGoodsPrice(event.target.value)} className={controlClass}/></EditField>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <EditField label={t.currency}><select value={goodsCurrency} onChange={event=>setGoodsCurrency(event.target.value)} className={controlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></EditField>
+              <EditField label={t.goodsNotes}><input value={goodsNotes} onChange={event=>setGoodsNotes(event.target.value)} className={controlClass}/></EditField>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div><span className="text-slate-500 block">{t.stockToDeduct}</span><strong className="font-mono text-slate-900">{goodsWeightKg.toLocaleString()} {t.kilo}</strong>{goodsProduct&&<span className="block text-[10px] text-slate-500">{t.currentStockLabel}: {goodsProduct.stockKg.toLocaleString()} {t.kilo}</span>}</div>
+              <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{goodsTotal.toLocaleString()} {goodsCurrency}</strong></div>
+              <div><span className="text-slate-500 block">{t.supplierDebtReduction}</span><strong className="font-mono text-emerald-700">{goodsDebtOffset.toLocaleString()} {goodsCurrency}</strong></div>
+              <div><span className="text-slate-500 block">{t.customerDebtCreated}</span><strong className="font-mono text-rose-700">{goodsCustomerDebt.toLocaleString()} {goodsCurrency}</strong></div>
+            </div>
+            {goodsError&&<p className="text-xs font-semibold text-rose-700">{goodsError}</p>}
+            <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setGoodsSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" disabled={isSavingGoods||!db.processedStock.length} className="px-5 py-2 rounded-xl bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold">{isSavingGoods?t.goodsSaving:t.confirmGoodsSettlement}</button></div>
+          </form>
+        </div>
+      </div>)}
       {/* Settle Supplier Payment Modal */}
       {settleModalSupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative text-slate-900">
@@ -543,7 +618,7 @@ export const SuppliersPage = () => {
 
 const controlClass = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600';
 const EditField = ({label,children}) => <label className="block"><span className="block text-xs font-semibold text-slate-700 mb-1">{label}</span>{children}</label>;
-const CurrencySupplierEdit = ({t,currency,total,paid,onTotal,onPaid}) => {
-    const remaining = Math.max(0, (Number(total)||0) - (Number(paid)||0));
-    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label={t.totalAmount}><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label={t.amountPaidLabel}><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingAutoCalculated}</span><strong className="font-mono text-rose-700">{remaining.toLocaleString()} {currency}</strong></div></div></div>;
+const CurrencySupplierEdit = ({t,currency,total,paid,settled=0,onTotal,onPaid}) => {
+    const remaining = Math.max(0, (Number(total)||0) - (Number(paid)||0) - (Number(settled)||0));
+    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label={t.totalAmount}><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label={t.amountPaidLabel}><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="text-[10px] text-emerald-700">{t.nonCashGoodsSettled}: <strong className="font-mono">{Number(settled).toLocaleString()} {currency}</strong></div><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingAutoCalculated}</span><strong className="font-mono text-rose-700">{remaining.toLocaleString()} {currency}</strong></div></div></div>;
 };

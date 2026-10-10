@@ -22,6 +22,7 @@ export const InventoryPage = () => {
     // Form State
     const [itemName, setItemName] = useState('');
     const [category, setCategory] = useState('Grains');
+    const [stockUnit, setStockUnit] = useState('kg');
     const [stockKg, setStockKg] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
     const [currency, setCurrency] = useState('AFN');
@@ -76,7 +77,11 @@ export const InventoryPage = () => {
             setSupplierPhone(existing.phone);
         }
     };
-    const totalBillCalculated = (Number(stockKg) || 0) * (Number(unitPrice) || 0);
+    const stockInputQuantity = Number(stockKg) || 0;
+    const stockWeightKg = stockUnit === 'ton'
+        ? stockInputQuantity * 1000
+        : stockUnit === 'bag' ? stockInputQuantity * 50 : stockInputQuantity;
+    const totalBillCalculated = stockWeightKg * (Number(unitPrice) || 0);
     const remainingCalculated = Math.max(0, totalBillCalculated - (Number(paidAmount) || 0));
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -89,7 +94,7 @@ export const InventoryPage = () => {
             setErrorMsg(t.phoneMustBe10Digits);
             return;
         }
-        const numericStock = Number(stockKg);
+        const numericStock = stockWeightKg;
         const numericPrice = Number(unitPrice);
         const numericPaid = paidAmount === '' ? numericStock * numericPrice : Number(paidAmount);
         const numericThreshold = threshold === '' ? undefined : Number(threshold);
@@ -106,6 +111,7 @@ export const InventoryPage = () => {
         // Reset form
         setItemName('');
         setCategory('Grains');
+        setStockUnit('kg');
         setStockKg('');
         setUnitPrice('');
         setThreshold('');
@@ -416,11 +422,14 @@ export const InventoryPage = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.stockInKilo} *
+                    {t.quantity} *
                   </label>
-                  <input type="number" min="0.001" step="any" required value={stockKg} onChange={(e) => setStockKg(e.target.value)} placeholder="5000" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
-                  {Number(stockKg) > 0 && (<span className="text-[11px] text-slate-500 mt-1 block font-medium">
-                      = {(Number(stockKg) / 1000).toFixed(2)} {t.ton} ({(Math.round((Number(stockKg) / 50) * 100) / 100).toLocaleString()} {t.bag})
+                  <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2">
+                    <input type="number" min="0.001" step="any" required value={stockKg} onChange={(e) => setStockKg(e.target.value)} placeholder="5000" className="min-w-0 w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                    <select value={stockUnit} onChange={(e) => setStockUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:border-amber-600"><option value="kg">{t.unitKg}</option><option value="bag">{t.unitBag50kg}</option><option value="ton">{t.unitTon1000kg}</option></select>
+                  </div>
+                  {stockWeightKg > 0 && (<span className="text-[11px] text-slate-500 mt-1 block font-medium">
+                      = {stockWeightKg.toLocaleString()} {t.kilo} · {(stockWeightKg / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} {t.ton} · {(stockWeightKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag}
                     </span>)}
                 </div>
 

@@ -142,6 +142,7 @@ export async function loadStateFromSupabase() {
             currency: r.currency || 'AFN',
             supplierId: r.supplier_id || undefined,
             supplierName: r.supplier_name || undefined,
+            customerId: r.customer_id || undefined,
             dateAdded: r.date_added || new Date().toISOString().split('T')[0],
             notes: r.notes || undefined,
             lowStockThreshold: r.low_stock_threshold ? Number(r.low_stock_threshold) : undefined,
@@ -156,6 +157,8 @@ export async function loadStateFromSupabase() {
             totalPurchasedAmountUsd: Number(s.total_purchased_amount_usd) || 0,
             totalPaid: Number(s.total_paid) || 0,
             totalPaidUsd: Number(s.total_paid_usd) || 0,
+            goodsSettledAmount: Number(s.goods_settled_amount) || 0,
+            goodsSettledAmountUsd: Number(s.goods_settled_amount_usd) || 0,
             balanceOwed: Number(s.balance_owed) || 0,
             balanceOwedUsd: Number(s.balance_owed_usd) || 0,
             createdAt: s.created_at || '',
@@ -183,6 +186,8 @@ export async function loadStateFromSupabase() {
             totalPurchasedAmountUsd: Number(c.total_purchased_amount_usd) || 0,
             totalPaid: Number(c.total_paid) || 0,
             totalPaidUsd: Number(c.total_paid_usd) || 0,
+            rawSettledAmount: Number(c.raw_settled_amount) || 0,
+            rawSettledAmountUsd: Number(c.raw_settled_amount_usd) || 0,
             balanceOwed: Number(c.balance_owed) || 0,
             balanceOwedUsd: Number(c.balance_owed_usd) || 0,
             createdAt: c.created_at || '',
@@ -238,7 +243,9 @@ export async function loadStateFromSupabase() {
         let salesReconciliationNeeded = false;
         customers.forEach(customer => {
             ['AFN', 'USD'].forEach(currency => {
-                let paidToAllocate = currency === 'USD' ? customer.totalPaidUsd : customer.totalPaid;
+                let paidToAllocate = currency === 'USD'
+                    ? customer.totalPaidUsd + customer.rawSettledAmountUsd
+                    : customer.totalPaid + customer.rawSettledAmount;
                 sales
                     .filter(sale => (sale.currency || 'AFN') === currency && (sale.customerId === customer.id || (!sale.customerId && (sale.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase() || (customer.phone && sale.customerPhone === customer.phone)))))
                     .sort((first, second) => first.date.localeCompare(second.date))
@@ -350,6 +357,8 @@ export async function seedInitialDataToSupabase(state) {
                 total_purchased_amount_usd: s.totalPurchasedAmountUsd || 0,
                 total_paid: s.totalPaid,
                 total_paid_usd: s.totalPaidUsd || 0,
+                goods_settled_amount: s.goodsSettledAmount || 0,
+                goods_settled_amount_usd: s.goodsSettledAmountUsd || 0,
                 balance_owed: s.balanceOwed,
                 balance_owed_usd: s.balanceOwedUsd || 0,
                 created_at: s.createdAt,
@@ -382,6 +391,7 @@ export async function seedInitialDataToSupabase(state) {
                 currency: rm.currency || 'AFN',
                 supplier_id: rm.supplierId || null,
                 supplier_name: rm.supplierName || null,
+                customer_id: rm.customerId || null,
                 date_added: rm.dateAdded,
                 notes: rm.notes || null,
                 low_stock_threshold: rm.lowStockThreshold || 5000,
@@ -399,6 +409,8 @@ export async function seedInitialDataToSupabase(state) {
                 total_purchased_amount_usd: c.totalPurchasedAmountUsd || 0,
                 total_paid: c.totalPaid,
                 total_paid_usd: c.totalPaidUsd || 0,
+                raw_settled_amount: c.rawSettledAmount || 0,
+                raw_settled_amount_usd: c.rawSettledAmountUsd || 0,
                 balance_owed: c.balanceOwed,
                 balance_owed_usd: c.balanceOwedUsd || 0,
                 created_at: c.createdAt,

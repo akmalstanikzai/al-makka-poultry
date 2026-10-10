@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
-import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
 export const CustomersPage = () => {
-    const { db, t, deleteCustomer, receiveCustomerPayment, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedName, getLocalizedCat, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
@@ -12,6 +12,17 @@ export const CustomersPage = () => {
     const [paymentNote, setPaymentNote] = useState('');
     const [paymentStatus, setPaymentStatus] = useState(null);
     const [isSavingPayment, setIsSavingPayment] = useState(false);
+    const [rawSettlementCustomer, setRawSettlementCustomer] = useState(null);
+    const [rawMaterialName, setRawMaterialName] = useState('');
+    const [rawCategory, setRawCategory] = useState('Grains');
+    const [rawUnit, setRawUnit] = useState('bag');
+    const [rawQuantity, setRawQuantity] = useState('');
+    const [rawUnitPrice, setRawUnitPrice] = useState('');
+    const [rawCurrency, setRawCurrency] = useState('AFN');
+    const [rawThreshold, setRawThreshold] = useState('');
+    const [rawNotes, setRawNotes] = useState('');
+    const [rawSettlementError, setRawSettlementError] = useState('');
+    const [isSavingRawSettlement, setIsSavingRawSettlement] = useState(false);
     // Delete customer modal
     const [customerToDelete, setCustomerToDelete] = useState(null);
     // Status Filter: 'all' | 'debtors' | 'settled'
@@ -47,6 +58,53 @@ export const CustomersPage = () => {
         setPaymentStatus(result.success
             ? { type: 'success', text: 'Customer payment saved to the database.' }
             : { type: 'error', text: result.error || 'Customer payment was not saved.' });
+    };
+    const openRawSettlement = customer => {
+        setRawSettlementCustomer(customer);
+        setRawMaterialName('');
+        setRawCategory('Grains');
+        setRawUnit('bag');
+        setRawQuantity('');
+        setRawUnitPrice('');
+        setRawCurrency((customer.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
+        setRawThreshold('');
+        setRawNotes('');
+        setRawSettlementError('');
+    };
+    const handleRawMaterialName = value => {
+        setRawMaterialName(value);
+        const existing = db.rawMaterials.find(material => material.name.trim().toLowerCase() === value.trim().toLowerCase());
+        if (existing) {
+            setRawCategory(existing.category || 'Grains');
+            setRawUnitPrice(existing.unitPrice || '');
+            setRawCurrency(existing.currency || 'AFN');
+            setRawThreshold(existing.lowStockThreshold ?? '');
+        }
+    };
+    const rawQuantityNumber = Number(rawQuantity) || 0;
+    const rawWeightKg = rawUnit === 'ton' ? rawQuantityNumber * 1000 : rawUnit === 'bag' ? rawQuantityNumber * 50 : rawQuantityNumber;
+    const rawTotalValue = rawWeightKg * (Number(rawUnitPrice) || 0);
+    const rawCustomerDebt = rawSettlementCustomer ? Number(rawCurrency === 'USD' ? rawSettlementCustomer.balanceOwedUsd : rawSettlementCustomer.balanceOwed) || 0 : 0;
+    const rawCustomerOffset = Math.min(rawTotalValue, rawCustomerDebt);
+    const rawSupplierDebt = Math.max(0, rawTotalValue - rawCustomerOffset);
+    const handleRawSettlement = async event => {
+        event.preventDefault();
+        setRawSettlementError('');
+        setIsSavingRawSettlement(true);
+        const result = await settleCustomerWithRawMaterial({
+            customerId: rawSettlementCustomer.id,
+            materialName: rawMaterialName,
+            category: rawCategory,
+            unitType: rawUnit,
+            unitQuantity: rawQuantityNumber,
+            unitPrice: Number(rawUnitPrice),
+            currency: rawCurrency,
+            lowStockThreshold: rawThreshold,
+            notes: rawNotes,
+        });
+        setIsSavingRawSettlement(false);
+        if (!result.success) { setRawSettlementError(result.error); return; }
+        setRawSettlementCustomer(null);
     };
     // Aggregated totals
     const totalSalesAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };
@@ -236,6 +294,7 @@ export const CustomersPage = () => {
                       {/* Total Payments */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
                         {cust.totalPaid.toLocaleString()} AFN · {(cust.totalPaidUsd || 0).toLocaleString()} USD
+                        {((cust.rawSettledAmount || 0) > 0 || (cust.rawSettledAmountUsd || 0) > 0) && <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashRawSettled}: {(cust.rawSettledAmount || 0).toLocaleString()} AFN · {(cust.rawSettledAmountUsd || 0).toLocaleString()} USD</span>}
                       </td>
 
                       {/* Remaining Debt */}
@@ -266,6 +325,7 @@ export const CustomersPage = () => {
                       {/* Action Buttons */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button type="button" onClick={() => openRawSettlement(cust)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.settleWithRawMaterial}><Wheat className="w-4 h-4"/></button>
                           {hasDebt && (<button type="button" onClick={() => handleOpenReceiveModal(cust)} className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.receivePayment}
                             </button>)}
@@ -357,6 +417,37 @@ export const CustomersPage = () => {
         </div>
       </div>
 
+      {/* Receive raw material from a customer as a non-cash settlement. */}
+      {rawSettlementCustomer && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
+          <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Wheat className="w-5 h-5 text-amber-600"/>{t.settleWithRawMaterial}</h3><p className="text-xs text-slate-500 mt-1">{rawSettlementCustomer.name} · {t.remainingDebt}: {(rawSettlementCustomer.balanceOwed || 0).toLocaleString()} AFN · {(rawSettlementCustomer.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setRawSettlementCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">{t.rawSettlementNotice}</p>
+          <form onSubmit={handleRawSettlement} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.materialName}</label><input required value={rawMaterialName} onChange={event=>handleRawMaterialName(event.target.value)} list="customer-raw-materials" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/><datalist id="customer-raw-materials">{db.rawMaterials.map(material=><option key={material.id} value={material.name}>{getLocalizedName(material.name)}</option>)}</datalist></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.category}</label><select value={rawCategory} onChange={event=>setRawCategory(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="Grains">{getLocalizedCat('Grains')}</option><option value="Protein">{getLocalizedCat('Protein')}</option><option value="Fuel">{getLocalizedCat('Fuel')}</option><option value="Fiber">{getLocalizedCat('Fiber')}</option><option value="Supplements">{getLocalizedCat('Supplements')}</option></select></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={rawUnit} onChange={event=>setRawUnit(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity}</label><input required type="number" min="0.001" step="any" value={rawQuantity} onChange={event=>setRawQuantity(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"/></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo} ({rawCurrency})</label><input required type="number" min="0.001" step="any" value={rawUnitPrice} onChange={event=>setRawUnitPrice(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"/></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.currency}</label><select value={rawCurrency} onChange={event=>setRawCurrency(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="AFN">AFN</option><option value="USD">USD</option></select></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.thresholdLimitLabel}</label><input type="number" min="0" step="any" value={rawThreshold} onChange={event=>setRawThreshold(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"/></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.goodsNotes}</label><input value={rawNotes} onChange={event=>setRawNotes(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"/></div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div><span className="text-slate-500 block">{t.rawStockAdded}</span><strong className="font-mono text-slate-900">{rawWeightKg.toLocaleString()} {t.kilo}</strong></div>
+              <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{rawTotalValue.toLocaleString()} {rawCurrency}</strong></div>
+              <div><span className="text-slate-500 block">{t.customerDebtReduction}</span><strong className="font-mono text-emerald-700">{rawCustomerOffset.toLocaleString()} {rawCurrency}</strong></div>
+              <div><span className="text-slate-500 block">{t.supplierDebtCreated}</span><strong className="font-mono text-rose-700">{rawSupplierDebt.toLocaleString()} {rawCurrency}</strong></div>
+            </div>
+            {rawSettlementError&&<p className="text-xs font-semibold text-rose-700">{rawSettlementError}</p>}
+            <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setRawSettlementCustomer(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" disabled={isSavingRawSettlement} className="px-5 py-2 rounded-xl bg-amber-600 disabled:opacity-50 text-white text-xs font-bold">{isSavingRawSettlement?t.goodsSaving:t.confirmRawSettlement}</button></div>
+          </form>
+        </div>
+      </div>)}
       {/* Receive Customer Payment Modal */}
       {receiveModalCustomer && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative text-slate-900">

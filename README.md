@@ -31,7 +31,7 @@ supabase db push
 ```
 
 Alternatively, set `SUPABASE_DB_URL` to the direct database connection string
-and run `supabase db push --db-url "$SUPABASE_DB_URL"`.....
+and run `supabase db push --db-url "$SUPABASE_DB_URL"`.......
 
 ## Development
 
