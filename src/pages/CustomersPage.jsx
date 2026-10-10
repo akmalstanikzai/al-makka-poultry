@@ -3,7 +3,7 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
 export const CustomersPage = () => {
-    const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedName, getLocalizedCat, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
@@ -14,7 +14,6 @@ export const CustomersPage = () => {
     const [isSavingPayment, setIsSavingPayment] = useState(false);
     const [rawSettlementCustomer, setRawSettlementCustomer] = useState(null);
     const [rawMaterialName, setRawMaterialName] = useState('');
-    const [rawCategory, setRawCategory] = useState('Grains');
     const [rawUnit, setRawUnit] = useState('bag');
     const [rawQuantity, setRawQuantity] = useState('');
     const [rawUnitPrice, setRawUnitPrice] = useState('');
@@ -62,7 +61,6 @@ export const CustomersPage = () => {
     const openRawSettlement = customer => {
         setRawSettlementCustomer(customer);
         setRawMaterialName('');
-        setRawCategory('Grains');
         setRawUnit('bag');
         setRawQuantity('');
         setRawUnitPrice('');
@@ -75,7 +73,6 @@ export const CustomersPage = () => {
         setRawMaterialName(value);
         const existing = db.rawMaterials.find(material => material.name.trim().toLowerCase() === value.trim().toLowerCase());
         if (existing) {
-            setRawCategory(existing.category || 'Grains');
             setRawUnitPrice(existing.unitPrice || '');
             setRawCurrency(existing.currency || 'AFN');
             setRawThreshold(existing.lowStockThreshold ?? '');
@@ -94,7 +91,7 @@ export const CustomersPage = () => {
         const result = await settleCustomerWithRawMaterial({
             customerId: rawSettlementCustomer.id,
             materialName: rawMaterialName,
-            category: rawCategory,
+            category: 'Uncategorized',
             unitType: rawUnit,
             unitQuantity: rawQuantityNumber,
             unitPrice: Number(rawUnitPrice),
@@ -425,7 +422,6 @@ export const CustomersPage = () => {
           <form onSubmit={handleRawSettlement} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.materialName}</label><input required value={rawMaterialName} onChange={event=>handleRawMaterialName(event.target.value)} list="customer-raw-materials" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/><datalist id="customer-raw-materials">{db.rawMaterials.map(material=><option key={material.id} value={material.name}>{getLocalizedName(material.name)}</option>)}</datalist></div>
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.category}</label><select value={rawCategory} onChange={event=>setRawCategory(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="Grains">{getLocalizedCat('Grains')}</option><option value="Protein">{getLocalizedCat('Protein')}</option><option value="Fuel">{getLocalizedCat('Fuel')}</option><option value="Fiber">{getLocalizedCat('Fiber')}</option><option value="Supplements">{getLocalizedCat('Supplements')}</option></select></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={rawUnit} onChange={event=>setRawUnit(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></div>

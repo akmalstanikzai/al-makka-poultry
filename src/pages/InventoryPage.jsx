@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, Sparkles, X, RefreshCw } from 'lucide-react';
+import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, X, RefreshCw } from 'lucide-react';
 export const InventoryPage = () => {
-    const { db, t, lang, addRawMaterial, restockRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold, getLocalizedName, getLocalizedCat } = useDatabase();
+    const { db, t, lang, addRawMaterial, restockRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [materialToDelete, setMaterialToDelete] = useState(null);
     const [editingThresholdItem, setEditingThresholdItem] = useState(null);
@@ -21,7 +20,6 @@ export const InventoryPage = () => {
     const [restockError, setRestockError] = useState('');
     // Form State
     const [itemName, setItemName] = useState('');
-    const [category, setCategory] = useState('Grains');
     const [stockUnit, setStockUnit] = useState('kg');
     const [stockKg, setStockKg] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
@@ -32,43 +30,17 @@ export const InventoryPage = () => {
     const [notes, setNotes] = useState('');
     const [threshold, setThreshold] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
-    // Localized presets for quick-fill
-    const quickPresets = [
-        {
-            name: lang === 'fa' ? 'جواری دانه زرد' : lang === 'ps' ? 'ژېړ جوار' : 'Yellow Corn (Maize)',
-            cat: 'Grains',
-            price: 24
-        },
-        {
-            name: lang === 'fa' ? 'کنجاره سویا (پروتین ۴۶٪)' : lang === 'ps' ? 'د سویا کنجاړه (۴۶٪)' : 'Soybean Meal (46%)',
-            cat: 'Protein',
-            price: 48
-        },
-        {
-            name: lang === 'fa' ? 'کنجاره پنبه دانه' : lang === 'ps' ? 'د پنبې دانې کنجاړه' : 'Cottonseed Oil Cake',
-            cat: 'Protein',
-            price: 32
-        },
-        {
-            name: lang === 'fa' ? 'تیل دیزل جنراتور و موتر' : lang === 'ps' ? 'ډیزل تېل او روغنیات' : 'Diesel Fuel & Oil',
-            cat: 'Fuel',
-            price: 65
-        },
-        {
-            name: lang === 'fa' ? 'سبوس گندم' : lang === 'ps' ? 'د غنمو بوش (سبوس)' : 'Wheat Bran',
-            cat: 'Fiber',
-            price: 18
-        },
-        {
-            name: lang === 'fa' ? 'پری‌میکس و ویتامین مرغداری' : lang === 'ps' ? 'ویټامینونه او پری‌میکس' : 'Poultry Premix & Vitamins',
-            cat: 'Supplements',
-            price: 120
-        },
-    ];
-    const handleQuickFill = (preset) => {
-        setItemName(preset.name);
-        setCategory(preset.cat);
-        setUnitPrice(preset.price);
+    const handleMaterialNameChange = (value) => {
+        setItemName(value);
+        const normalizedName = value.trim().toLowerCase();
+        const existing = db.rawMaterials.find(item => item.name.trim().toLowerCase() === normalizedName);
+        if (!existing) return;
+        setUnitPrice(existing.unitPrice ?? '');
+        setCurrency(existing.currency || 'AFN');
+        setThreshold(existing.lowStockThreshold ?? '');
+        setSupplierName(existing.supplierName || '');
+        const supplier = db.suppliers.find(item => item.id === existing.supplierId || item.name === existing.supplierName);
+        setSupplierPhone(supplier?.phone || '');
     };
     const handleSelectExistingSupplier = (supName) => {
         setSupplierName(supName);
@@ -81,6 +53,7 @@ export const InventoryPage = () => {
     const stockWeightKg = stockUnit === 'ton'
         ? stockInputQuantity * 1000
         : stockUnit === 'bag' ? stockInputQuantity * 50 : stockInputQuantity;
+    const existingMaterial = db.rawMaterials.find(item => item.name.trim().toLowerCase() === itemName.trim().toLowerCase());
     const totalBillCalculated = stockWeightKg * (Number(unitPrice) || 0);
     const remainingCalculated = Math.max(0, totalBillCalculated - (Number(paidAmount) || 0));
     const handleSubmit = (e) => {
@@ -98,19 +71,36 @@ export const InventoryPage = () => {
         const numericPrice = Number(unitPrice);
         const numericPaid = paidAmount === '' ? numericStock * numericPrice : Number(paidAmount);
         const numericThreshold = threshold === '' ? undefined : Number(threshold);
-        addRawMaterial({
-            name: itemName.trim(),
-            category,
-            stockKg: numericStock,
-            unitPrice: numericPrice,
-            currency,
-            supplierName: supplierName.trim() || undefined,
-            notes: notes.trim() || undefined,
-            lowStockThreshold: numericThreshold,
-        }, numericPaid, supplierPhone.trim() || undefined);
+        if (existingMaterial) {
+            const result = restockRawMaterial({
+                materialId: existingMaterial.id,
+                addedWeightKg: numericStock,
+                newUnitPrice: numericPrice,
+                supplierName: supplierName.trim() || undefined,
+                supplierPhone: supplierPhone.trim() || undefined,
+                paidAmount: numericPaid,
+                notes: notes.trim() || undefined,
+                currency,
+            });
+            if (!result.success) {
+                setErrorMsg(result.error || t.restockFailed);
+                return;
+            }
+            if (numericThreshold !== undefined) updateRawMaterialThreshold(existingMaterial.id, numericThreshold);
+        } else {
+            addRawMaterial({
+                name: itemName.trim(),
+                category: 'Uncategorized',
+                stockKg: numericStock,
+                unitPrice: numericPrice,
+                currency,
+                supplierName: supplierName.trim() || undefined,
+                notes: notes.trim() || undefined,
+                lowStockThreshold: numericThreshold,
+            }, numericPaid, supplierPhone.trim() || undefined);
+        }
         // Reset form
         setItemName('');
-        setCategory('Grains');
         setStockUnit('kg');
         setStockKg('');
         setUnitPrice('');
@@ -163,22 +153,15 @@ export const InventoryPage = () => {
         else
             setRestockError(result.error || 'Could not restock this material.');
     };
-    // Filtered raw materials with search and category filter
+    // Filter raw materials by their exact stored name or supplier.
     const filteredItems = db.rawMaterials.filter(item => {
-        const localizedName = getLocalizedName(item.name).toLowerCase();
-        const rawName = item.name.toLowerCase();
         const search = searchTerm.toLowerCase();
-        const matchesSearch = localizedName.includes(search) ||
-            rawName.includes(search) ||
-            (item.supplierName && item.supplierName.toLowerCase().includes(search)) ||
-            (item.category && getLocalizedCat(item.category).toLowerCase().includes(search));
-        const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-        return matchesSearch && matchesCategory;
+        return item.name.toLowerCase().includes(search) ||
+            (item.supplierName && item.supplierName.toLowerCase().includes(search));
     });
     const totalWarehouseKg = db.rawMaterials.reduce((acc, i) => acc + i.stockKg, 0);
     const totalWarehouseValue = db.rawMaterials.reduce((acc, i) => { const code = i.currency === 'USD' ? 'USD' : 'AFN'; acc[code] += i.stockKg * i.unitPrice; return acc; }, { AFN: 0, USD: 0 });
     const lowStockCount = db.rawMaterials.filter(i => i.stockKg <= (i.lowStockThreshold ?? lowStockThreshold)).length;
-    const categories = ['all', 'Grains', 'Protein', 'Fuel', 'Fiber', 'Supplements'];
     return (<div className="space-y-6">
       {/* Header with Title and Add Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -261,17 +244,6 @@ export const InventoryPage = () => {
             </button>)}
         </div>
 
-        {/* Category Pills Filter */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
-          <span className="text-xs font-semibold text-slate-500 me-1 shrink-0 hidden sm:inline">
-            {t.categoryFilter}
-          </span>
-          {categories.map((cat) => (<button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${selectedCategory === cat
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-slate-50 text-slate-600 border border-slate-200 hover:text-slate-900 hover:bg-slate-100'}`}>
-              {cat === 'all' ? t.allCategories : getLocalizedCat(cat)}
-            </button>))}
-        </div>
       </div>
 
       {/* Raw materials displayed as clean, scannable rows */}
@@ -294,9 +266,8 @@ export const InventoryPage = () => {
                 <div className="flex items-start gap-2">
                   {isLowStock && <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5"/>}
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-slate-900 truncate" title={getLocalizedName(item.name)}>{getLocalizedName(item.name)}</h3>
+                    <h3 className="text-sm font-bold text-slate-900 truncate" title={item.name}>{item.name}</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-amber-700 font-medium">{getLocalizedCat(item.category)}</span>
                       <span className={`text-[10px] font-bold ${isLowStock ? 'text-rose-700' : 'text-emerald-700'}`}>{isLowStock ? t.statusLow : t.statusNormal}</span>
                     </div>
                     {item.notes && <p className="text-[10px] text-slate-500 truncate mt-1" title={item.notes}>{item.notes}</p>}
@@ -327,7 +298,7 @@ export const InventoryPage = () => {
                 <button type="button" onClick={() => {
                     setEditingThresholdItem({
                         id: item.id,
-                        name: getLocalizedName(item.name),
+                        name: item.name,
                         current: item.lowStockThreshold ?? lowStockThreshold
                     });
                     setNewThresholdValue(item.lowStockThreshold ?? lowStockThreshold);
@@ -356,9 +327,8 @@ export const InventoryPage = () => {
             <p className="text-sm text-slate-600 font-medium">
               {t.showingResults} 0 {t.records}
             </p>
-            {(searchTerm || selectedCategory !== 'all') && (<button type="button" onClick={() => {
+            {searchTerm && (<button type="button" onClick={() => {
                     setSearchTerm('');
-                    setSelectedCategory('all');
                 }} className="mt-3 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-amber-700 text-xs font-semibold cursor-pointer">
                 {t.clearFilters}
               </button>)}
@@ -383,18 +353,6 @@ export const InventoryPage = () => {
               </button>
             </div>
 
-            {/* Quick Fill presets */}
-            <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="text-xs font-semibold text-slate-600 flex items-center gap-1 mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600"/>
-                <span>{t.highConsumptionFactoryItems}</span>
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {quickPresets.map((preset, idx) => (<button key={idx} type="button" onClick={() => handleQuickFill(preset)} className="text-xs px-2.5 py-1 bg-white hover:bg-amber-600 hover:text-white text-slate-700 rounded-lg border border-slate-300 transition-colors shadow-2xs cursor-pointer">
-                    {preset.name}
-                  </button>))}
-              </div>
-            </div>
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -402,21 +360,9 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.materialName} *
                   </label>
-                  <input type="text" required value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder={t.materialName} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="text" required value={itemName} onChange={(e) => handleMaterialNameChange(e.target.value)} placeholder={t.materialName} list="raw-material-name-list" autoComplete="off" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/><datalist id="raw-material-name-list">{db.rawMaterials.map(item=><option key={item.id} value={item.name}/>)}</datalist>{itemName.trim() && <span className={`block mt-1 text-[10px] font-semibold ${existingMaterial ? 'text-emerald-700' : 'text-blue-700'}`}>{existingMaterial ? t.existingStockWillRestock : t.newStockWillCreate}</span>}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.category}
-                  </label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs cursor-pointer">
-                    <option value="Grains">{getLocalizedCat('Grains')}</option>
-                    <option value="Protein">{getLocalizedCat('Protein')}</option>
-                    <option value="Fuel">{getLocalizedCat('Fuel')}</option>
-                    <option value="Fiber">{getLocalizedCat('Fiber')}</option>
-                    <option value="Supplements">{getLocalizedCat('Supplements')}</option>
-                  </select>
-                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -556,7 +502,7 @@ export const InventoryPage = () => {
             <div className="flex items-start justify-between gap-3 mb-5">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">{lang === 'fa' ? 'افزایش موجودی مواد خام' : lang === 'ps' ? 'د خامو موادو ذخیره زیاتول' : 'Restock raw material'}</h3>
-                <p className="text-xs text-slate-500 mt-1">{getLocalizedName(restockItem.name)} · {restockItem.stockKg.toLocaleString()} {t.kilo}</p>
+                <p className="text-xs text-slate-500 mt-1">{restockItem.name} · {restockItem.stockKg.toLocaleString()} {t.kilo}</p>
               </div>
               <button type="button" onClick={() => setRestockItem(null)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-5 h-5"/></button>
             </div>

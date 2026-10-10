@@ -439,28 +439,28 @@ export const SuppliersPage = () => {
 
       {/* Settle supplier debt by transferring processed stock. */}
       {goodsSupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-        <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
-          <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Package className="w-5 h-5 text-emerald-600"/>{t.settleWithProcessedGoods}</h3><p className="text-xs text-slate-500 mt-1">{goodsSupplier.name} · {t.remainingDebt}: {(goodsSupplier.balanceOwed || 0).toLocaleString()} AFN · {(goodsSupplier.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setGoodsSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
-          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">{t.goodsSettlementNotice}</p>
-          <form onSubmit={handleGoodsSettlement} className="space-y-4">
+        <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 text-slate-900">
+          <div className="flex items-start justify-between gap-3 mb-3"><div><h3 className="font-bold flex items-center gap-2"><Package className="w-5 h-5 text-emerald-600"/>{t.settleWithProcessedGoods}</h3><p className="text-xs text-slate-500 mt-1">{goodsSupplier.name} · {t.remainingDebt}: {(goodsSupplier.balanceOwed || 0).toLocaleString()} AFN · {(goodsSupplier.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setGoodsSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">{t.goodsSettlementNotice}</p>
+          <form onSubmit={handleGoodsSettlement} className="space-y-3">
             <div><EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{getLocalizedName(product.name)} — {product.stockKg.toLocaleString()} {t.kilo}</option>)}</select></EditField></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>setGoodsUnit(event.target.value)} className={controlClass}><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></EditField>
-              <EditField label={t.quantity}><input required type="number" min="0.001" step="any" value={goodsQuantity} onChange={event=>setGoodsQuantity(event.target.value)} className={controlClass}/></EditField>
-              <EditField label={`${t.salePrice} (${goodsCurrency})`}><input required type="number" min="0.001" step="any" value={goodsPrice} onChange={event=>setGoodsPrice(event.target.value)} className={controlClass}/></EditField>
+              <EditField label={t.quantity}><input required type="number" min="0.001" step="any" value={goodsQuantity} onChange={event=>setGoodsQuantity(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
+              <EditField label={`${t.salePrice} (${goodsCurrency})`}><input required type="number" min="0.001" step="any" value={goodsPrice} onChange={event=>setGoodsPrice(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <EditField label={t.currency}><select value={goodsCurrency} onChange={event=>setGoodsCurrency(event.target.value)} className={controlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></EditField>
               <EditField label={t.goodsNotes}><input value={goodsNotes} onChange={event=>setGoodsNotes(event.target.value)} className={controlClass}/></EditField>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
               <div><span className="text-slate-500 block">{t.stockToDeduct}</span><strong className="font-mono text-slate-900">{goodsWeightKg.toLocaleString()} {t.kilo}</strong>{goodsProduct&&<span className="block text-[10px] text-slate-500">{t.currentStockLabel}: {goodsProduct.stockKg.toLocaleString()} {t.kilo}</span>}</div>
               <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{goodsTotal.toLocaleString()} {goodsCurrency}</strong></div>
               <div><span className="text-slate-500 block">{t.supplierDebtReduction}</span><strong className="font-mono text-emerald-700">{goodsDebtOffset.toLocaleString()} {goodsCurrency}</strong></div>
               <div><span className="text-slate-500 block">{t.customerDebtCreated}</span><strong className="font-mono text-rose-700">{goodsCustomerDebt.toLocaleString()} {goodsCurrency}</strong></div>
             </div>
             {goodsError&&<p className="text-xs font-semibold text-rose-700">{goodsError}</p>}
-            <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setGoodsSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" disabled={isSavingGoods||!db.processedStock.length} className="px-5 py-2 rounded-xl bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold">{isSavingGoods?t.goodsSaving:t.confirmGoodsSettlement}</button></div>
+            <div className="flex justify-end gap-3 border-t pt-3"><button type="button" onClick={()=>setGoodsSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" disabled={isSavingGoods||!db.processedStock.length} className="px-5 py-2 rounded-xl bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold">{isSavingGoods?t.goodsSaving:t.confirmGoodsSettlement}</button></div>
           </form>
         </div>
       </div>)}

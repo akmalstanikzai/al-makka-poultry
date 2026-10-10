@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { translations, getLocalizedItemName, getLocalizedCategory, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
+import { translations, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
 import { clearAllDataFromSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
@@ -910,7 +910,7 @@ export const DatabaseProvider = ({ children }) => {
     const settleCustomerWithRawMaterial = async (settlement) => {
         const customer = db.customers.find(item => item.id === settlement.customerId);
         const name = String(settlement.materialName || '').trim();
-        const category = String(settlement.category || 'Grains');
+        const category = 'Uncategorized';
         const unitQuantity = Number(settlement.unitQuantity);
         const unitPrice = Number(settlement.unitPrice);
         const quantityKg = convertToKg(settlement.unitType, unitQuantity);
@@ -1221,8 +1221,8 @@ export const DatabaseProvider = ({ children }) => {
     };
     // Low Stock Materials calculated per individual item threshold
     const lowStockMaterials = db.rawMaterials.filter(r => r.stockKg <= (r.lowStockThreshold !== undefined ? r.lowStockThreshold : lowStockThreshold));
-    const getLocalizedName = (name) => getLocalizedItemName(name, lang);
-    const getLocalizedCat = (cat) => getLocalizedCategory(cat, lang);
+    // User-entered raw and processed stock names are never translated.
+    const getLocalizedName = (name) => name;
     const getLocalizedTxType = (type) => getLocalizedTransactionType(type, lang);
     const getLocalizedTxDesc = (desc) => getLocalizedTransactionDescription(desc, lang);
     return (<DatabaseContext.Provider value={{
@@ -1242,7 +1242,6 @@ export const DatabaseProvider = ({ children }) => {
             updateSupplier,
             lowStockMaterials,
             getLocalizedName,
-            getLocalizedCat,
             getLocalizedTxType,
             getLocalizedTxDesc,
             isSupabaseConnected,
