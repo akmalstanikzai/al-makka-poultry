@@ -17,6 +17,7 @@ const emptyFactoryData = {
 };
 const DatabaseContext = createContext(undefined);
 const currencyCode = value => value === 'USD' ? 'USD' : 'AFN';
+const normalizePartyName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 const currencyField = (field, currency) => currencyCode(currency) === 'USD' ? field + 'Usd' : field;
 const addCurrencyValue = (record, field, amount, currency) => ({ ...record, [currencyField(field, currency)]: (Number(record[currencyField(field, currency)]) || 0) + (Number(amount) || 0) });
 const cashPatch = (state, amount, currency) => currencyCode(currency) === 'USD' ? { cashInHandUsd: (state.cashInHandUsd || 0) + amount } : { cashInHand: (state.cashInHand || 0) + amount };
@@ -259,7 +260,7 @@ export const DatabaseProvider = ({ children }) => {
             let assignedSupplierId = item.supplierId;
             if (item.supplierName && item.supplierName.trim()) {
                 const supName = item.supplierName.trim();
-                const existingSupIndex = updatedSuppliers.findIndex(s => s.id === item.supplierId || s.name.toLowerCase() === supName.toLowerCase());
+                const existingSupIndex = updatedSuppliers.findIndex(s => (item.supplierId && s.id === item.supplierId) || normalizePartyName(s.name) === normalizePartyName(supName));
                 const transaction = {
                     id: `st-${Date.now()}`,
                     rawMaterialId: newId,
@@ -274,6 +275,7 @@ export const DatabaseProvider = ({ children }) => {
                 if (existingSupIndex >= 0) {
                     const sup = updatedSuppliers[existingSupIndex];
                     assignedSupplierId = sup.id;
+                    newItem.supplierName = sup.name;
                     const updatedSup = {
                         ...sup,
                         phone: supplierPhone || sup.phone,
@@ -312,7 +314,7 @@ export const DatabaseProvider = ({ children }) => {
         });
     };
     // RESTOCK AN EXISTING RAW MATERIAL & RECORD THE SUPPLIER PURCHASE
-    const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
+    const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
         const material = db.rawMaterials.find(item => item.id === materialId);
         const weight = Number(addedWeightKg);
         const price = Number(newUnitPrice);
@@ -327,13 +329,13 @@ export const DatabaseProvider = ({ children }) => {
         const remaining = Math.max(0, totalBill - paid);
         setDb(prev => {
             let updatedSuppliers = [...prev.suppliers];
-            let supplierId = material.supplierId;
-            const resolvedName = supplierName?.trim() || material.supplierName || '';
+            let supplierId = requestedSupplierId || material.supplierId;
+            let resolvedName = supplierName?.trim() || material.supplierName || '';
             if (resolvedName) {
                 // An explicitly entered supplier name takes precedence over the
                 // material's previous supplier. Otherwise a restock from a new
                 // supplier would incorrectly update the old supplier account.
-                const supplierIndex = updatedSuppliers.findIndex(supplier => supplier.name.toLowerCase() === resolvedName.toLowerCase());
+                const supplierIndex = updatedSuppliers.findIndex(supplier => (requestedSupplierId && supplier.id === requestedSupplierId) || normalizePartyName(supplier.name) === normalizePartyName(resolvedName));
                 const transaction = {
                     id: `st-${Date.now()}`,
                     rawMaterialId: materialId,
@@ -348,6 +350,7 @@ export const DatabaseProvider = ({ children }) => {
                 if (supplierIndex >= 0) {
                     const supplier = updatedSuppliers[supplierIndex];
                     supplierId = supplier.id;
+                    resolvedName = supplier.name;
                     updatedSuppliers[supplierIndex] = {
                         ...supplier,
                         phone: supplierPhone || supplier.phone,

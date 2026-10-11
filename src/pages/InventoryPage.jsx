@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, X, RefreshCw } from 'lucide-react';
+const normalizeSupplierName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 export const InventoryPage = () => {
     const { db, t, lang, addRawMaterial, restockRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -14,6 +15,7 @@ export const InventoryPage = () => {
     const [restockPrice, setRestockPrice] = useState('');
     const [restockCurrency, setRestockCurrency] = useState('AFN');
     const [restockSupplier, setRestockSupplier] = useState('');
+    const [restockSupplierId, setRestockSupplierId] = useState('');
     const [restockPhone, setRestockPhone] = useState('');
     const [restockPaid, setRestockPaid] = useState('');
     const [restockNotes, setRestockNotes] = useState('');
@@ -25,6 +27,7 @@ export const InventoryPage = () => {
     const [unitPrice, setUnitPrice] = useState('');
     const [currency, setCurrency] = useState('AFN');
     const [supplierName, setSupplierName] = useState('');
+    const [selectedSupplierId, setSelectedSupplierId] = useState('');
     const [supplierPhone, setSupplierPhone] = useState('');
     const [paidAmount, setPaidAmount] = useState('');
     const [notes, setNotes] = useState('');
@@ -38,15 +41,27 @@ export const InventoryPage = () => {
         setUnitPrice(existing.unitPrice ?? '');
         setCurrency(existing.currency || 'AFN');
         setThreshold(existing.lowStockThreshold ?? '');
-        setSupplierName(existing.supplierName || '');
-        const supplier = db.suppliers.find(item => item.id === existing.supplierId || item.name === existing.supplierName);
+        const supplier = db.suppliers.find(item => item.id === existing.supplierId || normalizeSupplierName(item.name) === normalizeSupplierName(existing.supplierName));
+        setSupplierName(supplier?.name || existing.supplierName || '');
+        setSelectedSupplierId(supplier?.id || existing.supplierId || '');
         setSupplierPhone(supplier?.phone || '');
     };
     const handleSelectExistingSupplier = (supName) => {
         setSupplierName(supName);
-        const existing = db.suppliers.find(s => s.name === supName);
-        if (existing && existing.phone) {
-            setSupplierPhone(existing.phone);
+        const existing = db.suppliers.find(s => normalizeSupplierName(s.name) === normalizeSupplierName(supName));
+        setSelectedSupplierId(existing?.id || '');
+        if (existing) {
+            setSupplierName(existing.name);
+            setSupplierPhone(existing.phone || '');
+        }
+    };
+    const handleRestockSupplierChange = (supName) => {
+        setRestockSupplier(supName);
+        const existing = db.suppliers.find(s => normalizeSupplierName(s.name) === normalizeSupplierName(supName));
+        setRestockSupplierId(existing?.id || '');
+        if (existing) {
+            setRestockSupplier(existing.name);
+            setRestockPhone(existing.phone || '');
         }
     };
     const stockInputQuantity = Number(stockKg) || 0;
@@ -76,6 +91,7 @@ export const InventoryPage = () => {
                 materialId: existingMaterial.id,
                 addedWeightKg: numericStock,
                 newUnitPrice: numericPrice,
+                supplierId: selectedSupplierId || undefined,
                 supplierName: supplierName.trim() || undefined,
                 supplierPhone: supplierPhone.trim() || undefined,
                 paidAmount: numericPaid,
@@ -94,6 +110,7 @@ export const InventoryPage = () => {
                 stockKg: numericStock,
                 unitPrice: numericPrice,
                 currency,
+                supplierId: selectedSupplierId || undefined,
                 supplierName: supplierName.trim() || undefined,
                 notes: notes.trim() || undefined,
                 lowStockThreshold: numericThreshold,
@@ -106,6 +123,7 @@ export const InventoryPage = () => {
         setUnitPrice('');
         setThreshold('');
         setSupplierName('');
+        setSelectedSupplierId('');
         setSupplierPhone('');
         setPaidAmount('');
         setNotes('');
@@ -120,6 +138,7 @@ export const InventoryPage = () => {
         setRestockPrice(item.unitPrice);
         setRestockCurrency(item.currency || 'AFN');
         setRestockSupplier(item.supplierName || supplier?.name || '');
+        setRestockSupplierId(supplier?.id || item.supplierId || '');
         setRestockPhone(supplier?.phone || '');
         setRestockPaid('');
         setRestockNotes('');
@@ -142,6 +161,7 @@ export const InventoryPage = () => {
             materialId: restockItem.id,
             addedWeightKg: restockWeightKg,
             newUnitPrice: Number(restockPrice),
+            supplierId: restockSupplierId || undefined,
             supplierName: restockSupplier.trim() || undefined,
             supplierPhone: restockPhone.trim() || undefined,
             paidAmount: restockPaidAmount,
@@ -513,7 +533,7 @@ export const InventoryPage = () => {
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo} ({restockCurrency})</label><select value={restockCurrency} onChange={(e) => setRestockCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select><input required type="number" min="0" step="any" value={restockPrice} onChange={(e) => setRestockPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.supplier}</label><input value={restockSupplier} onChange={(e) => { setRestockSupplier(e.target.value); const supplier = db.suppliers.find(value => value.name === e.target.value); if (supplier) setRestockPhone(supplier.phone || ''); }} list="restock-suppliers" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/><datalist id="restock-suppliers">{db.suppliers.map(supplier => <option key={supplier.id} value={supplier.name}/>)}</datalist></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.supplier}</label><input value={restockSupplier} onChange={(e) => handleRestockSupplierChange(e.target.value)} list="restock-suppliers" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/><datalist id="restock-suppliers">{db.suppliers.map(supplier => <option key={supplier.id} value={supplier.name}/>)}</datalist></div>
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.phone}</label><input type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} value={restockPhone} onChange={(e) => setRestockPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} title={t.phoneMustBe10Digits} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" dir="ltr"/></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
