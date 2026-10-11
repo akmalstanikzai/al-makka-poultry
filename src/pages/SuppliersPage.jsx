@@ -365,6 +365,8 @@ export const SuppliersPage = () => {
                                       <th className="py-2 px-3 text-start">{t.dateCol}</th>
                                       <th className="py-2 px-3 text-start">{t.transactionType}</th>
                                       <th className="py-2 px-3 text-start">{t.descOrGoods}</th>
+                                      <th className="py-2 px-3 text-start">{t.quantity}</th>
+                                      <th className="py-2 px-3 text-start">{t.unitPriceKilo}</th>
                                       <th className="py-2 px-3 text-start">{t.invoiceAmount}</th>
                                       <th className="py-2 px-3 text-start">{t.paidAmountLabel}</th>
                                       <th className="py-2 px-3 text-start">{t.remainingDebtBalance}</th>
@@ -383,16 +385,23 @@ export const SuppliersPage = () => {
                                             </span>)}
                                         </td>
                                         <td className="py-2.5 px-3 text-slate-700 font-medium">
+                                          {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
                                           {getLocalizedTxDesc(tr.description)}
                                         </td>
+                                        <td className="py-2.5 px-3 font-mono text-slate-700">
+                                          {tr.quantityKg != null ? `${Number(tr.quantityKg).toLocaleString()} kg` : '-'}
+                                        </td>
+                                        <td className="py-2.5 px-3 font-mono text-slate-700">
+                                          {tr.unitPrice != null ? `${Number(tr.unitPrice).toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
+                                        </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                                          {tr.amount ? `${tr.amount.toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
+                                          {Number(tr.amount) ? `${Number(tr.amount).toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                                          {tr.paidAmount.toLocaleString()} {tr.currency || 'AFN'}
+                                          {Number(tr.paidAmount || 0).toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-rose-700">
-                                          {tr.remainingAmount.toLocaleString()} {tr.currency || 'AFN'}
+                                          {Number(tr.accountBalanceAfter ?? tr.remainingAmount ?? 0).toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                       </tr>))}
                                   </tbody>
@@ -557,22 +566,32 @@ export const SuppliersPage = () => {
                 <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
-              {selectedHistorySupplier.transactions && selectedHistorySupplier.transactions.length > 0 ? (selectedHistorySupplier.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs shadow-2xs">
+              {selectedHistorySupplier.transactions && selectedHistorySupplier.transactions.length > 0 ? (selectedHistorySupplier.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
+                    <div className="flex justify-between items-start gap-3">
                     <div>
                       <div className="font-mono text-slate-500">{h.date}</div>
+                      {h.itemName && <div className="text-slate-900 mt-1 font-bold">{h.itemName}</div>}
                       <div className="text-slate-800 mt-0.5 font-medium">{getLocalizedTxDesc(h.description)}</div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {t.transactionType}: {getLocalizedTxType(h.type)}
                       </div>
                     </div>
-                    <div className="text-end">
+                    <div className="text-end shrink-0">
+                      <div className="font-bold font-mono text-slate-900 text-sm">
+                        {t.totalAmount}: {Number(h.amount || 0).toLocaleString()} {h.currency || 'AFN'}
+                      </div>
                       <div className="font-bold font-mono text-emerald-700 text-sm">
-                        {t.paidAmountLabel}: {h.paidAmount.toLocaleString()} {h.currency || 'AFN'}
+                        {t.paidAmountLabel}: {Number(h.paidAmount || 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
                       <div className="text-[11px] text-rose-700 font-mono mt-0.5">
-                        {t.remainingDebt}: {h.remainingAmount.toLocaleString()} {h.currency || 'AFN'}
+                        {t.remainingDebt}: {Number(h.accountBalanceAfter ?? h.remainingAmount ?? 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
                     </div>
+                    </div>
+                    {h.itemName && <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 text-[11px]">
+                      <div><span className="text-slate-500 block">{t.quantity}</span><strong className="font-mono">{Number(h.quantityKg || 0).toLocaleString()} kg</strong></div>
+                      <div><span className="text-slate-500 block">{t.unitPriceKilo}</span><strong className="font-mono">{Number(h.unitPrice || 0).toLocaleString()} {h.currency || 'AFN'}</strong></div>
+                    </div>}
                   </div>))) : (<div className="p-8 text-center text-slate-500 text-xs">
                   {t.noTxRecorded}
                 </div>)}

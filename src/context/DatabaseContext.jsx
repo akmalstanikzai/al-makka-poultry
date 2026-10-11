@@ -279,6 +279,9 @@ export const DatabaseProvider = ({ children }) => {
                 const transaction = {
                     id: `st-${Date.now()}`,
                     rawMaterialId: newId,
+                    itemName: item.name,
+                    quantityKg: item.stockKg,
+                    unitPrice: item.unitPrice,
                     date: today,
                     type: 'purchase',
                     description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
@@ -291,10 +294,11 @@ export const DatabaseProvider = ({ children }) => {
                     const sup = updatedSuppliers[existingSupIndex];
                     assignedSupplierId = sup.id;
                     newItem.supplierName = sup.name;
+                    const supplierAfterPurchase = applySupplierPurchase(sup, totalBill, paidAmount, currency);
                     const updatedSup = {
-                        ...applySupplierPurchase(sup, totalBill, paidAmount, currency),
+                        ...supplierAfterPurchase,
                         phone: supplierPhone || sup.phone,
-                        transactions: [transaction, ...sup.transactions],
+                        transactions: [{ ...transaction, accountBalanceAfter: supplierAfterPurchase[currencyField('balanceOwed', currency)] }, ...sup.transactions],
                     };
                     updatedSuppliers[existingSupIndex] = updatedSup;
                 }
@@ -312,7 +316,7 @@ export const DatabaseProvider = ({ children }) => {
                         balanceOwedUsd: currency === 'USD' ? remaining : 0,
                         goodsSettledAmount: 0,
                         goodsSettledAmountUsd: 0,
-                        transactions: [transaction],
+                        transactions: [{ ...transaction, accountBalanceAfter: remaining }],
                         createdAt: today,
                     };
                     updatedSuppliers.unshift(newSup);
@@ -353,6 +357,9 @@ export const DatabaseProvider = ({ children }) => {
                 const transaction = {
                     id: `st-${Date.now()}`,
                     rawMaterialId: materialId,
+                    itemName: material.name,
+                    quantityKg: weight,
+                    unitPrice: price,
                     date: today,
                     type: 'purchase',
                     description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
@@ -365,10 +372,11 @@ export const DatabaseProvider = ({ children }) => {
                     const supplier = updatedSuppliers[supplierIndex];
                     supplierId = supplier.id;
                     resolvedName = supplier.name;
+                    const supplierAfterPurchase = applySupplierPurchase(supplier, totalBill, paid, currency);
                     updatedSuppliers[supplierIndex] = {
-                        ...applySupplierPurchase(supplier, totalBill, paid, currency),
+                        ...supplierAfterPurchase,
                         phone: supplierPhone || supplier.phone,
-                        transactions: [transaction, ...supplier.transactions],
+                        transactions: [{ ...transaction, accountBalanceAfter: supplierAfterPurchase[currencyField('balanceOwed', currency)] }, ...supplier.transactions],
                     };
                 }
                 else {
@@ -386,7 +394,7 @@ export const DatabaseProvider = ({ children }) => {
                         balanceOwedUsd: currency === 'USD' ? remaining : 0,
                         goodsSettledAmount: 0,
                         goodsSettledAmountUsd: 0,
-                        transactions: [transaction],
+                        transactions: [{ ...transaction, accountBalanceAfter: remaining }],
                         createdAt: today,
                     });
                 }
