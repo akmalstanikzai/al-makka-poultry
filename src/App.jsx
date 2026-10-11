@@ -29,6 +29,15 @@ const AppContent = () => {
         document.documentElement.setAttribute('dir', isRtl ? 'rtl' : 'ltr');
         document.documentElement.setAttribute('lang', lang);
     }, [lang]);
+    useEffect(() => {
+        const preventNumberWheelChange = event => {
+            if (event.target instanceof HTMLInputElement && event.target.type === 'number' && document.activeElement === event.target) {
+                event.preventDefault();
+            }
+        };
+        document.addEventListener('wheel', preventNumberWheelChange, { passive: false });
+        return () => document.removeEventListener('wheel', preventNumberWheelChange);
+    }, []);
     if (isAuthLoading || (user && isDatabaseLoading)) {
         return (<div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-600 text-sm">
         {isAuthLoading ? 'Checking secure session…' : 'Loading application data…'}

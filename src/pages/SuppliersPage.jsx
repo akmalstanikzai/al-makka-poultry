@@ -40,7 +40,7 @@ export const SuppliersPage = () => {
     const handleOpenSettleModal = (s) => {
         setSettleModalSupplier(s);
         setPaymentCurrency((s.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
-        setPaymentAmount((s.balanceOwed || 0) > 0 ? s.balanceOwed : (s.balanceOwedUsd || 0));
+        setPaymentAmount('');
         setPaymentNote('');
     };
     const handleSettleSubmit = (e) => {
@@ -508,8 +508,8 @@ export const SuppliersPage = () => {
                   {t.paidAmountLabel} ({paymentCurrency}) *
                 </label>
                 <div className="relative">
-                  <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setPaymentAmount(e.target.value === 'USD' ? (settleModalSupplier.balanceOwedUsd || 0) : (settleModalSupplier.balanceOwed || 0)); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
-                  <input type="number" required min="0.01" step="any" max={paymentCurrency === 'USD' ? (settleModalSupplier.balanceOwedUsd || 0) : settleModalSupplier.balanceOwed} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setPaymentAmount(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
+                  <input type="text" required inputMode="decimal" value={paymentAmount} onChange={(e) => { const value = e.target.value.replace(/[^0-9.]/g, ''); if (/^\d*(\.\d*)?$/.test(value)) setPaymentAmount(value); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   <span className="absolute end-3 top-2.5 text-xs text-slate-500 font-medium">
                     {t.currency}
                   </span>

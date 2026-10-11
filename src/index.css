@@ -16,6 +16,24 @@
   text-align: right;
 }
 
+/* Numeric values are typed manually: hide browser stepper arrows everywhere. */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+[dir="rtl"] input[inputmode="decimal"] {
+  direction: ltr;
+  text-align: right;
+}
+
 /* Clean printing styles for reports and invoices */
 @media print {
   .no-print {
