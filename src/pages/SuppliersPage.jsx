@@ -28,6 +28,9 @@ export const SuppliersPage = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     // Expanded row IDs for inline transaction histories
     const [expandedSupplierIds, setExpandedSupplierIds] = useState({});
+    const supplierTransactionDescription = transaction => transaction.type === 'purchase' && transaction.itemName
+        ? `${t.supplierPurchaseTx}: ${transaction.itemName}`
+        : getLocalizedTxDesc(transaction.description);
     const toggleExpand = (supplierId) => {
         setExpandedSupplierIds(prev => ({
             ...prev,
@@ -386,7 +389,7 @@ export const SuppliersPage = () => {
                                         </td>
                                         <td className="py-2.5 px-3 text-slate-700 font-medium">
                                           {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
-                                          {getLocalizedTxDesc(tr.description)}
+                                          {supplierTransactionDescription(tr)}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono text-slate-700">
                                           {tr.quantityKg != null ? `${Number(tr.quantityKg).toLocaleString()} kg` : '-'}
@@ -571,7 +574,7 @@ export const SuppliersPage = () => {
                     <div>
                       <div className="font-mono text-slate-500">{h.date}</div>
                       {h.itemName && <div className="text-slate-900 mt-1 font-bold">{h.itemName}</div>}
-                      <div className="text-slate-800 mt-0.5 font-medium">{getLocalizedTxDesc(h.description)}</div>
+                      <div className="text-slate-800 mt-0.5 font-medium">{supplierTransactionDescription(h)}</div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {t.transactionType}: {getLocalizedTxType(h.type)}
                       </div>

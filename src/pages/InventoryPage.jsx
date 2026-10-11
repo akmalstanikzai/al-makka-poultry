@@ -84,7 +84,7 @@ export const InventoryPage = () => {
         }
         const numericStock = stockWeightKg;
         const numericPrice = Number(unitPrice);
-        const numericPaid = paidAmount === '' ? numericStock * numericPrice : Number(paidAmount);
+        const numericPaid = paidAmount === '' ? 0 : Math.min(Math.max(0, Number(paidAmount) || 0), numericStock * numericPrice);
         const numericThreshold = threshold === '' ? undefined : Number(threshold);
         if (existingMaterial) {
             const result = restockRawMaterial({
@@ -149,7 +149,7 @@ export const InventoryPage = () => {
         ? restockInputQuantity * 1000
         : restockUnit === 'bag' ? restockInputQuantity * 50 : restockInputQuantity;
     const restockTotal = restockWeightKg * (Number(restockPrice) || 0);
-    const restockPaidAmount = restockPaid === '' ? restockTotal : Number(restockPaid);
+    const restockPaidAmount = restockPaid === '' ? 0 : Math.min(Math.max(0, Number(restockPaid) || 0), restockTotal);
     const handleRestock = (event) => {
         event.preventDefault();
         setRestockError('');
@@ -442,7 +442,7 @@ export const InventoryPage = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {t.amountPaidLabel} ({currency})
                   </label>
-                  <input type="number" min="0" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" min="0" max={totalBillCalculated} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
               </div>
 
@@ -537,7 +537,7 @@ export const InventoryPage = () => {
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.phone}</label><input type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} value={restockPhone} onChange={(e) => setRestockPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} title={t.phoneMustBe10Digits} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" dir="ltr"/></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidAmount}</label><input type="number" min="0" step="any" value={restockPaid} onChange={(e) => setRestockPaid(e.target.value)} placeholder={restockTotal.toString()} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.amountPaidLabel}</label><input type="number" min="0" max={restockTotal} step="any" value={restockPaid} onChange={(e) => setRestockPaid(e.target.value)} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.notesDescriptionLabel}</label><input value={restockNotes} onChange={(e) => setRestockNotes(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/></div>
               </div>
               <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 grid grid-cols-2 gap-3 text-xs">

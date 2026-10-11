@@ -264,7 +264,8 @@ export const DatabaseProvider = ({ children }) => {
         const newId = `rm-${Date.now()}`;
         const currency = currencyCode(item.currency);
         const totalBill = item.stockKg * item.unitPrice;
-        const remaining = Math.max(0, totalBill - paidAmount);
+        const paid = Math.min(Math.max(0, Number(paidAmount) || 0), totalBill);
+        const remaining = Math.max(0, totalBill - paid);
         const newItem = {
             ...item,
             id: newId,
@@ -286,7 +287,7 @@ export const DatabaseProvider = ({ children }) => {
                     type: 'purchase',
                     description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
                     amount: totalBill,
-                    paidAmount: paidAmount,
+                    paidAmount: paid,
                     remainingAmount: remaining,
                     currency,
                 };
@@ -294,7 +295,7 @@ export const DatabaseProvider = ({ children }) => {
                     const sup = updatedSuppliers[existingSupIndex];
                     assignedSupplierId = sup.id;
                     newItem.supplierName = sup.name;
-                    const supplierAfterPurchase = applySupplierPurchase(sup, totalBill, paidAmount, currency);
+                    const supplierAfterPurchase = applySupplierPurchase(sup, totalBill, paid, currency);
                     const updatedSup = {
                         ...supplierAfterPurchase,
                         phone: supplierPhone || sup.phone,
@@ -310,8 +311,8 @@ export const DatabaseProvider = ({ children }) => {
                         phone: supplierPhone || '',
                         totalPurchasedAmount: currency === 'AFN' ? totalBill : 0,
                         totalPurchasedAmountUsd: currency === 'USD' ? totalBill : 0,
-                        totalPaid: currency === 'AFN' ? paidAmount : 0,
-                        totalPaidUsd: currency === 'USD' ? paidAmount : 0,
+                        totalPaid: currency === 'AFN' ? paid : 0,
+                        totalPaidUsd: currency === 'USD' ? paid : 0,
                         balanceOwed: currency === 'AFN' ? remaining : 0,
                         balanceOwedUsd: currency === 'USD' ? remaining : 0,
                         goodsSettledAmount: 0,
@@ -327,7 +328,7 @@ export const DatabaseProvider = ({ children }) => {
                 ...prev,
                 rawMaterials: [newItem, ...prev.rawMaterials],
                 suppliers: updatedSuppliers,
-                ...cashPatch(prev, -paidAmount, currency),
+                ...cashPatch(prev, -paid, currency),
             };
         });
     };
