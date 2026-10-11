@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, X, RefreshCw } from 'lucide-react';
 const normalizeSupplierName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 export const InventoryPage = () => {
     const { db, t, lang, addRawMaterial, restockRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -38,7 +39,7 @@ export const InventoryPage = () => {
         const normalizedName = value.trim().toLowerCase();
         const existing = db.rawMaterials.find(item => item.name.trim().toLowerCase() === normalizedName);
         if (!existing) return;
-        setUnitPrice(existing.unitPrice ?? '');
+        setUnitPrice((Number(existing.unitPrice) || 0) * unitMultiplierKg(stockUnit));
         setCurrency(existing.currency || 'AFN');
         setThreshold(existing.lowStockThreshold ?? '');
         const supplier = db.suppliers.find(item => item.id === existing.supplierId || normalizeSupplierName(item.name) === normalizeSupplierName(existing.supplierName));
@@ -65,11 +66,12 @@ export const InventoryPage = () => {
         }
     };
     const stockInputQuantity = Number(stockKg) || 0;
-    const stockWeightKg = stockUnit === 'ton'
-        ? stockInputQuantity * 1000
-        : stockUnit === 'bag' ? stockInputQuantity * 50 : stockInputQuantity;
+    const stockUnitMultiplier = unitMultiplierKg(stockUnit);
+    const stockWeightKg = stockInputQuantity * stockUnitMultiplier;
     const existingMaterial = db.rawMaterials.find(item => item.name.trim().toLowerCase() === itemName.trim().toLowerCase());
-    const totalBillCalculated = stockWeightKg * (Number(unitPrice) || 0);
+    const enteredUnitPrice = Number(unitPrice) || 0;
+    const purchasePricePerKg = enteredUnitPrice / stockUnitMultiplier;
+    const totalBillCalculated = stockInputQuantity * enteredUnitPrice;
     const remainingCalculated = Math.max(0, totalBillCalculated - (Number(paidAmount) || 0));
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -83,8 +85,8 @@ export const InventoryPage = () => {
             return;
         }
         const numericStock = stockWeightKg;
-        const numericPrice = Number(unitPrice);
-        const numericPaid = paidAmount === '' ? 0 : Math.min(Math.max(0, Number(paidAmount) || 0), numericStock * numericPrice);
+        const numericPrice = purchasePricePerKg;
+        const numericPaid = paidAmount === '' ? 0 : Math.min(Math.max(0, Number(paidAmount) || 0), totalBillCalculated);
         const numericThreshold = threshold === '' ? undefined : Number(threshold);
         if (existingMaterial) {
             const result = restockRawMaterial({
@@ -145,10 +147,11 @@ export const InventoryPage = () => {
         setRestockError('');
     };
     const restockInputQuantity = Number(restockQuantity) || 0;
-    const restockWeightKg = restockUnit === 'ton'
-        ? restockInputQuantity * 1000
-        : restockUnit === 'bag' ? restockInputQuantity * 50 : restockInputQuantity;
-    const restockTotal = restockWeightKg * (Number(restockPrice) || 0);
+    const restockUnitMultiplier = unitMultiplierKg(restockUnit);
+    const restockWeightKg = restockInputQuantity * restockUnitMultiplier;
+    const restockEnteredUnitPrice = Number(restockPrice) || 0;
+    const restockPricePerKg = restockEnteredUnitPrice / restockUnitMultiplier;
+    const restockTotal = restockInputQuantity * restockEnteredUnitPrice;
     const restockPaidAmount = restockPaid === '' ? 0 : Math.min(Math.max(0, Number(restockPaid) || 0), restockTotal);
     const handleRestock = (event) => {
         event.preventDefault();
@@ -160,7 +163,7 @@ export const InventoryPage = () => {
         const result = restockRawMaterial({
             materialId: restockItem.id,
             addedWeightKg: restockWeightKg,
-            newUnitPrice: Number(restockPrice),
+            newUnitPrice: restockPricePerKg,
             supplierId: restockSupplierId || undefined,
             supplierName: restockSupplier.trim() || undefined,
             supplierPhone: restockPhone.trim() || undefined,
@@ -392,7 +395,7 @@ export const InventoryPage = () => {
                   </label>
                   <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2">
                     <input type="number" min="0.001" step="any" required value={stockKg} onChange={(e) => setStockKg(e.target.value)} placeholder="5000" className="min-w-0 w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
-                    <select value={stockUnit} onChange={(e) => setStockUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:border-amber-600"><option value="kg">{t.unitKg}</option><option value="bag">{t.unitBag50kg}</option><option value="ton">{t.unitTon1000kg}</option></select>
+                    <select value={stockUnit} onChange={(e) => { setStockUnit(e.target.value); setUnitPrice(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:border-amber-600"><option value="kg">{t.unitKg}</option><option value="bag">{t.unitBag50kg}</option><option value="ton">{t.unitTon1000kg}</option></select>
                   </div>
                   {stockWeightKg > 0 && (<span className="text-[11px] text-slate-500 mt-1 block font-medium">
                       = {stockWeightKg.toLocaleString()} {t.kilo} · {(stockWeightKg / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} {t.ton} · {(stockWeightKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag}
@@ -401,10 +404,10 @@ export const InventoryPage = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t.unitPriceKilo} ({currency}) *
+                    {t.purchasePricePerSelectedUnit} — {t[stockUnit] || stockUnit} ({currency}) *
                   </label>
                   <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
-                  <input type="number" min="0" step="any" required value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="25" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="number" min="0" step="any" required value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
               </div>
 
@@ -457,6 +460,7 @@ export const InventoryPage = () => {
               <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex items-center justify-between">
                 <div>
                   <span className="text-xs text-slate-600 block">{t.totalBill}: <strong className="font-mono text-slate-900">{totalBillCalculated.toLocaleString()} {currency}</strong></span>
+                  <span className="text-[10px] text-slate-500 block">{stockInputQuantity.toLocaleString()} {t[stockUnit] || stockUnit} × {enteredUnitPrice.toLocaleString()} {currency}</span>
                   <span className="text-xs text-rose-700 block mt-0.5">{t.remainingDebt}: <strong className="font-mono">{remainingCalculated.toLocaleString()} {currency}</strong></span>
                 </div>
                 <div className="text-end">
@@ -528,9 +532,9 @@ export const InventoryPage = () => {
             </div>
             <form onSubmit={handleRestock} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={restockUnit} onChange={(e) => setRestockUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="kg">{t.kg}</option><option value="bag">{t.bag}</option><option value="ton">{t.ton}</option></select></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.purchaseUnit}</label><select value={restockUnit} onChange={(e) => { setRestockUnit(e.target.value); setRestockPrice(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="kg">{t.kg}</option><option value="bag">{t.bag}</option><option value="ton">{t.ton}</option></select></div>
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity}</label><input required type="number" min="0.001" step="any" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo} ({restockCurrency})</label><select value={restockCurrency} onChange={(e) => setRestockCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select><input required type="number" min="0" step="any" value={restockPrice} onChange={(e) => setRestockPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.purchasePricePerSelectedUnit} — {t[restockUnit] || restockUnit} ({restockCurrency})</label><select value={restockCurrency} onChange={(e) => setRestockCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select><input required type="number" min="0" step="any" value={restockPrice} onChange={(e) => setRestockPrice(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.supplier}</label><input value={restockSupplier} onChange={(e) => handleRestockSupplierChange(e.target.value)} list="restock-suppliers" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/><datalist id="restock-suppliers">{db.suppliers.map(supplier => <option key={supplier.id} value={supplier.name}/>)}</datalist></div>
@@ -541,7 +545,7 @@ export const InventoryPage = () => {
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.notesDescriptionLabel}</label><input value={restockNotes} onChange={(e) => setRestockNotes(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"/></div>
               </div>
               <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 grid grid-cols-2 gap-3 text-xs">
-                <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{restockTotal.toLocaleString()} {restockCurrency}</strong></div>
+                <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{restockTotal.toLocaleString()} {restockCurrency}</strong><span className="block text-[10px] text-slate-500">{restockInputQuantity.toLocaleString()} {t[restockUnit] || restockUnit} × {restockEnteredUnitPrice.toLocaleString()} {restockCurrency}</span></div>
                 <div><span className="text-slate-500 block">{t.remainingSupplierBill}</span><strong className="font-mono text-rose-700">{Math.max(0, restockTotal - restockPaidAmount).toLocaleString()} {restockCurrency}</strong></div>
               </div>
               <div className="flex gap-3 pt-2"><button type="button" onClick={() => setRestockItem(null)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-700">{t.cancel}</button><button type="submit" className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold">{lang === 'fa' ? 'ثبت افزایش موجودی' : lang === 'ps' ? 'ذخیره ثبتول' : 'Save restock'}</button></div>
