@@ -35,6 +35,21 @@ const applySupplierPurchase = (supplier, purchaseAmount, paidAmount, currency) =
         [balanceField]: Math.max(0, updated[purchaseField] - updated[paidField] - (Number(updated[settledField]) || 0)),
     };
 };
+const applyCustomerSale = (customer, purchaseAmount, paidAmount, currency) => {
+    const purchaseField = currencyField('totalPurchasedAmount', currency);
+    const paidField = currencyField('totalPaid', currency);
+    const balanceField = currencyField('balanceOwed', currency);
+    const rawSettledField = currencyField('rawSettledAmount', currency);
+    const updated = {
+        ...customer,
+        [purchaseField]: (Number(customer[purchaseField]) || 0) + (Number(purchaseAmount) || 0),
+        [paidField]: (Number(customer[paidField]) || 0) + (Number(paidAmount) || 0),
+    };
+    return {
+        ...updated,
+        [balanceField]: Math.max(0, updated[purchaseField] - updated[paidField] - (Number(updated[rawSettledField]) || 0)),
+    };
+};
 const cashPatch = (state, amount, currency) => currencyCode(currency) === 'USD' ? { cashInHandUsd: (state.cashInHandUsd || 0) + amount } : { cashInHand: (state.cashInHand || 0) + amount };
 export const DatabaseProvider = ({ children }) => {
     const [lang, setLangState] = useState(() => {
@@ -817,13 +832,14 @@ export const DatabaseProvider = ({ children }) => {
         }
         const currency = currencyCode(saleData.currency);
         const totalAmount = saleData.unitQuantity * saleData.salePricePerUnit;
+        const paidAmount = Math.min(Math.max(0, Number(saleData.paidAmount) || 0), totalAmount);
         if (saleData.customerPhone?.trim() && !/^\d{10}$/.test(saleData.customerPhone.trim())) {
             return { success: false, error: t.phoneMustBe10Digits };
         }
-        if (saleData.paidAmount > totalAmount) {
+        if (Number(saleData.paidAmount) > totalAmount) {
             return { success: false, error: t.paidAmountExceedsTotal };
         }
-        const remainingAmount = Math.max(0, totalAmount - saleData.paidAmount);
+        const remainingAmount = Math.max(0, totalAmount - paidAmount);
         const costRatePerKg = product ? (product.averageCostPerKg || 0) : 0;
         const costRatePerKgUsd = product ? (product.averageCostPerKgUsd || 0) : 0;
         const totalCostOfGoods = costRatePerKg * quantityKg;
@@ -850,7 +866,7 @@ export const DatabaseProvider = ({ children }) => {
             totalCostOfGoodsUsd,
             profit,
             profitUsd,
-            paidAmount: saleData.paidAmount,
+            paidAmount,
             remainingAmount,
             notes: saleData.notes?.trim(),
             currency,
@@ -884,17 +900,18 @@ export const DatabaseProvider = ({ children }) => {
                 type: 'sale',
                 description: `فروش ${saleData.productName} (${saleData.unitQuantity} ${t[saleData.unitType] || saleData.unitType})`,
                 amount: totalAmount,
-                paidAmount: saleData.paidAmount,
+                paidAmount,
                 remainingAmount: remainingAmount,
+                currency,
             };
             if (existingCustIndex >= 0) {
                 const existing = updatedCustomers[existingCustIndex];
                 assignedCustId = existing.id;
+                const customerAfterSale = applyCustomerSale(existing, totalAmount, paidAmount, currency);
                 const updatedCust = {
-                    ...existing,
+                    ...customerAfterSale,
                     phone: saleData.customerPhone || existing.phone,
-                    ...addCurrencyValue(addCurrencyValue(addCurrencyValue(existing, 'totalPurchasedAmount', totalAmount, currency), 'totalPaid', saleData.paidAmount, currency), 'balanceOwed', remainingAmount, currency),
-                    transactions: [customerTransaction, ...existing.transactions],
+                    transactions: [{ ...customerTransaction, accountBalanceAfter: customerAfterSale[currencyField('balanceOwed', currency)] }, ...existing.transactions],
                 };
                 updatedCustomers[existingCustIndex] = updatedCust;
             }
@@ -906,13 +923,13 @@ export const DatabaseProvider = ({ children }) => {
                     phone: saleData.customerPhone || '',
                     totalPurchasedAmount: currency === 'AFN' ? totalAmount : 0,
                     totalPurchasedAmountUsd: currency === 'USD' ? totalAmount : 0,
-                    totalPaid: currency === 'AFN' ? saleData.paidAmount : 0,
-                    totalPaidUsd: currency === 'USD' ? saleData.paidAmount : 0,
+                    totalPaid: currency === 'AFN' ? paidAmount : 0,
+                    totalPaidUsd: currency === 'USD' ? paidAmount : 0,
                     rawSettledAmount: 0,
                     rawSettledAmountUsd: 0,
                     balanceOwed: currency === 'AFN' ? remainingAmount : 0,
                     balanceOwedUsd: currency === 'USD' ? remainingAmount : 0,
-                    transactions: [customerTransaction],
+                    transactions: [{ ...customerTransaction, accountBalanceAfter: remainingAmount }],
                     createdAt: today,
                 };
                 updatedCustomers.unshift(newCust);
@@ -923,7 +940,7 @@ export const DatabaseProvider = ({ children }) => {
                 processedStock: updatedProcessedStock,
                 customers: updatedCustomers,
                 sales: [newSale, ...prev.sales],
-                ...cashPatch(prev, saleData.paidAmount, currency),
+                ...cashPatch(prev, paidAmount, currency),
             };
         })();
         const saved = await writeStateToSupabase(nextState);

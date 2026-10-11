@@ -36,7 +36,7 @@ export const SalesPage = () => {
     const priceNumber = Number(salePricePerUnit) || 0;
     const totalQuantityKg = getKg(unitType, qtyNumber);
     const totalInvoiceAmount = qtyNumber * priceNumber;
-    const paidNumber = paidAmount === '' ? totalInvoiceAmount : Number(paidAmount) || 0;
+    const paidNumber = paidAmount === '' ? 0 : Math.max(0, Number(paidAmount) || 0);
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
     // Handle selecting existing customer
     const handleCustomerNameChange = (name) => {
@@ -381,7 +381,7 @@ export const SalesPage = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({currency})</label>
-                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={t.defaultFullPayment} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
                 <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2">
                   <span className="text-xs text-rose-700 block">{t.remainingDebtAmount}</span>
