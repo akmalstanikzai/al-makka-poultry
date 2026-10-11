@@ -3,7 +3,7 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 export const SalesPage = () => {
-    const { db, t, lang, recordSale, getLocalizedName } = useDatabase();
+    const { db, t, lang, recordSale } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPaymentFilter, setSelectedPaymentFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,7 +24,6 @@ export const SalesPage = () => {
     const [isSaving, setIsSaving] = useState(false);
     // Selected Product details
     const selectedProduct = db.processedStock.find(p => p.id === productId);
-    const costRatePerKg = { AFN: selectedProduct?.averageCostPerKg || 0, USD: selectedProduct?.averageCostPerKgUsd || 0 };
     // Quantity in kg calculation
     const getKg = (unit, qty) => {
         if (unit === 'bag')
@@ -39,10 +38,6 @@ export const SalesPage = () => {
     const totalInvoiceAmount = qtyNumber * priceNumber;
     const paidNumber = paidAmount === '' ? totalInvoiceAmount : Number(paidAmount) || 0;
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
-    const totalCostOfGoods = { AFN: costRatePerKg.AFN * totalQuantityKg, USD: costRatePerKg.USD * totalQuantityKg };
-    const estimatedProfit = { AFN: (currency === 'AFN' ? totalInvoiceAmount : 0) - totalCostOfGoods.AFN, USD: (currency === 'USD' ? totalInvoiceAmount : 0) - totalCostOfGoods.USD };
-    const unitMultiplier = unitType === 'bag' ? 50 : unitType === 'ton' ? 1000 : 1;
-    const costPerSelectedUnit = { AFN: costRatePerKg.AFN * unitMultiplier, USD: costRatePerKg.USD * unitMultiplier };
     // Handle selecting existing customer
     const handleCustomerNameChange = (name) => {
         setCustomerName(name);
@@ -92,7 +87,7 @@ export const SalesPage = () => {
         // Check stock if product exists in processed stock
         if (selectedProduct) {
             if (selectedProduct.stockKg < totalQuantityKg) {
-                setSaveStatus({ type: 'error', text: `${t.insufficientStockOfItem} "${getLocalizedName(selectedProduct.name)}"! ${t.currentStockLabel}: ${selectedProduct.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${totalQuantityKg.toLocaleString()} ${t.kilo}.` });
+                setSaveStatus({ type: 'error', text: `${t.insufficientStockOfItem} "${selectedProduct.name}"! ${t.currentStockLabel}: ${selectedProduct.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${totalQuantityKg.toLocaleString()} ${t.kilo}.` });
                 return;
             }
         }
@@ -266,7 +261,7 @@ export const SalesPage = () => {
                       {sale.customerPhone && (<div className="text-[11px] text-slate-500 font-mono" dir="ltr">{sale.customerPhone}</div>)}
                     </td>
                     <td className="py-3.5 px-4 font-medium text-slate-800">
-                      {getLocalizedName(sale.productName)}
+                      {sale.productName}
                     </td>
                     <td className="py-3.5 px-4 font-mono">
                       <strong>{sale.unitQuantity}</strong> {t[sale.unitType] || sale.unitType}
@@ -324,12 +319,18 @@ export const SalesPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-              <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">{t.productName} *</label>
                 <select required value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium cursor-pointer">
                   {!db.processedStock.length && <option value="">{t.noProcessedMaterials}</option>}
-                  {db.processedStock.map(p => (<option key={p.id} value={p.id}>{getLocalizedName(p.name)} — {p.stockKg.toLocaleString()} {t.kilo} ({(p.stockKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})</option>))}
+                  {db.processedStock.map(p => (<option key={p.id} value={p.id}>{p.name} — {p.stockKg.toLocaleString()} {t.kilo} ({(p.stockKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})</option>))}
                 </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.currency} *</label>
+                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold"><option value="AFN">AFN</option><option value="USD">USD</option></select>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -351,7 +352,7 @@ export const SalesPage = () => {
 
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label>
                   <select value={unitType} onChange={(e) => { setUnitType(e.target.value); setUnitQuantity(''); setSalePricePerUnit(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select>
@@ -362,32 +363,11 @@ export const SalesPage = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} — {t[unitType] || unitType} ({currency}) *</label>
-                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
                   <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({currency})</label>
-                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
-                </div>
               </div>
 
-              <div className="p-4 rounded-xl border-2 border-amber-300 bg-amber-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <span className="text-xs font-bold text-amber-800 block">{t.costRateNotice}</span>
-                  <strong className="text-2xl font-black font-mono text-slate-950">
-                    {costRatePerKg.AFN.toFixed(2)} AFN · {costRatePerKg.USD.toFixed(4)} USD/{t.kilo}
-                  </strong>
-                </div>
-                <div className="sm:text-end">
-                  <span className="text-[11px] font-semibold text-slate-600 block">{t.productionCostForSelectedUnit}</span>
-                  <strong className="text-base font-black font-mono text-amber-900">
-                    {costPerSelectedUnit.AFN.toFixed(2)} AFN · {costPerSelectedUnit.USD.toFixed(4)} USD/{t[unitType] || unitType}
-                  </strong>
-                </div>
-              </div>
-
-              {/* Calculation Summary Box */}
-              <div className="p-4 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2 text-xs">
+              <div className="p-4 bg-amber-50/70 rounded-xl border-2 border-amber-300 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalSaleWeight}</span>
                   <strong className="font-mono text-slate-900">{totalQuantityKg.toLocaleString()} {t.kilo} ({qtyNumber} {t[unitType] || unitType})</strong>
@@ -396,14 +376,17 @@ export const SalesPage = () => {
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
                   <span className="text-end"><strong className="font-mono text-amber-800 text-sm block">{totalInvoiceAmount.toLocaleString()} {currency}</strong><span className="text-[10px] text-slate-500">{qtyNumber.toLocaleString()} {t[unitType] || unitType} × {priceNumber.toLocaleString()} {currency}</span></span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">{t.remainingDebtAmount}</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.paidCashAmount} ({currency})</label>
+                  <input type="number" min="0" max={totalInvoiceAmount || undefined} step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder={`${t.defaultFullPayment}: ${totalInvoiceAmount.toLocaleString()}`} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
+                </div>
+                <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2">
+                  <span className="text-xs text-rose-700 block">{t.remainingDebtAmount}</span>
                   <strong className="font-mono text-rose-700">{remainingDebt.toLocaleString()} {currency}</strong>
                 </div>
-                {showCostRate && (<div className="flex justify-between pt-2 border-t border-amber-200 text-emerald-700 font-bold">
-                    <span>{t.estimatedGrossProfit}</span>
-                    <span className="font-mono">+{estimatedProfit.AFN.toLocaleString()} AFN · {estimatedProfit.USD.toLocaleString()} USD</span>
-                  </div>)}
               </div>
 
               <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t.invoiceNotesPlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/>
@@ -491,7 +474,7 @@ export const SalesPage = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 print:divide-stone-300">
                     <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900">{getLocalizedName(selectedInvoice.productName)}</td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-900">{selectedInvoice.productName}</td>
                       <td className="py-2.5 px-3 font-mono">{selectedInvoice.unitQuantity} {t[selectedInvoice.unitType] || selectedInvoice.unitType} ({selectedInvoice.quantityKg.toLocaleString()} {t.kilo})</td>
                       <td className="py-2.5 px-3 font-mono">{selectedInvoice.salePricePerUnit.toLocaleString()} {selectedInvoice.currency || 'AFN'}</td>
                       <td className="py-2.5 px-3 font-mono font-bold text-end">{selectedInvoice.totalAmount.toLocaleString()}</td>
