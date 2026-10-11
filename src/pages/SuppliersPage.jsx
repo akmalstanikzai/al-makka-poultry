@@ -461,9 +461,9 @@ export const SuppliersPage = () => {
           <form onSubmit={handleGoodsSettlement} className="space-y-3">
             <div><EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{getLocalizedName(product.name)} — {product.stockKg.toLocaleString()} {t.kilo}</option>)}</select></EditField></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>setGoodsUnit(event.target.value)} className={controlClass}><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></EditField>
+              <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>{setGoodsUnit(event.target.value);setGoodsPrice('');}} className={controlClass}><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></EditField>
               <EditField label={t.quantity}><input required type="number" min="0.001" step="any" value={goodsQuantity} onChange={event=>setGoodsQuantity(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
-              <EditField label={`${t.salePrice} (${goodsCurrency})`}><input required type="number" min="0.001" step="any" value={goodsPrice} onChange={event=>setGoodsPrice(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
+              <EditField label={`${t.salePrice} — ${t[goodsUnit] || goodsUnit} (${goodsCurrency})`}><input required type="number" min="0.001" step="any" value={goodsPrice} onChange={event=>setGoodsPrice(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <EditField label={t.currency}><select value={goodsCurrency} onChange={event=>setGoodsCurrency(event.target.value)} className={controlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></EditField>
@@ -471,7 +471,7 @@ export const SuppliersPage = () => {
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
               <div><span className="text-slate-500 block">{t.stockToDeduct}</span><strong className="font-mono text-slate-900">{goodsWeightKg.toLocaleString()} {t.kilo}</strong>{goodsProduct&&<span className="block text-[10px] text-slate-500">{t.currentStockLabel}: {goodsProduct.stockKg.toLocaleString()} {t.kilo}</span>}</div>
-              <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{goodsTotal.toLocaleString()} {goodsCurrency}</strong></div>
+              <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{goodsTotal.toLocaleString()} {goodsCurrency}</strong><span className="block text-[10px] text-slate-500">{goodsQuantityNumber.toLocaleString()} {t[goodsUnit] || goodsUnit} × {goodsPriceNumber.toLocaleString()} {goodsCurrency}</span></div>
               <div><span className="text-slate-500 block">{t.supplierDebtReduction}</span><strong className="font-mono text-emerald-700">{goodsDebtOffset.toLocaleString()} {goodsCurrency}</strong></div>
               <div><span className="text-slate-500 block">{t.customerDebtCreated}</span><strong className="font-mono text-rose-700">{goodsCustomerDebt.toLocaleString()} {goodsCurrency}</strong></div>
             </div>

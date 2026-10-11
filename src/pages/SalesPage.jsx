@@ -361,7 +361,7 @@ export const SalesPage = () => {
                   <input type="number" min="0.001" step="any" required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} ({currency}) *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} — {t[unitType] || unitType} ({currency}) *</label>
                   <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
                   <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
                 </div>
@@ -394,7 +394,7 @@ export const SalesPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
-                  <strong className="font-mono text-amber-800 text-sm">{totalInvoiceAmount.toLocaleString()} {currency}</strong>
+                  <span className="text-end"><strong className="font-mono text-amber-800 text-sm block">{totalInvoiceAmount.toLocaleString()} {currency}</strong><span className="text-[10px] text-slate-500">{qtyNumber.toLocaleString()} {t[unitType] || unitType} × {priceNumber.toLocaleString()} {currency}</span></span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.remainingDebtAmount}</span>

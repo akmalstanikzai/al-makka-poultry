@@ -592,6 +592,9 @@ export const DatabaseProvider = ({ children }) => {
             const newSupplierBalance = Math.max(0, (Number(supplier[balanceField]) || 0) - offsetAmount);
             const supplierTransaction = {
                 id: `st-${timestamp}`,
+                itemName: product.name,
+                quantityKg,
+                unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
                 date: today,
                 type: 'goods_settlement',
                 description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
@@ -601,7 +604,6 @@ export const DatabaseProvider = ({ children }) => {
                 accountBalanceAfter: newSupplierBalance,
                 currency,
                 productId: product.id,
-                quantityKg,
                 customerDebt,
             };
             const updatedSuppliers = db.suppliers.map(item => item.id === supplier.id ? {
@@ -616,9 +618,9 @@ export const DatabaseProvider = ({ children }) => {
             const updatedCustomers = [...db.customers];
             const customerTransaction = {
                 id: `ct-${timestamp}`,
-                itemName: name,
+                itemName: product.name,
                 quantityKg,
-                unitPrice,
+                unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
                 date: today,
                 type: 'sale',
                 description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
@@ -962,6 +964,9 @@ export const DatabaseProvider = ({ children }) => {
             const newCustomerBalance = Math.max(0, (Number(customer[customerBalanceField]) || 0) - customerOffset);
             const customerTransaction = {
                 id: `ct-${timestamp}`,
+                itemName: name,
+                quantityKg,
+                unitPrice,
                 date: today,
                 type: 'raw_goods_settlement',
                 description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
