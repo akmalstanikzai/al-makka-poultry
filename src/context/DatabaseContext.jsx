@@ -20,6 +20,21 @@ const currencyCode = value => value === 'USD' ? 'USD' : 'AFN';
 const normalizePartyName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 const currencyField = (field, currency) => currencyCode(currency) === 'USD' ? field + 'Usd' : field;
 const addCurrencyValue = (record, field, amount, currency) => ({ ...record, [currencyField(field, currency)]: (Number(record[currencyField(field, currency)]) || 0) + (Number(amount) || 0) });
+const applySupplierPurchase = (supplier, purchaseAmount, paidAmount, currency) => {
+    const purchaseField = currencyField('totalPurchasedAmount', currency);
+    const paidField = currencyField('totalPaid', currency);
+    const balanceField = currencyField('balanceOwed', currency);
+    const settledField = currencyField('goodsSettledAmount', currency);
+    const updated = {
+        ...supplier,
+        [purchaseField]: (Number(supplier[purchaseField]) || 0) + (Number(purchaseAmount) || 0),
+        [paidField]: (Number(supplier[paidField]) || 0) + (Number(paidAmount) || 0),
+    };
+    return {
+        ...updated,
+        [balanceField]: Math.max(0, updated[purchaseField] - updated[paidField] - (Number(updated[settledField]) || 0)),
+    };
+};
 const cashPatch = (state, amount, currency) => currencyCode(currency) === 'USD' ? { cashInHandUsd: (state.cashInHandUsd || 0) + amount } : { cashInHand: (state.cashInHand || 0) + amount };
 export const DatabaseProvider = ({ children }) => {
     const [lang, setLangState] = useState(() => {
@@ -277,9 +292,8 @@ export const DatabaseProvider = ({ children }) => {
                     assignedSupplierId = sup.id;
                     newItem.supplierName = sup.name;
                     const updatedSup = {
-                        ...sup,
+                        ...applySupplierPurchase(sup, totalBill, paidAmount, currency),
                         phone: supplierPhone || sup.phone,
-                        ...addCurrencyValue(addCurrencyValue(addCurrencyValue(sup, 'totalPurchasedAmount', totalBill, currency), 'totalPaid', paidAmount, currency), 'balanceOwed', remaining, currency),
                         transactions: [transaction, ...sup.transactions],
                     };
                     updatedSuppliers[existingSupIndex] = updatedSup;
@@ -352,9 +366,8 @@ export const DatabaseProvider = ({ children }) => {
                     supplierId = supplier.id;
                     resolvedName = supplier.name;
                     updatedSuppliers[supplierIndex] = {
-                        ...supplier,
+                        ...applySupplierPurchase(supplier, totalBill, paid, currency),
                         phone: supplierPhone || supplier.phone,
-                        ...addCurrencyValue(addCurrencyValue(addCurrencyValue(supplier, 'totalPurchasedAmount', totalBill, currency), 'totalPaid', paid, currency), 'balanceOwed', remaining, currency),
                         transactions: [transaction, ...supplier.transactions],
                     };
                 }
