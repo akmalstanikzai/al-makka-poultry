@@ -198,6 +198,10 @@ export async function loadStateFromSupabase() {
                 .filter(tx => tx.customer_id === c.id)
                 .map(tx => ({
                 id: tx.id,
+                itemName: tx.item_name || undefined,
+                quantityKg: tx.quantity_kg == null ? undefined : Number(tx.quantity_kg),
+                unitPrice: tx.unit_price == null ? undefined : Number(tx.unit_price),
+                accountBalanceAfter: tx.account_balance_after == null ? undefined : Number(tx.account_balance_after),
                 date: tx.date,
                 type: tx.type,
                 description: tx.description,
@@ -425,6 +429,10 @@ export async function writeStateToSupabase(state) {
             const custTxRows = state.customers.flatMap(c => c.transactions.map(t => ({
                 id: t.id,
                 customer_id: c.id,
+                item_name: t.itemName || null,
+                quantity_kg: t.quantityKg ?? null,
+                unit_price: t.unitPrice ?? null,
+                account_balance_after: t.accountBalanceAfter ?? null,
                 date: t.date,
                 type: t.type,
                 description: t.description,

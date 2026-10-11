@@ -3,7 +3,7 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
 export const CustomersPage = () => {
-    const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
@@ -28,6 +28,9 @@ export const CustomersPage = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     // Expanded row IDs for inline transaction histories
     const [expandedCustomerIds, setExpandedCustomerIds] = useState({});
+    const customerTransactionDescription = transaction => transaction.type === 'raw_goods_settlement' && transaction.itemName
+        ? `${t.customerRawSettlement}: ${transaction.itemName}`
+        : getLocalizedTxDesc(transaction.description);
     const toggleExpand = (customerId) => {
         setExpandedCustomerIds(prev => ({
             ...prev,
@@ -105,7 +108,9 @@ export const CustomersPage = () => {
     };
     // Aggregated totals
     const totalSalesAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };
-    const totalPaidAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPaid||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPaidUsd||0),0) };
+    const totalCashReceivedAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPaid||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPaidUsd||0),0) };
+    const totalRawSettledAll = { AFN: db.customers.reduce((a,c)=>a+(c.rawSettledAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.rawSettledAmountUsd||0),0) };
+    const totalSettledAll = { AFN: totalCashReceivedAll.AFN + totalRawSettledAll.AFN, USD: totalCashReceivedAll.USD + totalRawSettledAll.USD };
     const totalReceivableDebtAll = { AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
     const debtorCount = db.customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length;
     const filteredCustomers = db.customers.filter(c => {
@@ -166,11 +171,12 @@ export const CustomersPage = () => {
 
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500">{t.cashReceived}</span>
+            <span className="text-xs font-semibold text-slate-500">{t.totalSettledByCustomer}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalPaidAll.AFN.toLocaleString()} AFN · {totalPaidAll.USD.toLocaleString()} USD
+              {totalSettledAll.AFN.toLocaleString()} AFN · {totalSettledAll.USD.toLocaleString()} USD
             </div>
-            <span className="text-xs text-emerald-600">{t.receivedFromCustomers}</span>
+            <span className="text-[10px] text-emerald-700 block">{t.cashReceivedFromCustomer}: {totalCashReceivedAll.AFN.toLocaleString()} AFN · {totalCashReceivedAll.USD.toLocaleString()} USD</span>
+            <span className="text-[10px] text-emerald-600 block">{t.nonCashRawSettled}: {totalRawSettledAll.AFN.toLocaleString()} AFN · {totalRawSettledAll.USD.toLocaleString()} USD</span>
           </div>
           <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200">
             <Wallet className="w-6 h-6"/>
@@ -233,7 +239,7 @@ export const CustomersPage = () => {
                 <th className="py-3.5 px-4 text-start">{t.nameAndFarm}</th>
                 <th className="py-3.5 px-4 text-start">{t.contactAndAddress}</th>
                 <th className="py-3.5 px-4 text-start">{t.totalCustomerPurchases}</th>
-                <th className="py-3.5 px-4 text-start">{t.cashPaid}</th>
+                <th className="py-3.5 px-4 text-start">{t.totalSettledByCustomer}</th>
                 <th className="py-3.5 px-4 text-start">{t.remainingDebt}</th>
                 <th className="py-3.5 px-4 text-center">{t.transactionHistory}</th>
                 <th className="py-3.5 px-4 text-center">{t.financialActions}</th>
@@ -290,8 +296,9 @@ export const CustomersPage = () => {
 
                       {/* Total Payments */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
-                        {cust.totalPaid.toLocaleString()} AFN · {(cust.totalPaidUsd || 0).toLocaleString()} USD
-                        {((cust.rawSettledAmount || 0) > 0 || (cust.rawSettledAmountUsd || 0) > 0) && <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashRawSettled}: {(cust.rawSettledAmount || 0).toLocaleString()} AFN · {(cust.rawSettledAmountUsd || 0).toLocaleString()} USD</span>}
+                        {((cust.totalPaid || 0) + (cust.rawSettledAmount || 0)).toLocaleString()} AFN · {((cust.totalPaidUsd || 0) + (cust.rawSettledAmountUsd || 0)).toLocaleString()} USD
+                        <span className="block text-[10px] font-medium text-emerald-700 mt-0.5">{t.cashReceivedFromCustomer}: {(cust.totalPaid || 0).toLocaleString()} AFN · {(cust.totalPaidUsd || 0).toLocaleString()} USD</span>
+                        <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashRawSettled}: {(cust.rawSettledAmount || 0).toLocaleString()} AFN · {(cust.rawSettledAmountUsd || 0).toLocaleString()} USD</span>
                       </td>
 
                       {/* Remaining Debt */}
@@ -362,8 +369,10 @@ export const CustomersPage = () => {
                                       <th className="py-2 px-3 text-start">{t.dateCol}</th>
                                       <th className="py-2 px-3 text-start">{t.transactionType}</th>
                                       <th className="py-2 px-3 text-start">{t.descOrGoods}</th>
+                                      <th className="py-2 px-3 text-start">{t.quantity}</th>
+                                      <th className="py-2 px-3 text-start">{t.unitPriceKilo}</th>
                                       <th className="py-2 px-3 text-start">{t.invoiceAmount}</th>
-                                      <th className="py-2 px-3 text-start">{t.paidAmountLabel}</th>
+                                      <th className="py-2 px-3 text-start">{t.paymentOrDebtReduction}</th>
                                       <th className="py-2 px-3 text-start">{t.remainingDebtBalance}</th>
                                     </tr>
                                   </thead>
@@ -380,16 +389,23 @@ export const CustomersPage = () => {
                                             </span>)}
                                         </td>
                                         <td className="py-2.5 px-3 text-slate-700 font-medium">
-                                          {getLocalizedTxDesc(tr.description)}
+                                          {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
+                                          {customerTransactionDescription(tr)}
+                                        </td>
+                                        <td className="py-2.5 px-3 font-mono text-slate-700">
+                                          {tr.quantityKg != null ? `${Number(tr.quantityKg).toLocaleString()} kg` : '-'}
+                                        </td>
+                                        <td className="py-2.5 px-3 font-mono text-slate-700">
+                                          {tr.unitPrice != null ? `${Number(tr.unitPrice).toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
                                           {tr.amount ? `${tr.amount.toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                                          {tr.paidAmount.toLocaleString()} {tr.currency || 'AFN'}
+                                          {Number(tr.paidAmount || 0).toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-rose-700">
-                                          {tr.remainingAmount.toLocaleString()} {tr.currency || 'AFN'}
+                                          {Number(tr.accountBalanceAfter ?? tr.remainingAmount ?? 0).toLocaleString()} {tr.currency || 'AFN'}
                                         </td>
                                       </tr>))}
                                   </tbody>
@@ -421,7 +437,7 @@ export const CustomersPage = () => {
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">{t.rawSettlementNotice}</p>
           <form onSubmit={handleRawSettlement} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.materialName}</label><input required value={rawMaterialName} onChange={event=>handleRawMaterialName(event.target.value)} list="customer-raw-materials" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/><datalist id="customer-raw-materials">{db.rawMaterials.map(material=><option key={material.id} value={material.name}>{getLocalizedName(material.name)}</option>)}</datalist></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.materialName}</label><input required value={rawMaterialName} onChange={event=>handleRawMaterialName(event.target.value)} list="customer-raw-materials" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/><datalist id="customer-raw-materials">{db.rawMaterials.map(material=><option key={material.id} value={material.name}>{material.name}</option>)}</datalist></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={rawUnit} onChange={event=>setRawUnit(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></div>
@@ -534,26 +550,33 @@ export const CustomersPage = () => {
                 <div><span className="text-slate-500 block">{t.customerNameLabel}</span><strong>{selectedHistoryCustomer.name}</strong></div>
                 <div><span className="text-slate-500 block">{t.phone}</span><strong dir="ltr">{selectedHistoryCustomer.phone || '-'}</strong></div>
                 <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistoryCustomer.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistoryCustomer.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistoryCustomer.totalPaid.toLocaleString()} AFN · {(selectedHistoryCustomer.totalPaidUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.totalSettledByCustomer}</span><strong className="font-mono text-emerald-700">{((selectedHistoryCustomer.totalPaid || 0) + (selectedHistoryCustomer.rawSettledAmount || 0)).toLocaleString()} AFN · {((selectedHistoryCustomer.totalPaidUsd || 0) + (selectedHistoryCustomer.rawSettledAmountUsd || 0)).toLocaleString()} USD</strong><span className="block text-[10px] text-slate-500 mt-0.5">{t.cashReceivedFromCustomer}: {(selectedHistoryCustomer.totalPaid || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.totalPaidUsd || 0).toLocaleString()} USD<br/>{t.nonCashRawSettled}: {(selectedHistoryCustomer.rawSettledAmount || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.rawSettledAmountUsd || 0).toLocaleString()} USD</span></div>
                 <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
-              {selectedHistoryCustomer.transactions && selectedHistoryCustomer.transactions.length > 0 ? (selectedHistoryCustomer.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs shadow-2xs">
+              {selectedHistoryCustomer.transactions && selectedHistoryCustomer.transactions.length > 0 ? (selectedHistoryCustomer.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
+                    <div className="flex justify-between items-start gap-3">
                     <div>
                       <div className="font-mono text-slate-500">{h.date}</div>
-                      <div className="text-slate-800 mt-0.5 font-medium">{getLocalizedTxDesc(h.description)}</div>
+                      {h.itemName && <div className="text-slate-900 mt-1 font-bold">{h.itemName}</div>}
+                      <div className="text-slate-800 mt-0.5 font-medium">{customerTransactionDescription(h)}</div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {t.transactionType}: {getLocalizedTxType(h.type)}
                       </div>
                     </div>
                     <div className="text-end">
                       <div className="font-bold font-mono text-emerald-700 text-sm">
-                        {t.cashPaid}: {h.paidAmount.toLocaleString()} {h.currency || 'AFN'}
+                        {h.type === 'raw_goods_settlement' ? t.customerDebtReduction : t.cashReceived}: {Number(h.paidAmount || 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
                       <div className="text-[11px] text-rose-700 font-mono mt-0.5">
-                        {t.remainingDebt}: {h.remainingAmount.toLocaleString()} {h.currency || 'AFN'}
+                        {t.remainingDebt}: {Number(h.accountBalanceAfter ?? h.remainingAmount ?? 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
                     </div>
+                    </div>
+                    {h.itemName && <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 text-[11px]">
+                      <div><span className="text-slate-500 block">{t.quantity}</span><strong className="font-mono">{Number(h.quantityKg || 0).toLocaleString()} kg</strong></div>
+                      <div><span className="text-slate-500 block">{t.unitPriceKilo}</span><strong className="font-mono">{Number(h.unitPrice || 0).toLocaleString()} {h.currency || 'AFN'}</strong></div>
+                    </div>}
                   </div>))) : (<div className="p-8 text-center text-slate-500 text-xs">
                   {t.noTxRecorded}
                 </div>)}

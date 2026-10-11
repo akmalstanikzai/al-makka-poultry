@@ -109,7 +109,9 @@ export const SuppliersPage = () => {
     };
     // Aggregated totals
     const totalPurchasesAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmount||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmountUsd||0),0) };
-    const totalPaidAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPaid||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPaidUsd||0),0) };
+    const totalCashPaidAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPaid||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPaidUsd||0),0) };
+    const totalGoodsSettledAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.goodsSettledAmount||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.goodsSettledAmountUsd||0),0) };
+    const totalSettledAll = { AFN: totalCashPaidAll.AFN + totalGoodsSettledAll.AFN, USD: totalCashPaidAll.USD + totalGoodsSettledAll.USD };
     const totalOwedAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.balanceOwed||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.balanceOwedUsd||0),0) };
     const creditorCount = db.suppliers.filter(s => (s.balanceOwed || 0) > 0 || (s.balanceOwedUsd || 0) > 0).length;
     const filteredSuppliers = db.suppliers.filter(s => {
@@ -170,11 +172,12 @@ export const SuppliersPage = () => {
 
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500">{t.totalPaid}</span>
+            <span className="text-xs font-semibold text-slate-500">{t.totalSettledWithSupplier}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalPaidAll.AFN.toLocaleString()} AFN · {totalPaidAll.USD.toLocaleString()} USD
+              {totalSettledAll.AFN.toLocaleString()} AFN · {totalSettledAll.USD.toLocaleString()} USD
             </div>
-            <span className="text-xs text-emerald-600">{t.paidToSuppliers}</span>
+            <span className="text-[10px] text-emerald-700 block">{t.cashPaidToSupplier}: {totalCashPaidAll.AFN.toLocaleString()} AFN · {totalCashPaidAll.USD.toLocaleString()} USD</span>
+            <span className="text-[10px] text-emerald-600 block">{t.nonCashGoodsSettled}: {totalGoodsSettledAll.AFN.toLocaleString()} AFN · {totalGoodsSettledAll.USD.toLocaleString()} USD</span>
           </div>
           <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200">
             <Wallet className="w-6 h-6"/>
@@ -237,7 +240,7 @@ export const SuppliersPage = () => {
                 <th className="py-3.5 px-4 text-start">{t.supplierAndCompany}</th>
                 <th className="py-3.5 px-4 text-start">{t.contactAndAddress}</th>
                 <th className="py-3.5 px-4 text-start">{t.totalPurchasesFromSupplier}</th>
-                <th className="py-3.5 px-4 text-start">{t.paidAmountLabel}</th>
+                <th className="py-3.5 px-4 text-start">{t.totalSettledWithSupplier}</th>
                 <th className="py-3.5 px-4 text-start">{t.remainingOwedToSupplier}</th>
                 <th className="py-3.5 px-4 text-center">{t.transactionHistory}</th>
                 <th className="py-3.5 px-4 text-center">{t.financialActions}</th>
@@ -294,8 +297,9 @@ export const SuppliersPage = () => {
 
                       {/* Total Paid to Supplier */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
-                        {sup.totalPaid.toLocaleString()} AFN · {(sup.totalPaidUsd || 0).toLocaleString()} USD
-                        {((sup.goodsSettledAmount || 0) > 0 || (sup.goodsSettledAmountUsd || 0) > 0) && <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashGoodsSettled}: {(sup.goodsSettledAmount || 0).toLocaleString()} AFN · {(sup.goodsSettledAmountUsd || 0).toLocaleString()} USD</span>}
+                        {((sup.totalPaid || 0) + (sup.goodsSettledAmount || 0)).toLocaleString()} AFN · {((sup.totalPaidUsd || 0) + (sup.goodsSettledAmountUsd || 0)).toLocaleString()} USD
+                        <span className="block text-[10px] font-medium text-emerald-700 mt-0.5">{t.cashPaidToSupplier}: {(sup.totalPaid || 0).toLocaleString()} AFN · {(sup.totalPaidUsd || 0).toLocaleString()} USD</span>
+                        <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashGoodsSettled}: {(sup.goodsSettledAmount || 0).toLocaleString()} AFN · {(sup.goodsSettledAmountUsd || 0).toLocaleString()} USD</span>
                       </td>
 
                       {/* Remaining Debt / Balance Owed */}
@@ -371,7 +375,7 @@ export const SuppliersPage = () => {
                                       <th className="py-2 px-3 text-start">{t.quantity}</th>
                                       <th className="py-2 px-3 text-start">{t.unitPriceKilo}</th>
                                       <th className="py-2 px-3 text-start">{t.invoiceAmount}</th>
-                                      <th className="py-2 px-3 text-start">{t.paidAmountLabel}</th>
+                                      <th className="py-2 px-3 text-start">{t.paymentOrDebtReduction}</th>
                                       <th className="py-2 px-3 text-start">{t.remainingDebtBalance}</th>
                                     </tr>
                                   </thead>
@@ -565,7 +569,7 @@ export const SuppliersPage = () => {
                 <div><span className="text-slate-500 block">{t.supplier}</span><strong>{selectedHistorySupplier.name}</strong></div>
                 <div><span className="text-slate-500 block">{t.phone}</span><strong dir="ltr">{selectedHistorySupplier.phone || '-'}</strong></div>
                 <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistorySupplier.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistorySupplier.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPaid}</span><strong className="font-mono text-emerald-700">{selectedHistorySupplier.totalPaid.toLocaleString()} AFN · {(selectedHistorySupplier.totalPaidUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.totalSettledWithSupplier}</span><strong className="font-mono text-emerald-700">{((selectedHistorySupplier.totalPaid || 0) + (selectedHistorySupplier.goodsSettledAmount || 0)).toLocaleString()} AFN · {((selectedHistorySupplier.totalPaidUsd || 0) + (selectedHistorySupplier.goodsSettledAmountUsd || 0)).toLocaleString()} USD</strong><span className="block text-[10px] text-slate-500 mt-0.5">{t.cashPaidToSupplier}: {(selectedHistorySupplier.totalPaid || 0).toLocaleString()} AFN · {(selectedHistorySupplier.totalPaidUsd || 0).toLocaleString()} USD<br/>{t.nonCashGoodsSettled}: {(selectedHistorySupplier.goodsSettledAmount || 0).toLocaleString()} AFN · {(selectedHistorySupplier.goodsSettledAmountUsd || 0).toLocaleString()} USD</span></div>
                 <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
@@ -584,7 +588,7 @@ export const SuppliersPage = () => {
                         {t.totalAmount}: {Number(h.amount || 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
                       <div className="font-bold font-mono text-emerald-700 text-sm">
-                        {t.paidAmountLabel}: {Number(h.paidAmount || 0).toLocaleString()} {h.currency || 'AFN'}
+                        {h.type === 'goods_settlement' ? t.supplierDebtReduction : t.paidAmountLabel}: {Number(h.paidAmount || 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
                       <div className="text-[11px] text-rose-700 font-mono mt-0.5">
                         {t.remainingDebt}: {Number(h.accountBalanceAfter ?? h.remainingAmount ?? 0).toLocaleString()} {h.currency || 'AFN'}

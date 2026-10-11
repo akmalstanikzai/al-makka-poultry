@@ -598,6 +598,7 @@ export const DatabaseProvider = ({ children }) => {
                 amount: totalAmount,
                 paidAmount: offsetAmount,
                 remainingAmount: newSupplierBalance,
+                accountBalanceAfter: newSupplierBalance,
                 currency,
                 productId: product.id,
                 quantityKg,
@@ -615,6 +616,9 @@ export const DatabaseProvider = ({ children }) => {
             const updatedCustomers = [...db.customers];
             const customerTransaction = {
                 id: `ct-${timestamp}`,
+                itemName: name,
+                quantityKg,
+                unitPrice,
                 date: today,
                 type: 'sale',
                 description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
@@ -964,6 +968,7 @@ export const DatabaseProvider = ({ children }) => {
                 amount: totalValue,
                 paidAmount: customerOffset,
                 remainingAmount: newCustomerBalance,
+                accountBalanceAfter: newCustomerBalance,
                 currency,
             };
             const updatedCustomers = db.customers.map(item => item.id === customer.id ? {
@@ -985,12 +990,16 @@ export const DatabaseProvider = ({ children }) => {
                 const supplierTransaction = {
                     id: `st-${timestamp}`,
                     rawMaterialId: '',
+                    itemName: name,
+                    quantityKg,
+                    unitPrice,
                     date: today,
                     type: 'customer_raw_settlement',
                     description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
                     amount: totalValue,
                     paidAmount: customerOffset,
                     remainingAmount: newSupplierBalance,
+                    accountBalanceAfter: newSupplierBalance,
                     currency,
                 };
                 updatedSuppliers[supplierIndex] = {
@@ -1021,12 +1030,16 @@ export const DatabaseProvider = ({ children }) => {
                     transactions: [{
                         id: `st-${timestamp}`,
                         rawMaterialId: '',
+                        itemName: name,
+                        quantityKg,
+                        unitPrice,
                         date: today,
                         type: 'customer_raw_settlement',
                         description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
                         amount: totalValue,
                         paidAmount: customerOffset,
                         remainingAmount: supplierDebt,
+                        accountBalanceAfter: supplierDebt,
                         currency,
                     }],
                     createdAt: today,
@@ -1075,7 +1088,22 @@ export const DatabaseProvider = ({ children }) => {
                 const transaction = supplier.transactions?.[0];
                 if (supplier.id === supplierId && transaction?.id === `st-${timestamp}`) transaction.rawMaterialId = rawMaterialId;
             });
-            return { ...db, customers: updatedCustomers, suppliers: updatedSuppliers, rawMaterials: updatedRawMaterials };
+            let settlementToAllocate = customerOffset;
+            const matchingSales = [...db.sales]
+                .filter(sale => (sale.currency || 'AFN') === currency && sale.remainingAmount > 0 && (sale.customerId === customer.id || (!sale.customerId && (normalizePartyName(sale.customerName) === normalizePartyName(customer.name) || (customer.phone && sale.customerPhone === customer.phone)))))
+                .sort((first, second) => first.date.localeCompare(second.date));
+            const saleSettlements = new Map();
+            matchingSales.forEach(sale => {
+                if (settlementToAllocate <= 0) return;
+                const appliedAmount = Math.min(settlementToAllocate, Number(sale.remainingAmount) || 0);
+                saleSettlements.set(sale.id, appliedAmount);
+                settlementToAllocate -= appliedAmount;
+            });
+            const updatedSales = db.sales.map(sale => {
+                const appliedAmount = saleSettlements.get(sale.id) || 0;
+                return appliedAmount > 0 ? { ...sale, paidAmount: (Number(sale.paidAmount) || 0) + appliedAmount, remainingAmount: Math.max(0, (Number(sale.remainingAmount) || 0) - appliedAmount) } : sale;
+            });
+            return { ...db, customers: updatedCustomers, suppliers: updatedSuppliers, rawMaterials: updatedRawMaterials, sales: updatedSales };
         })();
 
         const saved = await writeStateToSupabase(nextState);
