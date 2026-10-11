@@ -1114,18 +1114,24 @@ export const DatabaseProvider = ({ children }) => {
             });
             let settlementToAllocate = customerOffset;
             const matchingSales = [...db.sales]
-                .filter(sale => (sale.currency || 'AFN') === currency && sale.remainingAmount > 0 && (sale.customerId === customer.id || (!sale.customerId && (normalizePartyName(sale.customerName) === normalizePartyName(customer.name) || (customer.phone && sale.customerPhone === customer.phone)))))
+                .filter(sale => (sale.currency || 'AFN') === currency && (sale.customerId === customer.id || (!sale.customerId && (normalizePartyName(sale.customerName) === normalizePartyName(customer.name) || (customer.phone && sale.customerPhone === customer.phone)))))
                 .sort((first, second) => first.date.localeCompare(second.date));
             const saleSettlements = new Map();
             matchingSales.forEach(sale => {
                 if (settlementToAllocate <= 0) return;
-                const appliedAmount = Math.min(settlementToAllocate, Number(sale.remainingAmount) || 0);
+                // Derive invoice debt from its paid amount so a stale
+                // remainingAmount cannot prevent a customer settlement from
+                // being reflected in the related sale ledger.
+                const invoiceRemaining = Math.max(0, (Number(sale.totalAmount) || 0) - (Number(sale.paidAmount) || 0));
+                const appliedAmount = Math.min(settlementToAllocate, invoiceRemaining);
                 saleSettlements.set(sale.id, appliedAmount);
                 settlementToAllocate -= appliedAmount;
             });
             const updatedSales = db.sales.map(sale => {
                 const appliedAmount = saleSettlements.get(sale.id) || 0;
-                return appliedAmount > 0 ? { ...sale, paidAmount: (Number(sale.paidAmount) || 0) + appliedAmount, remainingAmount: Math.max(0, (Number(sale.remainingAmount) || 0) - appliedAmount) } : sale;
+                if (appliedAmount <= 0) return sale;
+                const paidAmount = (Number(sale.paidAmount) || 0) + appliedAmount;
+                return { ...sale, paidAmount, remainingAmount: Math.max(0, (Number(sale.totalAmount) || 0) - paidAmount) };
             });
             return { ...db, customers: updatedCustomers, suppliers: updatedSuppliers, rawMaterials: updatedRawMaterials, sales: updatedSales };
         })();
