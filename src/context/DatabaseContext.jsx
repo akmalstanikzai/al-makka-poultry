@@ -960,10 +960,12 @@ export const DatabaseProvider = ({ children }) => {
         const name = String(settlement.materialName || '').trim();
         const category = 'Uncategorized';
         const unitQuantity = Number(settlement.unitQuantity);
-        const unitPrice = Number(settlement.unitPrice);
+        const unitPriceForSelectedUnit = Number(settlement.unitPrice);
         const quantityKg = convertToKg(settlement.unitType, unitQuantity);
+        const selectedUnitWeightKg = convertToKg(settlement.unitType, 1);
+        const unitPricePerKg = unitPriceForSelectedUnit / selectedUnitWeightKg;
         if (!customer || !name) return { success: false, error: t.invalidCustomerOrMaterial };
-        if (!Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) return { success: false, error: t.quantityPriceMustBePositive };
+        if (!Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(unitPriceForSelectedUnit) || unitPriceForSelectedUnit <= 0) return { success: false, error: t.quantityPriceMustBePositive };
 
         const currency = currencyCode(settlement.currency);
         const customerBalanceField = currencyField('balanceOwed', currency);
@@ -971,7 +973,7 @@ export const DatabaseProvider = ({ children }) => {
         const supplierPurchaseField = currencyField('totalPurchasedAmount', currency);
         const supplierBalanceField = currencyField('balanceOwed', currency);
         const supplierGoodsSettledField = currencyField('goodsSettledAmount', currency);
-        const totalValue = quantityKg * unitPrice;
+        const totalValue = unitQuantity * unitPriceForSelectedUnit;
         const customerOffset = Math.min(totalValue, Number(customer[customerBalanceField]) || 0);
         const supplierDebt = Math.max(0, totalValue - customerOffset);
         const timestamp = Date.now();
@@ -983,7 +985,7 @@ export const DatabaseProvider = ({ children }) => {
                 id: `ct-${timestamp}`,
                 itemName: name,
                 quantityKg,
-                unitPrice,
+                unitPrice: unitPricePerKg,
                 date: today,
                 type: 'raw_goods_settlement',
                 description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
@@ -1014,7 +1016,7 @@ export const DatabaseProvider = ({ children }) => {
                     rawMaterialId: '',
                     itemName: name,
                     quantityKg,
-                    unitPrice,
+                    unitPrice: unitPricePerKg,
                     date: today,
                     type: 'customer_raw_settlement',
                     description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
@@ -1054,7 +1056,7 @@ export const DatabaseProvider = ({ children }) => {
                         rawMaterialId: '',
                         itemName: name,
                         quantityKg,
-                        unitPrice,
+                        unitPrice: unitPricePerKg,
                         date: today,
                         type: 'customer_raw_settlement',
                         description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
@@ -1076,7 +1078,7 @@ export const DatabaseProvider = ({ children }) => {
                 rawMaterialId = material.id;
                 const oldWeight = Number(material.stockKg) || 0;
                 const newWeight = oldWeight + quantityKg;
-                const averageUnitPrice = newWeight > 0 ? ((oldWeight * (Number(material.unitPrice) || 0)) + totalValue) / newWeight : unitPrice;
+                const averageUnitPrice = newWeight > 0 ? ((oldWeight * (Number(material.unitPrice) || 0)) + totalValue) / newWeight : unitPricePerKg;
                 updatedRawMaterials[existingMaterialIndex] = {
                     ...material,
                     stockKg: newWeight,
@@ -1096,7 +1098,7 @@ export const DatabaseProvider = ({ children }) => {
                     name,
                     category,
                     stockKg: quantityKg,
-                    unitPrice,
+                    unitPrice: unitPricePerKg,
                     currency,
                     supplierId,
                     supplierName: customer.name,

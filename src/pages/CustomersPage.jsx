@@ -3,6 +3,7 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
+const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 export const CustomersPage = () => {
     const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -77,14 +78,15 @@ export const CustomersPage = () => {
         setRawMaterialName(value);
         const existing = db.rawMaterials.find(material => material.name.trim().toLowerCase() === value.trim().toLowerCase());
         if (existing) {
-            setRawUnitPrice(existing.unitPrice || '');
+            setRawUnitPrice((Number(existing.unitPrice) || 0) * unitMultiplierKg(rawUnit));
             setRawCurrency(existing.currency || 'AFN');
             setRawThreshold(existing.lowStockThreshold ?? '');
         }
     };
     const rawQuantityNumber = Number(rawQuantity) || 0;
-    const rawWeightKg = rawUnit === 'ton' ? rawQuantityNumber * 1000 : rawUnit === 'bag' ? rawQuantityNumber * 50 : rawQuantityNumber;
-    const rawTotalValue = rawWeightKg * (Number(rawUnitPrice) || 0);
+    const rawWeightKg = rawQuantityNumber * unitMultiplierKg(rawUnit);
+    const rawEnteredUnitPrice = Number(rawUnitPrice) || 0;
+    const rawTotalValue = rawQuantityNumber * rawEnteredUnitPrice;
     const rawCustomerDebt = rawSettlementCustomer ? Number(rawCurrency === 'USD' ? rawSettlementCustomer.balanceOwedUsd : rawSettlementCustomer.balanceOwed) || 0 : 0;
     const rawCustomerOffset = Math.min(rawTotalValue, rawCustomerDebt);
     const rawSupplierDebt = Math.max(0, rawTotalValue - rawCustomerOffset);
@@ -441,9 +443,9 @@ export const CustomersPage = () => {
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.materialName}</label><input required value={rawMaterialName} onChange={event=>handleRawMaterialName(event.target.value)} list="customer-raw-materials" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/><datalist id="customer-raw-materials">{db.rawMaterials.map(material=><option key={material.id} value={material.name}>{material.name}</option>)}</datalist></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={rawUnit} onChange={event=>setRawUnit(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label><select value={rawUnit} onChange={event=>{setRawUnit(event.target.value);setRawUnitPrice('');}} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></div>
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity}</label><input required type="number" min="0.001" step="any" value={rawQuantity} onChange={event=>setRawQuantity(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"/></div>
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitPriceKilo} ({rawCurrency})</label><input required type="number" min="0.001" step="any" value={rawUnitPrice} onChange={event=>setRawUnitPrice(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"/></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.purchasePricePerSelectedUnit} — {t[rawUnit] || rawUnit} ({rawCurrency})</label><input required type="number" min="0.001" step="any" value={rawUnitPrice} onChange={event=>setRawUnitPrice(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"/></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.currency}</label><select value={rawCurrency} onChange={event=>setRawCurrency(event.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm"><option value="AFN">AFN</option><option value="USD">USD</option></select></div>
@@ -452,7 +454,7 @@ export const CustomersPage = () => {
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div><span className="text-slate-500 block">{t.rawStockAdded}</span><strong className="font-mono text-slate-900">{rawWeightKg.toLocaleString()} {t.kilo}</strong></div>
-              <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{rawTotalValue.toLocaleString()} {rawCurrency}</strong></div>
+              <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{rawTotalValue.toLocaleString()} {rawCurrency}</strong><span className="block text-[10px] text-slate-500">{rawQuantityNumber.toLocaleString()} {t[rawUnit] || rawUnit} × {rawEnteredUnitPrice.toLocaleString()} {rawCurrency}</span></div>
               <div><span className="text-slate-500 block">{t.customerDebtReduction}</span><strong className="font-mono text-emerald-700">{rawCustomerOffset.toLocaleString()} {rawCurrency}</strong></div>
               <div><span className="text-slate-500 block">{t.supplierDebtCreated}</span><strong className="font-mono text-rose-700">{rawSupplierDebt.toLocaleString()} {rawCurrency}</strong></div>
             </div>
