@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
+import { normalizeDecimalInput } from '../lib/numberInput';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
 export const SuppliersPage = () => {
     const { db, t, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
@@ -10,6 +11,7 @@ export const SuppliersPage = () => {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentCurrency, setPaymentCurrency] = useState('AFN');
     const [paymentNote, setPaymentNote] = useState('');
+    const [paymentError, setPaymentError] = useState('');
     const [editingSupplier, setEditingSupplier] = useState(null);
     const [supplierEdit, setSupplierEdit] = useState(null);
     const [supplierEditError, setSupplierEditError] = useState('');
@@ -42,14 +44,23 @@ export const SuppliersPage = () => {
         setPaymentCurrency((s.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
         setPaymentAmount('');
         setPaymentNote('');
+        setPaymentError('');
     };
     const handleSettleSubmit = (e) => {
         e.preventDefault();
         if (!settleModalSupplier)
             return;
         const amount = Number(paymentAmount);
-        if (isNaN(amount) || amount <= 0)
+        const availableBalance = Number(paymentCurrency === 'USD' ? settleModalSupplier.balanceOwedUsd : settleModalSupplier.balanceOwed) || 0;
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setPaymentError(t.paymentAmountRequired);
             return;
+        }
+        if (amount > availableBalance) {
+            setPaymentError(t.paymentExceedsBalance);
+            return;
+        }
+        setPaymentError('');
         settleSupplierPayment(settleModalSupplier.id, amount, paymentNote, paymentCurrency);
         setSettleModalSupplier(null);
     };
@@ -508,12 +519,10 @@ export const SuppliersPage = () => {
                   {t.paidAmountLabel} ({paymentCurrency}) *
                 </label>
                 <div className="relative">
-                  <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setPaymentAmount(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
-                  <input type="text" required inputMode="decimal" value={paymentAmount} onChange={(e) => { const value = e.target.value.replace(/[^0-9.]/g, ''); if (/^\d*(\.\d*)?$/.test(value)) setPaymentAmount(value); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
-                  <span className="absolute end-3 top-2.5 text-xs text-slate-500 font-medium">
-                    {t.currency}
-                  </span>
+                  <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setPaymentAmount(''); setPaymentError(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
+                  <input type="text" required inputMode="decimal" autoFocus value={paymentAmount} onChange={(e) => { setPaymentAmount(normalizeDecimalInput(e.target.value)); setPaymentError(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
                 </div>
+                {paymentError && <p className="text-xs font-semibold text-rose-700 mt-1" role="alert">{paymentError}</p>}
               </div>
 
               <div>

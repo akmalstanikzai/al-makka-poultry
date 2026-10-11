@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
+import { normalizeDecimalInput } from '../lib/numberInput';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
 export const CustomersPage = () => {
     const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
@@ -489,7 +490,7 @@ export const CustomersPage = () => {
                 </label>
                 <div className="relative">
                   <select value={paymentCurrency} onChange={(e) => { setPaymentCurrency(e.target.value); setReceivedAmount(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold mb-2"><option value="AFN">AFN</option><option value="USD">USD</option></select>
-                  <input type="text" required inputMode="decimal" value={receivedAmount} onChange={(e) => { const value = e.target.value.replace(/[^0-9.]/g, ''); if (/^\d*(\.\d*)?$/.test(value)) setReceivedAmount(value); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                  <input type="text" required inputMode="decimal" value={receivedAmount} onChange={(e) => setReceivedAmount(normalizeDecimalInput(e.target.value))} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
                   <span className="absolute end-3 top-2.5 text-xs text-slate-500 font-medium">
                     {t.currency}
                   </span>
