@@ -211,6 +211,21 @@ export async function loadStateFromSupabase() {
                 currency: tx.currency || 'AFN',
             })),
         }));
+        // Customer debt has one accounting source of truth:
+        // sales - cash received - raw materials received. Repair older rows
+        // whose stored balance was not updated when a settlement was saved.
+        let customerBalanceReconciliationNeeded = false;
+        customers.forEach(customer => {
+            const expectedAfnBalance = Math.max(0,
+                customer.totalPurchasedAmount - customer.totalPaid - customer.rawSettledAmount);
+            const expectedUsdBalance = Math.max(0,
+                customer.totalPurchasedAmountUsd - customer.totalPaidUsd - customer.rawSettledAmountUsd);
+            if (customer.balanceOwed !== expectedAfnBalance || customer.balanceOwedUsd !== expectedUsdBalance) {
+                customerBalanceReconciliationNeeded = true;
+                customer.balanceOwed = expectedAfnBalance;
+                customer.balanceOwedUsd = expectedUsdBalance;
+            }
+        });
         const processedStock = (procRes.data || []).map(p => ({
             id: p.id,
             name: p.name,
@@ -320,7 +335,7 @@ export async function loadStateFromSupabase() {
         ].some(items => items.length > 0);
         return {
             hasData,
-            salesReconciliationNeeded,
+            salesReconciliationNeeded: salesReconciliationNeeded || customerBalanceReconciliationNeeded,
             state: {
                 rawMaterials,
                 processedStock,

@@ -50,6 +50,48 @@ const applyCustomerSale = (customer, purchaseAmount, paidAmount, currency) => {
         [balanceField]: Math.max(0, updated[purchaseField] - updated[paidField] - (Number(updated[rawSettledField]) || 0)),
     };
 };
+const customerOutstandingBalance = (customer, currency) => {
+    const purchaseField = currencyField('totalPurchasedAmount', currency);
+    const paidField = currencyField('totalPaid', currency);
+    const rawSettledField = currencyField('rawSettledAmount', currency);
+    return Math.max(0,
+        (Number(customer[purchaseField]) || 0)
+        - (Number(customer[paidField]) || 0)
+        - (Number(customer[rawSettledField]) || 0));
+};
+const reconcileCustomerSales = (sales, customer, currency) => {
+    const paidField = currencyField('totalPaid', currency);
+    const rawSettledField = currencyField('rawSettledAmount', currency);
+    let amountToAllocate = (Number(customer[paidField]) || 0) + (Number(customer[rawSettledField]) || 0);
+    const matchingSaleIds = new Set(sales
+        .filter(sale => (sale.currency || 'AFN') === currency && (
+            sale.customerId === customer.id
+            || (!sale.customerId && (
+                normalizePartyName(sale.customerName) === normalizePartyName(customer.name)
+                || (customer.phone && sale.customerPhone === customer.phone)
+            ))
+        ))
+        .sort((first, second) => first.date.localeCompare(second.date))
+        .map(sale => sale.id));
+    const allocations = new Map();
+    sales
+        .filter(sale => matchingSaleIds.has(sale.id))
+        .sort((first, second) => first.date.localeCompare(second.date))
+        .forEach(sale => {
+            const paidAmount = Math.min(amountToAllocate, Number(sale.totalAmount) || 0);
+            allocations.set(sale.id, paidAmount);
+            amountToAllocate = Math.max(0, amountToAllocate - paidAmount);
+        });
+    return sales.map(sale => {
+        if (!allocations.has(sale.id)) return sale;
+        const paidAmount = allocations.get(sale.id);
+        return {
+            ...sale,
+            paidAmount,
+            remainingAmount: Math.max(0, (Number(sale.totalAmount) || 0) - paidAmount),
+        };
+    });
+};
 const cashPatch = (state, amount, currency) => currencyCode(currency) === 'USD' ? { cashInHandUsd: (state.cashInHandUsd || 0) + amount } : { cashInHand: (state.cashInHand || 0) + amount };
 export const DatabaseProvider = ({ children }) => {
     const [lang, setLangState] = useState(() => {
@@ -974,13 +1016,19 @@ export const DatabaseProvider = ({ children }) => {
         const supplierBalanceField = currencyField('balanceOwed', currency);
         const supplierGoodsSettledField = currencyField('goodsSettledAmount', currency);
         const totalValue = unitQuantity * unitPriceForSelectedUnit;
-        const customerOffset = Math.min(totalValue, Number(customer[customerBalanceField]) || 0);
+        const currentCustomerBalance = customerOutstandingBalance(customer, currency);
+        const customerOffset = Math.min(totalValue, currentCustomerBalance);
         const supplierDebt = Math.max(0, totalValue - customerOffset);
         const timestamp = Date.now();
         const today = new Date().toISOString().split('T')[0];
 
         const nextState = (() => {
-            const newCustomerBalance = Math.max(0, (Number(customer[customerBalanceField]) || 0) - customerOffset);
+            const updatedRawSettledAmount = (Number(customer[rawSettledField]) || 0) + customerOffset;
+            const customerAfterSettlement = {
+                ...customer,
+                [rawSettledField]: updatedRawSettledAmount,
+            };
+            const newCustomerBalance = customerOutstandingBalance(customerAfterSettlement, currency);
             const customerTransaction = {
                 id: `ct-${timestamp}`,
                 itemName: name,
@@ -996,8 +1044,7 @@ export const DatabaseProvider = ({ children }) => {
                 currency,
             };
             const updatedCustomers = db.customers.map(item => item.id === customer.id ? {
-                ...item,
-                [rawSettledField]: (Number(item[rawSettledField]) || 0) + customerOffset,
+                ...customerAfterSettlement,
                 [customerBalanceField]: newCustomerBalance,
                 transactions: [customerTransaction, ...(item.transactions || [])],
             } : item);
@@ -1112,27 +1159,8 @@ export const DatabaseProvider = ({ children }) => {
                 const transaction = supplier.transactions?.[0];
                 if (supplier.id === supplierId && transaction?.id === `st-${timestamp}`) transaction.rawMaterialId = rawMaterialId;
             });
-            let settlementToAllocate = customerOffset;
-            const matchingSales = [...db.sales]
-                .filter(sale => (sale.currency || 'AFN') === currency && (sale.customerId === customer.id || (!sale.customerId && (normalizePartyName(sale.customerName) === normalizePartyName(customer.name) || (customer.phone && sale.customerPhone === customer.phone)))))
-                .sort((first, second) => first.date.localeCompare(second.date));
-            const saleSettlements = new Map();
-            matchingSales.forEach(sale => {
-                if (settlementToAllocate <= 0) return;
-                // Derive invoice debt from its paid amount so a stale
-                // remainingAmount cannot prevent a customer settlement from
-                // being reflected in the related sale ledger.
-                const invoiceRemaining = Math.max(0, (Number(sale.totalAmount) || 0) - (Number(sale.paidAmount) || 0));
-                const appliedAmount = Math.min(settlementToAllocate, invoiceRemaining);
-                saleSettlements.set(sale.id, appliedAmount);
-                settlementToAllocate -= appliedAmount;
-            });
-            const updatedSales = db.sales.map(sale => {
-                const appliedAmount = saleSettlements.get(sale.id) || 0;
-                if (appliedAmount <= 0) return sale;
-                const paidAmount = (Number(sale.paidAmount) || 0) + appliedAmount;
-                return { ...sale, paidAmount, remainingAmount: Math.max(0, (Number(sale.totalAmount) || 0) - paidAmount) };
-            });
+            const updatedCustomer = updatedCustomers.find(item => item.id === customer.id);
+            const updatedSales = reconcileCustomerSales(db.sales, updatedCustomer, currency);
             return { ...db, customers: updatedCustomers, suppliers: updatedSuppliers, rawMaterials: updatedRawMaterials, sales: updatedSales };
         })();
 
@@ -1159,9 +1187,12 @@ export const DatabaseProvider = ({ children }) => {
             currency = currencyCode(currency);
             const balanceField = currencyField('balanceOwed', currency);
             const paidField = currencyField('totalPaid', currency);
-            const rawSettledField = currencyField('rawSettledAmount', currency);
-            const actualReceived = Math.min(amount, Number(cust[balanceField]) || 0);
-            const newRemaining = Math.max(0, (Number(cust[balanceField]) || 0) - actualReceived);
+            const actualReceived = Math.min(amount, customerOutstandingBalance(cust, currency));
+            const customerAfterPayment = {
+                ...cust,
+                [paidField]: (Number(cust[paidField]) || 0) + actualReceived,
+            };
+            const newRemaining = customerOutstandingBalance(customerAfterPayment, currency);
             const transaction = {
                 id: `ct-${Date.now()}`,
                 date: today,
@@ -1174,47 +1205,12 @@ export const DatabaseProvider = ({ children }) => {
             };
             const updatedCustomers = [...prev.customers];
             const updatedCust = {
-                ...cust,
-                [paidField]: (Number(cust[paidField]) || 0) + actualReceived,
+                ...customerAfterPayment,
                 [balanceField]: newRemaining,
                 transactions: [transaction, ...cust.transactions],
             };
             updatedCustomers[custIndex] = updatedCust;
-            const normalizedCustomerName = cust.name.trim().toLowerCase();
-            const normalizedCustomerPhone = (cust.phone || '').trim();
-            const belongsToCustomer = sale => sale.customerId === customerId || (
-                !sale.customerId && (
-                    sale.customerName.trim().toLowerCase() === normalizedCustomerName ||
-                    (normalizedCustomerPhone && sale.customerPhone === normalizedCustomerPhone)
-                )
-            );
-            const alreadyAppliedToInvoices = prev.sales
-                .filter(sale => belongsToCustomer(sale) && (sale.currency || 'AFN') === currency)
-                .reduce((sum, sale) => sum + sale.paidAmount, 0);
-            // Reconcile any older customer payments that reached the customer
-            // ledger but were blocked before the related invoice update.
-            let paymentToAllocate = Math.max(0, (Number(updatedCust[paidField]) || 0) + (Number(updatedCust[rawSettledField]) || 0) - alreadyAppliedToInvoices);
-            const invoicePayments = new Map();
-            [...prev.sales]
-                .filter(sale => belongsToCustomer(sale) && (sale.currency || 'AFN') === currency && sale.remainingAmount > 0)
-                .sort((first, second) => first.date.localeCompare(second.date))
-                .forEach(sale => {
-                    if (paymentToAllocate <= 0)
-                        return;
-                    const appliedAmount = Math.min(paymentToAllocate, sale.remainingAmount);
-                    invoicePayments.set(sale.id, appliedAmount);
-                    paymentToAllocate -= appliedAmount;
-                });
-            const updatedSales = prev.sales.map(sale => {
-                const appliedAmount = invoicePayments.get(sale.id) || 0;
-                if (appliedAmount <= 0)
-                    return sale;
-                return {
-                    ...sale,
-                    paidAmount: sale.paidAmount + appliedAmount,
-                    remainingAmount: Math.max(0, sale.remainingAmount - appliedAmount),
-                };
-            });
+            const updatedSales = reconcileCustomerSales(prev.sales, updatedCust, currency);
             return {
                 ...prev,
                 customers: updatedCustomers,
