@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { normalizeDecimalInput } from '../lib/numberInput';
-import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 const transactionTime = transaction => {
     const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
@@ -10,7 +10,7 @@ const transactionTime = transaction => {
 };
 const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
-    const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, deleteCustomer, updateCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
@@ -29,6 +29,9 @@ export const CustomersPage = () => {
     const [rawNotes, setRawNotes] = useState('');
     const [rawSettlementError, setRawSettlementError] = useState('');
     const [isSavingRawSettlement, setIsSavingRawSettlement] = useState(false);
+    const [editingCustomer, setEditingCustomer] = useState(null);
+    const [customerEdit, setCustomerEdit] = useState(null);
+    const [customerEditError, setCustomerEditError] = useState('');
     // Delete customer modal
     const [customerToDelete, setCustomerToDelete] = useState(null);
     // Status Filter: 'all' | 'debtors' | 'settled'
@@ -43,6 +46,26 @@ export const CustomersPage = () => {
             ...prev,
             [customerId]: !prev[customerId]
         }));
+    };
+    const openCustomerEdit = customer => {
+        setEditingCustomer(customer);
+        setCustomerEdit({
+            name: customer.name || '', phone: customer.phone || '', address: customer.address || '',
+            totalPurchasedAmount: customer.totalPurchasedAmount || 0,
+            totalPaid: customer.totalPaid || 0,
+            rawSettledAmount: customer.rawSettledAmount || 0,
+            totalPurchasedAmountUsd: customer.totalPurchasedAmountUsd || 0,
+            totalPaidUsd: customer.totalPaidUsd || 0,
+            rawSettledAmountUsd: customer.rawSettledAmountUsd || 0,
+        });
+        setCustomerEditError('');
+    };
+    const handleCustomerEdit = event => {
+        event.preventDefault();
+        const result = updateCustomer(editingCustomer.id, customerEdit);
+        if (!result.success) { setCustomerEditError(result.error); return; }
+        setEditingCustomer(null);
+        setCustomerEdit(null);
     };
     const handleOpenReceiveModal = (c) => {
         setReceiveModalCustomer(c);
@@ -364,6 +387,7 @@ export const CustomersPage = () => {
                       {/* Action Buttons */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button type="button" onClick={() => openCustomerEdit(cust)} className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer" title={t.editCustomer}><Pencil className="w-4 h-4"/></button>
                           <button type="button" onClick={() => openRawSettlement(cust)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.settleWithRawMaterial}><Wheat className="w-4 h-4"/></button>
                           <button type="button" onClick={() => handleOpenReceiveModal(cust)} className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.receivePayment}
@@ -464,6 +488,26 @@ export const CustomersPage = () => {
           </table>
         </div>
       </div>
+
+      {/* Customer account editor; related inventory, sales, and history remain unchanged. */}
+      {editingCustomer && customerEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
+          <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-blue-600"/>{t.editCustomer}</h3><p className="text-xs text-slate-500 mt-1">{t.customerEditNotice}</p></div><button type="button" onClick={()=>setEditingCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <form onSubmit={handleCustomerEdit} className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <CustomerEditField label={t.customerNameLabel}><input required value={customerEdit.name} onChange={event=>setCustomerEdit({...customerEdit,name:event.target.value})} className={customerEditControlClass}/></CustomerEditField>
+              <CustomerEditField label={t.phone}><input inputMode="numeric" value={customerEdit.phone} onChange={event=>setCustomerEdit({...customerEdit,phone:event.target.value.replace(/\D/g,'').slice(0,10)})} className={customerEditControlClass}/></CustomerEditField>
+              <div className="sm:col-span-2"><CustomerEditField label={t.address}><textarea rows="2" value={customerEdit.address} onChange={event=>setCustomerEdit({...customerEdit,address:event.target.value})} className={`${customerEditControlClass} resize-none`}/></CustomerEditField></div>
+            </div>
+            <div className="border-t border-slate-200 pt-4"><h4 className="font-bold text-sm mb-3">{t.financialAmounts}</h4><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <CurrencyCustomerEdit t={t} currency="AFN" total={customerEdit.totalPurchasedAmount} cash={customerEdit.totalPaid} raw={customerEdit.rawSettledAmount} onTotal={value=>setCustomerEdit({...customerEdit,totalPurchasedAmount:value})} onCash={value=>setCustomerEdit({...customerEdit,totalPaid:value})} onRaw={value=>setCustomerEdit({...customerEdit,rawSettledAmount:value})}/>
+              <CurrencyCustomerEdit t={t} currency="USD" total={customerEdit.totalPurchasedAmountUsd} cash={customerEdit.totalPaidUsd} raw={customerEdit.rawSettledAmountUsd} onTotal={value=>setCustomerEdit({...customerEdit,totalPurchasedAmountUsd:value})} onCash={value=>setCustomerEdit({...customerEdit,totalPaidUsd:value})} onRaw={value=>setCustomerEdit({...customerEdit,rawSettledAmountUsd:value})}/>
+            </div></div>
+            {customerEditError&&<p className="text-xs font-semibold text-rose-700">{customerEditError}</p>}
+            <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setEditingCustomer(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" className="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">{t.save}</button></div>
+          </form>
+        </div>
+      </div>)}
 
       {/* Receive raw material from a customer as a non-cash settlement. */}
       {rawSettlementCustomer && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
@@ -654,4 +698,14 @@ export const CustomersPage = () => {
           </div>
         </div>)}
     </div>);
+};
+
+const customerEditControlClass = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-600';
+const CustomerEditField = ({label,children}) => <label className="block"><span className="block text-xs font-semibold text-slate-700 mb-1">{label}</span>{children}</label>;
+const CurrencyCustomerEdit = ({t,currency,total,cash,raw,onTotal,onCash,onRaw}) => {
+    const update = setter => event => setter(normalizeDecimalInput(event.target.value));
+    const net = (Number(total) || 0) - (Number(cash) || 0) - (Number(raw) || 0);
+    const debt = Math.max(0, net);
+    const credit = Math.max(0, -net);
+    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><CustomerEditField label={t.totalPurchasedAmount}><input type="text" inputMode="decimal" required value={total} onChange={update(onTotal)} className={customerEditControlClass}/></CustomerEditField><CustomerEditField label={t.cashReceivedFromCustomer}><input type="text" inputMode="decimal" required value={cash} onChange={update(onCash)} className={customerEditControlClass}/></CustomerEditField><CustomerEditField label={t.nonCashRawSettled}><input type="text" inputMode="decimal" required value={raw} onChange={update(onRaw)} className={customerEditControlClass}/></CustomerEditField><div className="grid grid-cols-2 gap-2"><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{debt.toLocaleString()} {currency}</strong></div><div className="rounded-lg bg-white border border-amber-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.weOweThem}</span><strong className="font-mono text-amber-700">{credit.toLocaleString()} {currency}</strong></div></div></div></div>;
 };

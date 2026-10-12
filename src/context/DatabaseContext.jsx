@@ -543,6 +543,49 @@ export const DatabaseProvider = ({ children }) => {
         });
         return { success: true };
     };
+    // Edit the customer account independently from inventory, sales, and
+    // transaction history. Cash changes only by the edited cash-received total.
+    const updateCustomer = (id, updates) => {
+        const name = String(updates.name || '').trim();
+        const phone = String(updates.phone || '').trim();
+        const totalAfn = Number(updates.totalPurchasedAmount);
+        const cashAfn = Number(updates.totalPaid);
+        const rawAfn = Number(updates.rawSettledAmount);
+        const totalUsd = Number(updates.totalPurchasedAmountUsd);
+        const cashUsd = Number(updates.totalPaidUsd);
+        const rawUsd = Number(updates.rawSettledAmountUsd);
+        if (!name) return { success: false, error: t.customerNameRequired };
+        if (phone && !/^\d{10}$/.test(phone)) return { success: false, error: t.phoneMustBe10Digits };
+        if (![totalAfn, cashAfn, rawAfn, totalUsd, cashUsd, rawUsd].every(value => Number.isFinite(value) && value >= 0)) return { success: false, error: t.financialValuesNonNegative };
+        setDb(prev => {
+            const currentCustomer = prev.customers.find(customer => customer.id === id);
+            if (!currentCustomer) return prev;
+            const afnNet = totalAfn - cashAfn - rawAfn;
+            const usdNet = totalUsd - cashUsd - rawUsd;
+            return {
+                ...prev,
+                cashInHand: Number(prev.cashInHand || 0) + cashAfn - Number(currentCustomer.totalPaid || 0),
+                cashInHandUsd: Number(prev.cashInHandUsd || 0) + cashUsd - Number(currentCustomer.totalPaidUsd || 0),
+                customers: prev.customers.map(customer => customer.id === id ? {
+                    ...customer,
+                    name,
+                    phone,
+                    address: String(updates.address || '').trim(),
+                    totalPurchasedAmount: totalAfn,
+                    totalPaid: cashAfn,
+                    rawSettledAmount: rawAfn,
+                    balanceOwed: Math.max(0, afnNet),
+                    creditBalance: Math.max(0, -afnNet),
+                    totalPurchasedAmountUsd: totalUsd,
+                    totalPaidUsd: cashUsd,
+                    rawSettledAmountUsd: rawUsd,
+                    balanceOwedUsd: Math.max(0, usdNet),
+                    creditBalanceUsd: Math.max(0, -usdNet),
+                } : customer),
+            };
+        });
+        return { success: true };
+    };
     // DELETE RAW MATERIAL
     const deleteRawMaterial = (id) => {
         if (!db.rawMaterials.some(rm => rm.id === id))
@@ -1387,6 +1430,7 @@ export const DatabaseProvider = ({ children }) => {
             updateRawMaterialThreshold,
             updateRawMaterial,
             updateSupplier,
+            updateCustomer,
             lowStockMaterials,
             getLocalizedName,
             getLocalizedTxType,
