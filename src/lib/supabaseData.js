@@ -160,6 +160,8 @@ export async function loadStateFromSupabase() {
             goodsSettledAmountUsd: Number(s.goods_settled_amount_usd) || 0,
             balanceOwed: Number(s.balance_owed) || 0,
             balanceOwedUsd: Number(s.balance_owed_usd) || 0,
+            receivableBalance: Number(s.receivable_balance) || 0,
+            receivableBalanceUsd: Number(s.receivable_balance_usd) || 0,
             createdAt: s.created_at || '',
             transactions: supplierTransactions
                 .filter(tx => tx.supplier_id === s.id)
@@ -170,6 +172,7 @@ export async function loadStateFromSupabase() {
                 quantityKg: tx.quantity_kg == null ? undefined : Number(tx.quantity_kg),
                 unitPrice: tx.unit_price == null ? undefined : Number(tx.unit_price),
                 accountBalanceAfter: tx.account_balance_after == null ? undefined : Number(tx.account_balance_after),
+                receivableAfter: tx.receivable_after == null ? undefined : Number(tx.receivable_after),
                 date: tx.date,
                 type: tx.type,
                 description: tx.description,
@@ -179,6 +182,23 @@ export async function loadStateFromSupabase() {
                 currency: tx.currency || 'AFN',
             })),
         }));
+        let supplierBalanceReconciliationNeeded = false;
+        suppliers.forEach(supplier => {
+            const afnNet = supplier.totalPurchasedAmount - supplier.totalPaid - supplier.goodsSettledAmount;
+            const usdNet = supplier.totalPurchasedAmountUsd - supplier.totalPaidUsd - supplier.goodsSettledAmountUsd;
+            const expectedAfnBalance = Math.max(0, afnNet);
+            const expectedUsdBalance = Math.max(0, usdNet);
+            const expectedAfnReceivable = Math.max(0, -afnNet);
+            const expectedUsdReceivable = Math.max(0, -usdNet);
+            if (supplier.balanceOwed !== expectedAfnBalance || supplier.balanceOwedUsd !== expectedUsdBalance
+                || supplier.receivableBalance !== expectedAfnReceivable || supplier.receivableBalanceUsd !== expectedUsdReceivable) {
+                supplierBalanceReconciliationNeeded = true;
+                supplier.balanceOwed = expectedAfnBalance;
+                supplier.balanceOwedUsd = expectedUsdBalance;
+                supplier.receivableBalance = expectedAfnReceivable;
+                supplier.receivableBalanceUsd = expectedUsdReceivable;
+            }
+        });
         const customerTransactions = custTxRes.data || [];
         const customers = (custRes.data || []).map(c => ({
             id: c.id,
@@ -249,6 +269,7 @@ export async function loadStateFromSupabase() {
             id: s.id,
             date: s.date,
             customerId: s.customer_id || '',
+            supplierId: s.supplier_id || '',
             customerName: s.customer_name,
             customerPhone: s.customer_phone || undefined,
             productId: s.product_id || '',
@@ -344,7 +365,7 @@ export async function loadStateFromSupabase() {
         ].some(items => items.length > 0);
         return {
             hasData,
-            salesReconciliationNeeded: salesReconciliationNeeded || customerBalanceReconciliationNeeded,
+            salesReconciliationNeeded: salesReconciliationNeeded || customerBalanceReconciliationNeeded || supplierBalanceReconciliationNeeded,
             state: {
                 rawMaterials,
                 processedStock,
@@ -391,6 +412,8 @@ export async function writeStateToSupabase(state) {
                 goods_settled_amount_usd: s.goodsSettledAmountUsd || 0,
                 balance_owed: s.balanceOwed,
                 balance_owed_usd: s.balanceOwedUsd || 0,
+                receivable_balance: s.receivableBalance || 0,
+                receivable_balance_usd: s.receivableBalanceUsd || 0,
                 created_at: s.createdAt,
             }));
             await checked(supabase.from('suppliers').upsert(supRows), 'suppliers seed');
@@ -402,6 +425,7 @@ export async function writeStateToSupabase(state) {
                 quantity_kg: t.quantityKg ?? null,
                 unit_price: t.unitPrice ?? null,
                 account_balance_after: t.accountBalanceAfter ?? null,
+                receivable_after: t.receivableAfter ?? 0,
                 date: t.date,
                 type: t.type,
                 description: t.description,
@@ -522,6 +546,7 @@ export async function writeStateToSupabase(state) {
                 product_id: s.productId || null,
                 product_name: s.productName,
                 customer_id: s.customerId || null,
+                supplier_id: s.supplierId || null,
                 customer_name: s.customerName,
                 customer_phone: s.customerPhone || null,
                 unit_type: s.unitType,

@@ -7,7 +7,7 @@ const transactionTime = transaction => {
     const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
     return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
 };
-const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' || transaction.type === 'customer_raw_settlement' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
+const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const SuppliersPage = () => {
     const { db, t, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -265,6 +265,7 @@ export const SuppliersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredSuppliers.map((sup) => {
             const hasDebt = sup.balanceOwed > 0 || (sup.balanceOwedUsd || 0) > 0;
+            const hasReceivable = (sup.receivableBalance || 0) > 0 || (sup.receivableBalanceUsd || 0) > 0;
             const isExpanded = !!expandedSupplierIds[sup.id];
             const transactionsCount = sup.transactions?.length || 0;
             return (<React.Fragment key={sup.id}>
@@ -280,6 +281,8 @@ export const SuppliersPage = () => {
                               <span>{sup.name}</span>
                               {hasDebt ? (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
                                   {t.supplierCreditBadge}
+                                </span>) : hasReceivable ? (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700 border border-sky-200">
+                                  {t.theyOweUs}
                                 </span>) : (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-0.5">
                                   <CheckCircle className="w-3 h-3"/>
                                   <span>{t.settledBadge}</span>
@@ -325,6 +328,9 @@ export const SuppliersPage = () => {
                               {sup.balanceOwed.toLocaleString()} AFN · {(sup.balanceOwedUsd || 0).toLocaleString()} USD
                             </span>
                             <span className="text-[10px] text-rose-600 font-medium">{t.ourRemainingDebt}</span>
+                          </div>) : hasReceivable ? (<div className="inline-flex flex-col">
+                            <span className="font-mono font-bold text-sky-700 text-sm">{(sup.receivableBalance || 0).toLocaleString()} AFN · {(sup.receivableBalanceUsd || 0).toLocaleString()} USD</span>
+                            <span className="text-[10px] text-sky-600 font-medium">{t.theyOweUs}</span>
                           </div>) : (<span className="font-mono text-slate-500 text-xs">
                             0 AFN · 0 USD
                           </span>)}
@@ -562,7 +568,7 @@ export const SuppliersPage = () => {
                     {t.accountStatementAndHistory} ({selectedHistorySupplier.name})
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {t.phone}: {selectedHistorySupplier.phone || '-'} • {t.remainingDebt}: {selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD
+                    {t.phone}: {selectedHistorySupplier.phone || '-'} • {t.remainingDebt}: {selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD • {t.theyOweUs}: {(selectedHistorySupplier.receivableBalance || 0).toLocaleString()} AFN · {(selectedHistorySupplier.receivableBalanceUsd || 0).toLocaleString()} USD
                   </span>
                 </div>
               </div>
@@ -586,6 +592,7 @@ export const SuppliersPage = () => {
                 <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistorySupplier.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistorySupplier.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
                 <div><span className="text-slate-500 block">{t.totalSettledWithSupplier}</span><strong className="font-mono text-emerald-700">{((selectedHistorySupplier.totalPaid || 0) + (selectedHistorySupplier.goodsSettledAmount || 0)).toLocaleString()} AFN · {((selectedHistorySupplier.totalPaidUsd || 0) + (selectedHistorySupplier.goodsSettledAmountUsd || 0)).toLocaleString()} USD</strong><span className="block text-[10px] text-slate-500 mt-0.5">{t.cashPaidToSupplier}: {(selectedHistorySupplier.totalPaid || 0).toLocaleString()} AFN · {(selectedHistorySupplier.totalPaidUsd || 0).toLocaleString()} USD<br/>{t.nonCashGoodsSettled}: {(selectedHistorySupplier.goodsSettledAmount || 0).toLocaleString()} AFN · {(selectedHistorySupplier.goodsSettledAmountUsd || 0).toLocaleString()} USD</span></div>
                 <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistorySupplier.balanceOwed.toLocaleString()} AFN · {(selectedHistorySupplier.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.theyOweUs}</span><strong className="font-mono text-sky-700">{(selectedHistorySupplier.receivableBalance || 0).toLocaleString()} AFN · {(selectedHistorySupplier.receivableBalanceUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
               {selectedHistorySupplier.transactions && selectedHistorySupplier.transactions.length > 0 ? (selectedHistorySupplier.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
@@ -608,6 +615,7 @@ export const SuppliersPage = () => {
                       <div className="text-[11px] text-rose-700 font-mono mt-0.5">
                         {t.remainingDebt}: {Number(h.accountBalanceAfter ?? h.remainingAmount ?? 0).toLocaleString()} {h.currency || 'AFN'}
                       </div>
+                      {Number(h.receivableAfter || 0) > 0 && <div className="text-[11px] text-sky-700 font-mono mt-0.5">{t.theyOweUs}: {Number(h.receivableAfter).toLocaleString()} {h.currency || 'AFN'}</div>}
                     </div>
                     </div>
                     {h.itemName && <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 text-[11px]">
@@ -661,6 +669,8 @@ export const SuppliersPage = () => {
 const controlClass = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600';
 const EditField = ({label,children}) => <label className="block"><span className="block text-xs font-semibold text-slate-700 mb-1">{label}</span>{children}</label>;
 const CurrencySupplierEdit = ({t,currency,total,paid,settled=0,onTotal,onPaid}) => {
-    const remaining = Math.max(0, (Number(total)||0) - (Number(paid)||0) - (Number(settled)||0));
-    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label={t.totalAmount}><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label={t.amountPaidLabel}><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="text-[10px] text-emerald-700">{t.nonCashGoodsSettled}: <strong className="font-mono">{Number(settled).toLocaleString()} {currency}</strong></div><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingAutoCalculated}</span><strong className="font-mono text-rose-700">{remaining.toLocaleString()} {currency}</strong></div></div></div>;
+    const net = (Number(total)||0) - (Number(paid)||0) - (Number(settled)||0);
+    const remaining = Math.max(0, net);
+    const receivable = Math.max(0, -net);
+    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><EditField label={t.totalAmount}><input type="number" min="0" step="any" required value={total} onChange={e=>onTotal(e.target.value)} className={controlClass}/></EditField><EditField label={t.amountPaidLabel}><input type="number" min="0" step="any" required value={paid} onChange={e=>onPaid(e.target.value)} className={controlClass}/></EditField><div className="text-[10px] text-emerald-700">{t.nonCashGoodsSettled}: <strong className="font-mono">{Number(settled).toLocaleString()} {currency}</strong></div><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{remaining > 0 ? t.remainingAutoCalculated : t.theyOweUs}</span><strong className={`font-mono ${remaining > 0 ? 'text-rose-700' : 'text-sky-700'}`}>{(remaining || receivable).toLocaleString()} {currency}</strong></div></div></div>;
 };
