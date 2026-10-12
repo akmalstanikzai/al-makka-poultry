@@ -4,6 +4,11 @@ import { ReceiptActions } from '../components';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
+const transactionTime = transaction => {
+    const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
+    return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
+};
+const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
     const { db, t, deleteCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -135,7 +140,7 @@ export const CustomersPage = () => {
             return (c.creditBalance || 0) > 0 || (c.creditBalanceUsd || 0) > 0;
         }
         return true;
-    });
+    }).sort((first, second) => latestSaleTime(second) - latestSaleTime(first));
     return (<div className="space-y-6">
       {/* Header with Title and Search */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">

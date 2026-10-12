@@ -3,6 +3,11 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
+const transactionTime = transaction => {
+    const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
+    return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
+};
+const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' || transaction.type === 'customer_raw_settlement' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const SuppliersPage = () => {
     const { db, t, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -138,7 +143,7 @@ export const SuppliersPage = () => {
             return (s.balanceOwed || 0) <= 0 && (s.balanceOwedUsd || 0) <= 0;
         }
         return true;
-    });
+    }).sort((first, second) => latestRawPurchaseTime(second) - latestRawPurchaseTime(first));
     return (<div className="space-y-6">
       {/* Header with Title and Search */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">

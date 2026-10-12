@@ -3,7 +3,7 @@ import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 export const SalesPage = () => {
-    const { db, t, lang, recordSale } = useDatabase();
+    const { db, t, recordSale } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPaymentFilter, setSelectedPaymentFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -107,10 +107,7 @@ export const SalesPage = () => {
         });
         setIsSaving(false);
         if (result.success) {
-            setSaveStatus({
-                type: 'success',
-                text: lang === 'fa' ? 'فروش با موفقیت در دیتابیس ذخیره شد.' : lang === 'ps' ? 'پلور په بریالیتوب سره ډیټابیس کې خوندي شو.' : 'Sale saved to the database successfully.',
-            });
+            setIsModalOpen(false);
         }
         else {
             setSaveStatus({ type: 'error', text: result.error || 'The sale was not saved to the database.' });
