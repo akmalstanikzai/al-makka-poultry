@@ -749,10 +749,15 @@ export const DatabaseProvider = ({ children }) => {
     };
     // 2. PRODUCE A BATCH. A formula is saved only through saveFormulaTemplate.
     const createFormulaAndProduce = async (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0, savedFormulaId = null, batchExpenseCurrency = 'AFN') => {
-        for (const ing of ingredients) {
-            const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
-            if (!raw) return { success: false, error: `Raw material not found: ${ing.rawMaterialId}` };
-            if (raw.stockKg < ing.weightKg) return { success: false, error: `${t.insufficientStockError} (${raw.name}: ${raw.stockKg} kg موجود، ${ing.weightKg} kg نیاز است)` };
+        const materialUsage = new Map();
+        for (const ingredient of ingredients) {
+            const weight = Number(ingredient.weightKg) || 0;
+            materialUsage.set(ingredient.rawMaterialId, (materialUsage.get(ingredient.rawMaterialId) || 0) + weight);
+        }
+        for (const [rawMaterialId, requiredWeight] of materialUsage) {
+            const raw = db.rawMaterials.find(r => r.id === rawMaterialId);
+            if (!raw) return { success: false, error: `Raw material not found: ${rawMaterialId}` };
+            if (raw.stockKg < requiredWeight) return { success: false, error: `${t.insufficientStockError} (${raw.name}: ${raw.stockKg} kg موجود، ${requiredWeight} kg نیاز است)` };
         }
         const today = new Date().toISOString().split('T')[0];
         const operationTimestamp = Date.now();
@@ -774,7 +779,10 @@ export const DatabaseProvider = ({ children }) => {
             operatorName: operatorName || 'مسئول تولید',
             notes: description || `پروسس خودکار: ${name} (${totalWeight.toLocaleString()} کیلو)`,
         };
-        const updatedRaw = db.rawMaterials.map(rm => { const used = ingredients.find(ing => ing.rawMaterialId === rm.id); return used ? { ...rm, stockKg: Math.max(0, rm.stockKg - used.weightKg) } : rm; });
+        const updatedRaw = db.rawMaterials.map(rm => {
+            const usedWeight = materialUsage.get(rm.id) || 0;
+            return usedWeight > 0 ? { ...rm, stockKg: Math.max(0, rm.stockKg - usedWeight) } : rm;
+        });
         const existingProcessedIndex = db.processedStock.findIndex(ps => ps.name.toLowerCase() === name.trim().toLowerCase());
         let updatedProcessedStock;
         if (existingProcessedIndex >= 0) {

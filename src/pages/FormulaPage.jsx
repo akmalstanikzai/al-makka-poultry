@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
+import { normalizeDecimalInput } from '../lib/numberInput';
 import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen, Search, Check } from 'lucide-react';
 export const FormulaPage = () => {
     const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
@@ -9,6 +10,8 @@ export const FormulaPage = () => {
     const [operatorName, setOperatorName] = useState('');
     const [batchExpenses, setBatchExpenses] = useState('');
     const [batchExpenseCurrency, setBatchExpenseCurrency] = useState('AFN');
+    const [productionUnit, setProductionUnit] = useState('ton');
+    const [productionQuantity, setProductionQuantity] = useState('');
     // Ingredients list in formulation
     const [ingredients, setIngredients] = useState([
         { rawMaterialId: db.rawMaterials[0]?.id || '', weightKg: 500 },
@@ -88,14 +91,25 @@ export const FormulaPage = () => {
         totalBatchWeight += weight;
         if (raw) totalRawMaterialCost[raw.currency === 'USD' ? 'USD' : 'AFN'] += raw.unitPrice * weight;
     });
+    const productionUnitKg = productionUnit === 'ton' ? 1000 : productionUnit === 'bag' ? 50 : 1;
+    const requestedProductionKg = (Number(productionQuantity) || 0) * productionUnitKg;
+    const productionScale = totalBatchWeight > 0 ? requestedProductionKg / totalBatchWeight : 0;
+    const scaledIngredients = ingredients.map(ingredient => ({
+        ...ingredient,
+        weightKg: (Number(ingredient.weightKg) || 0) * productionScale,
+    }));
+    const scaledRawMaterialCost = {
+        AFN: totalRawMaterialCost.AFN * productionScale,
+        USD: totalRawMaterialCost.USD * productionScale,
+    };
     const batchExpenseAmount = Number(batchExpenses) || 0;
-    const totalBatchCost = { ...totalRawMaterialCost };
+    const totalBatchCost = { ...scaledRawMaterialCost };
     totalBatchCost[batchExpenseCurrency] += batchExpenseAmount;
-    const costPerKg = { AFN: totalBatchWeight > 0 ? totalBatchCost.AFN / totalBatchWeight : 0, USD: totalBatchWeight > 0 ? totalBatchCost.USD / totalBatchWeight : 0 };
+    const costPerKg = { AFN: requestedProductionKg > 0 ? totalBatchCost.AFN / requestedProductionKg : 0, USD: requestedProductionKg > 0 ? totalBatchCost.USD / requestedProductionKg : 0 };
     const costPerBag = { AFN: costPerKg.AFN * 50, USD: costPerKg.USD * 50 };
     const costPerTon = { AFN: costPerKg.AFN * 1000, USD: costPerKg.USD * 1000 };
-    const totalBags = Math.round((totalBatchWeight / 50) * 100) / 100;
-    const totalTons = totalBatchWeight / 1000;
+    const totalBags = Math.round((requestedProductionKg / 50) * 100) / 100;
+    const totalTons = requestedProductionKg / 1000;
     const totalProcessedKg = db.processedStock.reduce((acc, p) => acc + (p.stockKg || 0), 0);
     const totalProcessedTons = totalProcessedKg / 1000;
     const totalProcessedBags = Math.round((totalProcessedKg / 50) * 100) / 100;
@@ -108,6 +122,7 @@ export const FormulaPage = () => {
             rawMaterialId: ingredient.rawMaterialId,
             weightKg: ingredient.weightKg,
         })));
+        setProductionQuantity('');
         setMessage({
             type: 'success',
             text: lang === 'fa' ? 'فرمول ذخیره‌شده بارگذاری شد.' : lang === 'ps' ? 'خوندي شوی فورمول پورته شو.' : 'Saved formula loaded.',
@@ -138,8 +153,12 @@ export const FormulaPage = () => {
             setProcessStatus({ type: 'error', text: t.totalWeightMustBePositive });
             return;
         }
+        if (requestedProductionKg <= 0) {
+            setProcessStatus({ type: 'error', text: t.productionAmountMustBePositive });
+            return;
+        }
         // Check if we have enough raw materials in stock
-        for (const ing of ingredients) {
+        for (const ing of scaledIngredients) {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             if (!raw) {
                 setProcessStatus({ type: 'error', text: t.invalidRawMaterialSelected });
@@ -154,7 +173,7 @@ export const FormulaPage = () => {
             }
         }
         setIsProducing(true);
-        const result = await createFormulaAndProduce(formulaName.trim(), ingredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency);
+        const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency);
         setIsProducing(false);
         if (result.success) {
             setProcessStatus({
@@ -166,6 +185,7 @@ export const FormulaPage = () => {
             setDescription('');
             setOperatorName('');
             setBatchExpenses('');
+            setProductionQuantity('');
             setLoadedFormulaId(null);
         }
         else {
@@ -329,7 +349,8 @@ export const FormulaPage = () => {
                 {ingredients.map((ing, idx) => {
             const selectedRaw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             const cost = selectedRaw ? selectedRaw.unitPrice * (Number(ing.weightKg) || 0) : 0;
-            const isInsufficient = selectedRaw && selectedRaw.stockKg < (Number(ing.weightKg) || 0);
+            const requiredForProduction = (Number(ing.weightKg) || 0) * productionScale;
+            const isInsufficient = selectedRaw && requestedProductionKg > 0 && selectedRaw.stockKg < requiredForProduction;
             return (<div key={idx} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isInsufficient ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex-1 min-w-0">
                         <label className="block text-[10px] text-slate-500 mb-1">{t.selectRawIndex} #{idx + 1}</label>
@@ -354,6 +375,7 @@ export const FormulaPage = () => {
                         <span className="text-xs font-bold text-amber-700 font-mono">
                           {cost.toLocaleString()} {selectedRaw?.currency || 'AFN'}
                         </span>
+                        {requestedProductionKg > 0 && <span className={`block text-[10px] font-mono mt-1 ${isInsufficient ? 'text-rose-700 font-bold' : 'text-slate-500'}`}>{t.requiredForBatch}: {requiredForProduction.toLocaleString(undefined, { maximumFractionDigits: 3 })} {t.kilo}</span>}
                       </div>
 
                       <div className="sm:pt-4">
@@ -370,6 +392,22 @@ export const FormulaPage = () => {
               <div className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-3">
                 <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center">3</span>
                 <span>{t.saveOrProduceStep}</span>
+              </div>
+              <div className="mb-4 p-4 rounded-xl border border-amber-200 bg-amber-50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-amber-950 mb-1">{t.productionAmount}</label>
+                    <input required type="text" inputMode="decimal" value={productionQuantity} onChange={(event) => setProductionQuantity(normalizeDecimalInput(event.target.value))} placeholder="20" className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-mono font-bold focus:outline-none focus:border-amber-600"/>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-amber-950 mb-1">{t.productionUnit}</label>
+                    <select value={productionUnit} onChange={(event) => setProductionUnit(event.target.value)} className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-bold"><option value="kg">{t.kilos}</option><option value="bag">{t.bags}</option><option value="ton">{t.tons}</option></select>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-amber-900">
+                  <strong>{t.actualBatchWeight}: {requestedProductionKg.toLocaleString()} {t.kilo}</strong>
+                  <span className="block mt-1">{t.productionScale}: {productionScale.toLocaleString(undefined, { maximumFractionDigits: 4 })}× · {t.formulaRemainsUnchanged}</span>
+                </div>
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
               <div className="flex flex-col items-stretch sm:items-end">
@@ -404,14 +442,14 @@ export const FormulaPage = () => {
             <div className="space-y-3 mt-4">
               {/* Total Weight in Tons & Kilo */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-xs text-slate-500 block">{t.totalFormulaWeight}:</span>
+                <span className="text-xs text-slate-500 block">{t.actualBatchWeight}:</span>
                 <div className="text-2xl font-black font-mono text-slate-900 mt-1 flex items-baseline gap-2">
                   <span>{totalTons.toFixed(3)}</span>
                   <span className="text-sm font-bold text-amber-700">{t.tons}</span>
                 </div>
                 <div className="text-xs text-slate-600 mt-1.5 font-mono font-medium flex items-center gap-2 pt-1 border-t border-slate-200">
                   <span className="bg-slate-200/80 px-2 py-0.5 rounded text-slate-800 font-bold">
-                    {totalBatchWeight.toLocaleString()} {t.kilo}
+                    {requestedProductionKg.toLocaleString()} {t.kilo}
                   </span>
                   <span>•</span>
                   <span className="bg-amber-100 px-2 py-0.5 rounded text-amber-800 font-bold">
@@ -424,7 +462,7 @@ export const FormulaPage = () => {
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
                 <div className="flex justify-between items-center text-slate-600">
                   <span>{t.rawMaterialsCost}</span>
-                  <span className="font-mono font-bold">{totalRawMaterialCost.AFN.toLocaleString()} AFN · {totalRawMaterialCost.USD.toLocaleString()} USD</span>
+                  <span className="font-mono font-bold">{scaledRawMaterialCost.AFN.toLocaleString()} AFN · {scaledRawMaterialCost.USD.toLocaleString()} USD</span>
                 </div>
                 {batchExpenseAmount > 0 && (<div className="flex justify-between items-center text-amber-700 mt-1.5 pt-1.5 border-t border-slate-200">
                     <span>{t.prodExpensesSub}</span>
