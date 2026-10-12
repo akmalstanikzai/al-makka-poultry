@@ -39,25 +39,27 @@ const applyCustomerSale = (customer, purchaseAmount, paidAmount, currency) => {
     const purchaseField = currencyField('totalPurchasedAmount', currency);
     const paidField = currencyField('totalPaid', currency);
     const balanceField = currencyField('balanceOwed', currency);
+    const creditField = currencyField('creditBalance', currency);
     const rawSettledField = currencyField('rawSettledAmount', currency);
     const updated = {
         ...customer,
         [purchaseField]: (Number(customer[purchaseField]) || 0) + (Number(purchaseAmount) || 0),
         [paidField]: (Number(customer[paidField]) || 0) + (Number(paidAmount) || 0),
     };
-    return {
-        ...updated,
-        [balanceField]: Math.max(0, updated[purchaseField] - updated[paidField] - (Number(updated[rawSettledField]) || 0)),
-    };
+    const netBalance = updated[purchaseField] - updated[paidField] - (Number(updated[rawSettledField]) || 0);
+    return { ...updated, [balanceField]: Math.max(0, netBalance), [creditField]: Math.max(0, -netBalance) };
 };
-const customerOutstandingBalance = (customer, currency) => {
+const customerAccountPosition = (customer, currency) => {
     const purchaseField = currencyField('totalPurchasedAmount', currency);
     const paidField = currencyField('totalPaid', currency);
     const rawSettledField = currencyField('rawSettledAmount', currency);
-    return Math.max(0,
-        (Number(customer[purchaseField]) || 0)
+    const netBalance = (Number(customer[purchaseField]) || 0)
         - (Number(customer[paidField]) || 0)
-        - (Number(customer[rawSettledField]) || 0));
+        - (Number(customer[rawSettledField]) || 0);
+    return { debt: Math.max(0, netBalance), credit: Math.max(0, -netBalance) };
+};
+const customerOutstandingBalance = (customer, currency) => {
+    return customerAccountPosition(customer, currency).debt;
 };
 const reconcileCustomerSales = (sales, customer, currency) => {
     const paidField = currencyField('totalPaid', currency);
@@ -708,6 +710,10 @@ export const DatabaseProvider = ({ children }) => {
                     totalPurchasedAmountUsd: currency === 'USD' ? totalAmount : 0,
                     totalPaid: currency === 'AFN' ? offsetAmount : 0,
                     totalPaidUsd: currency === 'USD' ? offsetAmount : 0,
+                    rawSettledAmount: 0,
+                    rawSettledAmountUsd: 0,
+                    creditBalance: 0,
+                    creditBalanceUsd: 0,
                     balanceOwed: currency === 'AFN' ? customerDebt : 0,
                     balanceOwedUsd: currency === 'USD' ? customerDebt : 0,
                     transactions: [customerTransaction],
@@ -932,6 +938,7 @@ export const DatabaseProvider = ({ children }) => {
             }
             // 2. Auto register/update customer
             let updatedCustomers = [...prev.customers];
+            let updatedSuppliers = [...prev.suppliers];
             let assignedCustId = saleData.customerId;
             const custName = saleData.customerName.trim();
             const existingCustIndex = updatedCustomers.findIndex(c => (saleData.customerId && c.id === saleData.customerId) ||
@@ -949,13 +956,53 @@ export const DatabaseProvider = ({ children }) => {
             if (existingCustIndex >= 0) {
                 const existing = updatedCustomers[existingCustIndex];
                 assignedCustId = existing.id;
+                const availableCredit = customerAccountPosition(existing, currency).credit;
+                const creditApplied = Math.min(availableCredit, Math.max(0, totalAmount - paidAmount));
                 const customerAfterSale = applyCustomerSale(existing, totalAmount, paidAmount, currency);
+                newSale.paidAmount = paidAmount + creditApplied;
+                newSale.remainingAmount = Math.max(0, totalAmount - newSale.paidAmount);
+                customerTransaction.paidAmount = newSale.paidAmount;
+                customerTransaction.remainingAmount = newSale.remainingAmount;
                 const updatedCust = {
                     ...customerAfterSale,
                     phone: saleData.customerPhone || existing.phone,
                     transactions: [{ ...customerTransaction, accountBalanceAfter: customerAfterSale[currencyField('balanceOwed', currency)] }, ...existing.transactions],
                 };
                 updatedCustomers[existingCustIndex] = updatedCust;
+                if (creditApplied > 0) {
+                    const supplierIndex = updatedSuppliers.findIndex(supplier => supplier.id === existing.supplierId
+                        || normalizePartyName(supplier.name) === normalizePartyName(existing.name)
+                        || (existing.phone && supplier.phone === existing.phone));
+                    if (supplierIndex >= 0) {
+                        const supplier = updatedSuppliers[supplierIndex];
+                        const supplierBalanceField = currencyField('balanceOwed', currency);
+                        const supplierSettledField = currencyField('goodsSettledAmount', currency);
+                        const supplierOffset = Math.min(creditApplied, Number(supplier[supplierBalanceField]) || 0);
+                        if (supplierOffset > 0) {
+                            const newSupplierBalance = Math.max(0, (Number(supplier[supplierBalanceField]) || 0) - supplierOffset);
+                            updatedSuppliers[supplierIndex] = {
+                                ...supplier,
+                                [supplierSettledField]: (Number(supplier[supplierSettledField]) || 0) + supplierOffset,
+                                [supplierBalanceField]: newSupplierBalance,
+                                transactions: [{
+                                    id: `st-credit-${Date.now()}`,
+                                    itemName: saleData.productName,
+                                    quantityKg,
+                                    unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
+                                    date: today,
+                                    type: 'goods_settlement',
+                                    description: `${t.supplierGoodsSettlement}: ${saleData.productName}`,
+                                    amount: totalAmount,
+                                    paidAmount: supplierOffset,
+                                    remainingAmount: newSupplierBalance,
+                                    accountBalanceAfter: newSupplierBalance,
+                                    currency,
+                                    productId: product?.id || saleData.productId || '',
+                                }, ...(supplier.transactions || [])],
+                            };
+                        }
+                    }
+                }
             }
             else {
                 assignedCustId = `cust-${Date.now()}`;
@@ -969,6 +1016,8 @@ export const DatabaseProvider = ({ children }) => {
                     totalPaidUsd: currency === 'USD' ? paidAmount : 0,
                     rawSettledAmount: 0,
                     rawSettledAmountUsd: 0,
+                    creditBalance: 0,
+                    creditBalanceUsd: 0,
                     balanceOwed: currency === 'AFN' ? remainingAmount : 0,
                     balanceOwedUsd: currency === 'USD' ? remainingAmount : 0,
                     transactions: [{ ...customerTransaction, accountBalanceAfter: remainingAmount }],
@@ -981,6 +1030,7 @@ export const DatabaseProvider = ({ children }) => {
                 ...prev,
                 processedStock: updatedProcessedStock,
                 customers: updatedCustomers,
+                suppliers: updatedSuppliers,
                 sales: [newSale, ...prev.sales],
                 ...cashPatch(prev, paidAmount, currency),
             };
@@ -1011,6 +1061,7 @@ export const DatabaseProvider = ({ children }) => {
 
         const currency = currencyCode(settlement.currency);
         const customerBalanceField = currencyField('balanceOwed', currency);
+        const customerCreditField = currencyField('creditBalance', currency);
         const rawSettledField = currencyField('rawSettledAmount', currency);
         const supplierPurchaseField = currencyField('totalPurchasedAmount', currency);
         const supplierBalanceField = currencyField('balanceOwed', currency);
@@ -1023,12 +1074,13 @@ export const DatabaseProvider = ({ children }) => {
         const today = new Date().toISOString().split('T')[0];
 
         const nextState = (() => {
-            const updatedRawSettledAmount = (Number(customer[rawSettledField]) || 0) + customerOffset;
+            const updatedRawSettledAmount = (Number(customer[rawSettledField]) || 0) + totalValue;
             const customerAfterSettlement = {
                 ...customer,
                 [rawSettledField]: updatedRawSettledAmount,
             };
-            const newCustomerBalance = customerOutstandingBalance(customerAfterSettlement, currency);
+            const newCustomerPosition = customerAccountPosition(customerAfterSettlement, currency);
+            const newCustomerBalance = newCustomerPosition.debt;
             const customerTransaction = {
                 id: `ct-${timestamp}`,
                 itemName: name,
@@ -1046,6 +1098,7 @@ export const DatabaseProvider = ({ children }) => {
             const updatedCustomers = db.customers.map(item => item.id === customer.id ? {
                 ...customerAfterSettlement,
                 [customerBalanceField]: newCustomerBalance,
+                [customerCreditField]: newCustomerPosition.credit,
                 transactions: [customerTransaction, ...(item.transactions || [])],
             } : item);
 
@@ -1115,6 +1168,10 @@ export const DatabaseProvider = ({ children }) => {
                     }],
                     createdAt: today,
                 });
+            }
+            const updatedCustomerIndex = updatedCustomers.findIndex(item => item.id === customer.id);
+            if (updatedCustomerIndex >= 0) {
+                updatedCustomers[updatedCustomerIndex] = { ...updatedCustomers[updatedCustomerIndex], supplierId };
             }
 
             const existingMaterialIndex = db.rawMaterials.findIndex(material => material.name.trim().toLowerCase() === name.toLowerCase() && currencyCode(material.currency) === currency);
@@ -1186,13 +1243,15 @@ export const DatabaseProvider = ({ children }) => {
             const cust = prev.customers[custIndex];
             currency = currencyCode(currency);
             const balanceField = currencyField('balanceOwed', currency);
+            const creditField = currencyField('creditBalance', currency);
             const paidField = currencyField('totalPaid', currency);
-            const actualReceived = Math.min(amount, customerOutstandingBalance(cust, currency));
+            const actualReceived = Number(amount);
             const customerAfterPayment = {
                 ...cust,
                 [paidField]: (Number(cust[paidField]) || 0) + actualReceived,
             };
-            const newRemaining = customerOutstandingBalance(customerAfterPayment, currency);
+            const newPosition = customerAccountPosition(customerAfterPayment, currency);
+            const newRemaining = newPosition.debt;
             const transaction = {
                 id: `ct-${Date.now()}`,
                 date: today,
@@ -1207,6 +1266,7 @@ export const DatabaseProvider = ({ children }) => {
             const updatedCust = {
                 ...customerAfterPayment,
                 [balanceField]: newRemaining,
+                [creditField]: newPosition.credit,
                 transactions: [transaction, ...cust.transactions],
             };
             updatedCustomers[custIndex] = updatedCust;

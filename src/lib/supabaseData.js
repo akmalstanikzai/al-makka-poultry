@@ -191,6 +191,8 @@ export async function loadStateFromSupabase() {
             totalPaidUsd: Number(c.total_paid_usd) || 0,
             rawSettledAmount: Number(c.raw_settled_amount) || 0,
             rawSettledAmountUsd: Number(c.raw_settled_amount_usd) || 0,
+            creditBalance: Number(c.credit_balance) || 0,
+            creditBalanceUsd: Number(c.credit_balance_usd) || 0,
             balanceOwed: Number(c.balance_owed) || 0,
             balanceOwedUsd: Number(c.balance_owed_usd) || 0,
             createdAt: c.created_at || '',
@@ -220,10 +222,17 @@ export async function loadStateFromSupabase() {
                 customer.totalPurchasedAmount - customer.totalPaid - customer.rawSettledAmount);
             const expectedUsdBalance = Math.max(0,
                 customer.totalPurchasedAmountUsd - customer.totalPaidUsd - customer.rawSettledAmountUsd);
-            if (customer.balanceOwed !== expectedAfnBalance || customer.balanceOwedUsd !== expectedUsdBalance) {
+            const expectedAfnCredit = Math.max(0,
+                customer.totalPaid + customer.rawSettledAmount - customer.totalPurchasedAmount);
+            const expectedUsdCredit = Math.max(0,
+                customer.totalPaidUsd + customer.rawSettledAmountUsd - customer.totalPurchasedAmountUsd);
+            if (customer.balanceOwed !== expectedAfnBalance || customer.balanceOwedUsd !== expectedUsdBalance
+                || customer.creditBalance !== expectedAfnCredit || customer.creditBalanceUsd !== expectedUsdCredit) {
                 customerBalanceReconciliationNeeded = true;
                 customer.balanceOwed = expectedAfnBalance;
                 customer.balanceOwedUsd = expectedUsdBalance;
+                customer.creditBalance = expectedAfnCredit;
+                customer.creditBalanceUsd = expectedUsdCredit;
             }
         });
         const processedStock = (procRes.data || []).map(p => ({
@@ -436,6 +445,8 @@ export async function writeStateToSupabase(state) {
                 total_paid_usd: c.totalPaidUsd || 0,
                 raw_settled_amount: c.rawSettledAmount || 0,
                 raw_settled_amount_usd: c.rawSettledAmountUsd || 0,
+                credit_balance: c.creditBalance || 0,
+                credit_balance_usd: c.creditBalanceUsd || 0,
                 balance_owed: c.balanceOwed,
                 balance_owed_usd: c.balanceOwedUsd || 0,
                 created_at: c.createdAt,

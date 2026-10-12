@@ -115,7 +115,10 @@ export const CustomersPage = () => {
     const totalRawSettledAll = { AFN: db.customers.reduce((a,c)=>a+(c.rawSettledAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.rawSettledAmountUsd||0),0) };
     const totalSettledAll = { AFN: totalCashReceivedAll.AFN + totalRawSettledAll.AFN, USD: totalCashReceivedAll.USD + totalRawSettledAll.USD };
     const totalReceivableDebtAll = { AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
+    const totalCustomerCreditAll = { AFN: db.customers.reduce((a,c)=>a+(c.creditBalance||0),0), USD: db.customers.reduce((a,c)=>a+(c.creditBalanceUsd||0),0) };
     const debtorCount = db.customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length;
+    const customerCreditCount = db.customers.filter(c => (c.creditBalance || 0) > 0 || (c.creditBalanceUsd || 0) > 0).length;
+    const settledCustomerCount = db.customers.filter(c => (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0 && (c.creditBalance || 0) <= 0 && (c.creditBalanceUsd || 0) <= 0).length;
     const filteredCustomers = db.customers.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (c.phone && c.phone.includes(searchTerm)) ||
@@ -126,7 +129,10 @@ export const CustomersPage = () => {
             return (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0;
         }
         if (statusFilter === 'settled') {
-            return (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0;
+            return (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0 && (c.creditBalance || 0) <= 0 && (c.creditBalanceUsd || 0) <= 0;
+        }
+        if (statusFilter === 'customerCredit') {
+            return (c.creditBalance || 0) > 0 || (c.creditBalanceUsd || 0) > 0;
         }
         return true;
     });
@@ -158,7 +164,7 @@ export const CustomersPage = () => {
       </div>
 
       {/* Financial Summary Banners */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalCustomerPurchases}</span>
@@ -170,6 +176,17 @@ export const CustomersPage = () => {
           <div className="p-3 bg-blue-100 text-blue-700 rounded-xl border border-blue-200">
             <Users className="w-6 h-6"/>
           </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white border border-amber-200 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-xs font-semibold text-slate-500">{t.weOweCustomers}</span>
+            <div className="text-xl font-bold font-mono text-amber-700 mt-1">
+              {totalCustomerCreditAll.AFN.toLocaleString()} AFN · {totalCustomerCreditAll.USD.toLocaleString()} USD
+            </div>
+            <span className="text-xs text-amber-700 font-medium">{customerCreditCount} {t.customerCreditAccounts}</span>
+          </div>
+          <div className="p-3 bg-amber-100 text-amber-700 rounded-xl border border-amber-200"><ArrowDownLeft className="w-6 h-6"/></div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
@@ -229,7 +246,12 @@ export const CustomersPage = () => {
             <button type="button" onClick={() => setStatusFilter('settled')} className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'settled'
             ? 'bg-emerald-600 text-white shadow-xs'
             : 'text-slate-600 hover:text-slate-900'}`}>
-              {t.settled} ({db.customers.length - debtorCount})
+              {t.settled} ({settledCustomerCount})
+            </button>
+            <button type="button" onClick={() => setStatusFilter('customerCredit')} className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'customerCredit'
+            ? 'bg-amber-600 text-white shadow-xs'
+            : 'text-slate-600 hover:text-slate-900'}`}>
+              {t.weOweThem} ({customerCreditCount})
             </button>
           </div>
         </div>
@@ -243,7 +265,7 @@ export const CustomersPage = () => {
                 <th className="py-3.5 px-4 text-start">{t.contactAndAddress}</th>
                 <th className="py-3.5 px-4 text-start">{t.totalCustomerPurchases}</th>
                 <th className="py-3.5 px-4 text-start">{t.totalSettledByCustomer}</th>
-                <th className="py-3.5 px-4 text-start">{t.remainingDebt}</th>
+                <th className="py-3.5 px-4 text-start">{t.customerAccountBalance}</th>
                 <th className="py-3.5 px-4 text-center">{t.transactionHistory}</th>
                 <th className="py-3.5 px-4 text-center">{t.financialActions}</th>
               </tr>
@@ -251,10 +273,11 @@ export const CustomersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredCustomers.map((cust) => {
             const hasDebt = cust.balanceOwed > 0 || (cust.balanceOwedUsd || 0) > 0;
+            const hasCredit = (cust.creditBalance || 0) > 0 || (cust.creditBalanceUsd || 0) > 0;
             const isExpanded = !!expandedCustomerIds[cust.id];
             const transactionsCount = cust.transactions?.length || 0;
             return (<React.Fragment key={cust.id}>
-                    <tr className={`transition-colors ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-slate-50/80'}`}>
+                    <tr className={`transition-colors ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasCredit ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
@@ -264,9 +287,11 @@ export const CustomersPage = () => {
                           <div>
                             <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
                               <span>{cust.name}</span>
-                              {hasDebt ? (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              {hasDebt && (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
                                   {t.customerDebtBadge}
-                                </span>) : (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-0.5">
+                                </span>)}
+                              {hasCredit && (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">{t.weOweThem}</span>)}
+                              {!hasDebt && !hasCredit && (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-0.5">
                                   <CheckCircle className="w-3 h-3"/>
                                   <span>{t.settledBadge}</span>
                                 </span>)}
@@ -306,12 +331,14 @@ export const CustomersPage = () => {
 
                       {/* Remaining Debt */}
                       <td className="py-3.5 px-4">
-                        {hasDebt ? (<div className="inline-flex flex-col">
+                        {hasDebt && (<div className="inline-flex flex-col">
                             <span className="font-mono font-bold text-rose-700 text-sm">
                               {cust.balanceOwed.toLocaleString()} AFN · {(cust.balanceOwedUsd || 0).toLocaleString()} USD
                             </span>
                             <span className="text-[10px] text-rose-600 font-medium">{t.customerDebtBadge}</span>
-                          </div>) : (<span className="font-mono text-slate-500 text-xs">
+                          </div>)}
+                        {hasCredit && (<div className="inline-flex flex-col mt-1"><span className="font-mono font-bold text-amber-700 text-sm">{(cust.creditBalance || 0).toLocaleString()} AFN · {(cust.creditBalanceUsd || 0).toLocaleString()} USD</span><span className="text-[10px] text-amber-700 font-medium">{t.weOweThem}</span></div>)}
+                        {!hasDebt && !hasCredit && (<span className="font-mono text-slate-500 text-xs">
                             0 AFN · 0 USD
                           </span>)}
                       </td>
@@ -333,9 +360,9 @@ export const CustomersPage = () => {
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button type="button" onClick={() => openRawSettlement(cust)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.settleWithRawMaterial}><Wheat className="w-4 h-4"/></button>
-                          {hasDebt && (<button type="button" onClick={() => handleOpenReceiveModal(cust)} className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
+                          <button type="button" onClick={() => handleOpenReceiveModal(cust)} className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.receivePayment}
-                            </button>)}
+                            </button>
 
                           <button type="button" onClick={() => setSelectedHistoryCustomer(cust)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
                             <Printer className="w-4 h-4"/>
@@ -476,7 +503,7 @@ export const CustomersPage = () => {
                     {t.receivePayment}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {receiveModalCustomer.name} ({t.remainingDebt}: {receiveModalCustomer.balanceOwed.toLocaleString()} AFN · {(receiveModalCustomer.balanceOwedUsd || 0).toLocaleString()} USD)
+                    {receiveModalCustomer.name} ({t.remainingDebt}: {receiveModalCustomer.balanceOwed.toLocaleString()} AFN · {(receiveModalCustomer.balanceOwedUsd || 0).toLocaleString()} USD · {t.weOweThem}: {(receiveModalCustomer.creditBalance || 0).toLocaleString()} AFN · {(receiveModalCustomer.creditBalanceUsd || 0).toLocaleString()} USD)
                   </p>
                 </div>
               </div>
@@ -532,7 +559,7 @@ export const CustomersPage = () => {
                     {t.accountStatementAndHistory} ({selectedHistoryCustomer.name})
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {t.phone}: {selectedHistoryCustomer.phone || '-'} • {t.remainingDebt}: {selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD
+                    {t.phone}: {selectedHistoryCustomer.phone || '-'} • {t.remainingDebt}: {selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD • {t.weOweThem}: {(selectedHistoryCustomer.creditBalance || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.creditBalanceUsd || 0).toLocaleString()} USD
                   </span>
                 </div>
               </div>
@@ -555,6 +582,7 @@ export const CustomersPage = () => {
                 <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistoryCustomer.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistoryCustomer.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
                 <div><span className="text-slate-500 block">{t.totalSettledByCustomer}</span><strong className="font-mono text-emerald-700">{((selectedHistoryCustomer.totalPaid || 0) + (selectedHistoryCustomer.rawSettledAmount || 0)).toLocaleString()} AFN · {((selectedHistoryCustomer.totalPaidUsd || 0) + (selectedHistoryCustomer.rawSettledAmountUsd || 0)).toLocaleString()} USD</strong><span className="block text-[10px] text-slate-500 mt-0.5">{t.cashReceivedFromCustomer}: {(selectedHistoryCustomer.totalPaid || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.totalPaidUsd || 0).toLocaleString()} USD<br/>{t.nonCashRawSettled}: {(selectedHistoryCustomer.rawSettledAmount || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.rawSettledAmountUsd || 0).toLocaleString()} USD</span></div>
                 <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
+                <div><span className="text-slate-500 block">{t.weOweThem}</span><strong className="font-mono text-amber-700">{(selectedHistoryCustomer.creditBalance || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.creditBalanceUsd || 0).toLocaleString()} USD</strong></div>
               </div>
             <div className="space-y-2.5">
               {selectedHistoryCustomer.transactions && selectedHistoryCustomer.transactions.length > 0 ? (selectedHistoryCustomer.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
