@@ -550,9 +550,9 @@ export const SuppliersPage = () => {
         </div>)}
 
       {/* Supplier Transaction History / Statement Modal */}
-      {selectedHistorySupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+      {selectedHistorySupplier && (<div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-xl max-h-[calc(100dvh-2rem)] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
                   <History className="w-5 h-5"/>
@@ -574,6 +574,7 @@ export const SuppliersPage = () => {
               </div>
             </div>
 
+            <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
             <div id="supplier-receipt" className="receipt-document bg-white p-5">
               <div className="text-center pb-4 border-b-2 border-slate-900">
                 <h1 className="text-xl font-black text-slate-900">{t.companyName}</h1>
@@ -623,6 +624,7 @@ export const SuppliersPage = () => {
               <div className="text-[10px] font-mono text-slate-500">
                 {t.developedBy}
               </div>
+            </div>
             </div>
             </div>
           </div>
