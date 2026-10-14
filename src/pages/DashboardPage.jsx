@@ -1,11 +1,23 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Wheat, PackageCheck, Truck, Users, TrendingUp, Wallet, Receipt, CalendarClock, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Wheat, PackageCheck, Truck, Users, TrendingUp, Wallet, Receipt, CalendarClock, AlertTriangle, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
+
+const CurrencyPair = ({ amounts, t, tone = 'text-slate-900', compact = false }) => {
+    const values = [
+        { code: 'AFN', label: t.dashboardAfnLabel, amount: Number(amounts?.AFN) || 0 },
+        { code: 'USD', label: t.dashboardUsdLabel, amount: Number(amounts?.USD) || 0 },
+    ];
+    return <div className={compact ? 'grid grid-cols-1 sm:grid-cols-2 gap-1.5' : 'space-y-1.5'}>
+      {values.map(value => <div key={value.code} className={`rounded-lg border border-slate-200 bg-slate-50/80 ${compact ? 'px-2 py-1' : 'px-3 py-2'}`}>
+        <span className={`block font-semibold text-slate-500 ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{value.label}</span>
+        <strong dir="ltr" className={`block font-mono tracking-tight ${tone} ${compact ? 'text-xs' : 'text-lg sm:text-xl'}`}>{value.amount.toLocaleString()}</strong>
+      </div>)}
+    </div>;
+};
+
 export const DashboardPage = ({ setActiveTab }) => {
-    const { db, t, lang, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
-    const [editingThreshold, setEditingThreshold] = useState(false);
-    const [thresholdInput, setThresholdInput] = useState(lowStockThreshold.toString());
+    const { db, t, lang, lowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
     const isRtl = lang === 'fa' || lang === 'ps';
     // 1. RAW stock in kilo
     const totalRawStockKg = db.rawMaterials.reduce((acc, r) => acc + (r.stockKg || 0), 0);
@@ -37,23 +49,17 @@ export const DashboardPage = ({ setActiveTab }) => {
         return d.toISOString().split('T')[0];
     });
     const trendData = last7Days.map(date => {
-        const daySales = db.sales
-            .filter(s => s.date === date)
-            .reduce((sum, s) => sum + s.totalAmount, 0);
-        const dayCost = db.sales
-            .filter(s => s.date === date)
-            .reduce((sum, s) => sum + s.totalCostOfGoods, 0);
-        const dayExp = db.expenses
-            .filter(e => e.date === date)
-            .reduce((sum, e) => sum + e.amount, 0);
-        const netProfit = daySales - dayCost - dayExp;
+        const dayTotals = db.sales.filter(sale => sale.date === date).reduce((totals, sale) => {
+            const isUsd = sale.currency === 'USD';
+            totals[isUsd ? 'salesUsd' : 'salesAfn'] += Number(sale.totalAmount) || 0;
+            totals[isUsd ? 'profitUsd' : 'profitAfn'] += Number(isUsd ? sale.profitUsd : sale.profit) || 0;
+            return totals;
+        }, { salesAfn: 0, salesUsd: 0, profitAfn: 0, profitUsd: 0 });
         const parts = date.split('-');
         const label = `${parts[1]}/${parts[2]}`;
         return {
             date: label,
-            sales: daySales,
-            expenses: dayExp,
-            profit: Math.max(0, netProfit),
+            ...dayTotals,
         };
     });
     // Inventory breakdown for pie chart
@@ -63,21 +69,15 @@ export const DashboardPage = ({ setActiveTab }) => {
         name: getLocalizedName(rm.name).split('(')[0].trim(),
         value: rm.stockKg,
     })).filter(item => item.value > 0);
-    const handleSaveThreshold = (e) => {
-        e.preventDefault();
-        const val = Number(thresholdInput);
-        if (!isNaN(val) && val > 0) {
-            setLowStockThreshold(val);
-            setEditingThreshold(false);
-        }
-    };
     // Rectangular clickable cards configuration (Light Theme)
     const rectangularCards = [
         {
             id: 'raw-stock',
             title: t.rawStockCard,
             value: `${totalRawStockKg.toLocaleString()} ${t.kilo}`,
-            subvalue: `${(totalRawStockKg / 1000).toFixed(1)} ${t.ton} (${totalRawStockValue.AFN.toLocaleString()} AFN · ${totalRawStockValue.USD.toLocaleString()} USD)`,
+            subvalue: `${(totalRawStockKg / 1000).toFixed(1)} ${t.ton}`,
+            secondaryMoney: totalRawStockValue,
+            secondaryMoneyLabel: t.dashboardStockValue,
             icon: Wheat,
             bg: 'bg-white hover:bg-amber-50/40',
             border: 'border-slate-200 hover:border-amber-400',
@@ -103,8 +103,8 @@ export const DashboardPage = ({ setActiveTab }) => {
         {
             id: 'owe-suppliers',
             title: t.oweSuppliersCard,
-            value: `${totalOwedToSuppliers.AFN.toLocaleString()} AFN · ${totalOwedToSuppliers.USD.toLocaleString()} USD`,
-            subvalue: `${db.suppliers.filter(s => s.balanceOwed > 0).length} ${t.navSuppliers}`,
+            moneyValue: totalOwedToSuppliers,
+            subvalue: `${db.suppliers.filter(s => (s.balanceOwed || 0) > 0 || (s.balanceOwedUsd || 0) > 0).length} ${t.navSuppliers}`,
             icon: Truck,
             bg: 'bg-white hover:bg-rose-50/40',
             border: 'border-slate-200 hover:border-rose-400',
@@ -116,8 +116,8 @@ export const DashboardPage = ({ setActiveTab }) => {
         {
             id: 'payable-customers',
             title: t.receivableCustomersCard,
-            value: `${totalReceivableFromCustomers.AFN.toLocaleString()} AFN · ${totalReceivableFromCustomers.USD.toLocaleString()} USD`,
-            subvalue: `${db.customers.filter(c => c.balanceOwed > 0).length} ${t.navCustomers}`,
+            moneyValue: totalReceivableFromCustomers,
+            subvalue: `${db.customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length} ${t.navCustomers}`,
             icon: Users,
             bg: 'bg-white hover:bg-blue-50/40',
             border: 'border-slate-200 hover:border-blue-400',
@@ -129,20 +129,22 @@ export const DashboardPage = ({ setActiveTab }) => {
         {
             id: 'total-processed-sold',
             title: t.totalProcessedSellCard,
-            value: `${totalSalesAmount.AFN.toLocaleString()} AFN · ${totalSalesAmount.USD.toLocaleString()} USD`,
+            moneyValue: totalSalesAmount,
             subvalue: `${totalSalesKg.toLocaleString()} ${t.kilo} (${(Math.round((totalSalesKg / 50) * 100) / 100).toLocaleString()} ${t.bag})`,
+            secondaryMoney: totalGrossProfit,
+            secondaryMoneyLabel: t.dashboardGrossProfit,
             icon: TrendingUp,
             bg: 'bg-white hover:bg-cyan-50/40',
             border: 'border-slate-200 hover:border-cyan-400',
             textColor: 'text-cyan-700',
             iconBg: 'bg-cyan-100 text-cyan-700',
             tab: 'sales',
-            badge: `${totalGrossProfit.AFN.toLocaleString()} AFN · ${totalGrossProfit.USD.toLocaleString()} USD`,
+            badge: t.dashboardGrossProfit,
         },
         {
             id: 'money-in-hand',
             title: t.moneyInHandCard,
-            value: `${moneyInHand.AFN.toLocaleString()} AFN · ${moneyInHand.USD.toLocaleString()} USD`,
+            moneyValue: moneyInHand,
             subvalue: t.moneyInHandCard,
             icon: Wallet,
             bg: 'bg-white hover:bg-emerald-50/40',
@@ -150,12 +152,12 @@ export const DashboardPage = ({ setActiveTab }) => {
             textColor: 'text-emerald-800',
             iconBg: 'bg-emerald-100 text-emerald-800',
             tab: 'expenses',
-            badge: 'AFN / USD',
+            badge: t.dashboardDualCurrency,
         },
         {
             id: 'total-expenses',
             title: t.totalExpensesCard,
-            value: `${totalExpenses.AFN.toLocaleString()} AFN · ${totalExpenses.USD.toLocaleString()} USD`,
+            moneyValue: totalExpenses,
             subvalue: `${db.expenses.length} ${t.records}`,
             icon: Receipt,
             bg: 'bg-white hover:bg-amber-50/40',
@@ -197,31 +199,13 @@ export const DashboardPage = ({ setActiveTab }) => {
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-600 mt-1">
-                  {t.lowStockWarningMessage
-                .replace('{count}', lowStockMaterials.length.toString())
-                .replace('{threshold}', lowStockThreshold.toLocaleString())}
+                  {t.lowStockPerItemMessage.replace('{count}', lowStockMaterials.length.toString())}
                 </p>
               </div>
             </div>
 
-            {/* Threshold quick controls & Restock CTA */}
-            <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
-              {!editingThreshold ? (<button type="button" onClick={() => {
-                    setThresholdInput(lowStockThreshold.toString());
-                    setEditingThreshold(true);
-                }} className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors shadow-2xs">
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600"/>
-                  <span>{t.lowStockThresholdLabel} {lowStockThreshold.toLocaleString()} {t.kilo}</span>
-                </button>) : (<form onSubmit={handleSaveThreshold} className="flex items-center gap-1.5">
-                  <input type="number" min="0" step="any" value={thresholdInput} onChange={(e) => setThresholdInput(e.target.value)} className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 font-mono shadow-2xs"/>
-                  <button type="submit" className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs">
-                    {t.saveThreshold}
-                  </button>
-                  <button type="button" onClick={() => setEditingThreshold(false)} className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 text-xs">
-                    {t.cancel}
-                  </button>
-                </form>)}
-
+            {/* Restock CTA */}
+            <div className="flex items-center self-start lg:self-auto">
               <button type="button" onClick={() => setActiveTab('inventory')} className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/25 transition-all flex items-center gap-1.5">
                 <span>{t.restockNow}</span>
                 {isRtl ? <ArrowLeft className="w-3.5 h-3.5"/> : <ArrowRight className="w-3.5 h-3.5"/>}
@@ -232,21 +216,22 @@ export const DashboardPage = ({ setActiveTab }) => {
           {/* Visual Chips of Highlighted Low Stock Materials */}
           <div className="mt-4 pt-3 border-t border-rose-200/60 flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-slate-500">{t.itemsNeedRestock}:</span>
-            {lowStockMaterials.map(rm => (<span key={rm.id} onClick={() => setActiveTab('inventory')} className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-white border border-rose-200 hover:border-rose-400 text-xs font-semibold text-rose-700 cursor-pointer transition-colors shadow-2xs">
-                <span>{getLocalizedName(rm.name)}</span>
-                <span className="font-mono bg-rose-100 px-1.5 py-0.5 rounded text-[11px] text-rose-800">
-                  {rm.stockKg.toLocaleString()} {t.kilo}
-                </span>
-              </span>))}
+            {lowStockMaterials.map(rm => {
+                const itemThreshold = rm.lowStockThreshold ?? lowStockThreshold;
+                return <button type="button" key={rm.id} onClick={() => setActiveTab('inventory')} className="inline-flex flex-col items-start gap-1 rounded-lg border border-rose-200 bg-white px-3 py-2 text-start text-xs font-semibold text-rose-700 shadow-2xs transition-colors hover:border-rose-400">
+                  <span>{getLocalizedName(rm.name)}</span>
+                  <span className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium text-slate-600">
+                    <span>{t.currentStockLabel}: <strong dir="ltr" className="font-mono text-rose-700">{rm.stockKg.toLocaleString()} {t.kilo}</strong></span>
+                    <span>{t.thresholdLimitLabel}: <strong dir="ltr" className="font-mono text-slate-800">{itemThreshold.toLocaleString()} {t.kilo}</strong></span>
+                  </span>
+                </button>;
+            })}
           </div>
         </div>) : (<div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 text-xs sm:text-sm text-emerald-800 shadow-xs">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0"/>
             <span className="font-semibold">{t.allStockHealthy}</span>
           </div>
-          <span className="text-xs text-emerald-700 font-mono">
-            {t.lowStockThresholdLabel} {lowStockThreshold.toLocaleString()} {t.kilo}
-          </span>
         </div>)}
 
       {/* 2. RECTANGULAR CLICKABLE METRIC TABLES / CARDS */}
@@ -263,28 +248,32 @@ export const DashboardPage = ({ setActiveTab }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {rectangularCards.map((card) => {
             const Icon = card.icon;
-            return (<div key={card.id} onClick={() => setActiveTab(card.tab)} className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md hover:-translate-y-0.5 ${card.bg} ${card.border}`}>
+            return (<button type="button" key={card.id} onClick={() => setActiveTab(card.tab)} className={`h-full p-5 rounded-2xl border text-start transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md hover:-translate-y-0.5 ${card.bg} ${card.border}`}>
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className={`p-2.5 rounded-xl ${card.iconBg} transition-transform group-hover:scale-110 shadow-2xs`}>
                     <Icon className="w-5 h-5"/>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 border border-slate-200 text-slate-700">
+                  <span className="max-w-[65%] px-2.5 py-0.5 rounded-full text-[11px] text-center font-semibold bg-slate-100 border border-slate-200 text-slate-700">
                     {card.badge}
                   </span>
                 </div>
 
-                <div className="space-y-1">
-                  <span className="text-xs font-medium text-slate-500 block line-clamp-1">
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-slate-600 block min-h-8">
                     {card.title}
                   </span>
-                  <div className={`text-xl sm:text-2xl font-black tracking-tight font-mono ${card.textColor}`}>
+                  {card.moneyValue ? <CurrencyPair amounts={card.moneyValue} t={t} tone={card.textColor}/> : <div dir="ltr" className={`text-xl sm:text-2xl font-black tracking-tight font-mono text-end ${card.textColor}`}>
                     {card.value}
-                  </div>
-                  <p className="text-xs text-slate-500 line-clamp-1 pt-1 border-t border-slate-100">
+                  </div>}
+                  {card.secondaryMoney && <div className="pt-2 border-t border-slate-100">
+                    <span className="mb-1 block text-[10px] font-semibold text-slate-500">{card.secondaryMoneyLabel}</span>
+                    <CurrencyPair amounts={card.secondaryMoney} t={t} tone={card.textColor} compact/>
+                  </div>}
+                  <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
                     {card.subvalue}
                   </p>
                 </div>
-              </div>);
+              </button>);
         })}
         </div>
       </div>
@@ -293,14 +282,15 @@ export const DashboardPage = ({ setActiveTab }) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sales & Profit Trend (2 Columns) */}
         <div className="lg:col-span-2 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
             <div>
               <h3 className="font-bold text-sm text-slate-900">{t.salesSummary} & {t.reportsTitle}</h3>
               <p className="text-xs text-slate-500">{t.periodWeekly}</p>
             </div>
-            <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-semibold">
-              {t.netProfit}: {totalGrossProfit.AFN.toLocaleString()} AFN · {totalGrossProfit.USD.toLocaleString()} USD
-            </span>
+            <div className="min-w-56 rounded-xl border border-emerald-200 bg-emerald-50 p-2">
+              <span className="mb-1 block text-[10px] font-bold text-emerald-800">{t.dashboardGrossProfit}</span>
+              <CurrencyPair amounts={totalGrossProfit} t={t} tone="text-emerald-700" compact/>
+            </div>
           </div>
 
           <div className="h-64 w-full">
@@ -315,14 +305,25 @@ export const DashboardPage = ({ setActiveTab }) => {
                     <stop offset="5%" stopColor="#059669" stopOpacity={0.3}/>
                     <stop offset="95%" stopColor="#059669" stopOpacity={0}/>
                   </linearGradient>
+                  <linearGradient id="salesUsdGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="profitUsdGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0}/>
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"/>
                 <XAxis dataKey="date" stroke="#64748b" fontSize={11}/>
-                <YAxis stroke="#64748b" fontSize={11}/>
-                <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', borderRadius: '12px', color: '#0f172a', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}/>
+                <YAxis yAxisId="AFN" orientation={isRtl ? 'right' : 'left'} stroke="#d97706" fontSize={10}/>
+                <YAxis yAxisId="USD" orientation={isRtl ? 'left' : 'right'} stroke="#2563eb" fontSize={10}/>
+                <Tooltip formatter={(value, name) => [Number(value).toLocaleString(), name]} contentStyle={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', borderRadius: '12px', color: '#0f172a', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}/>
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}/>
-                <Area type="monotone" dataKey="sales" name={t.totalSaleAmount} stroke="#d97706" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)"/>
-                <Area type="monotone" dataKey="profit" name={t.netProfit} stroke="#059669" strokeWidth={2} fillOpacity={1} fill="url(#profitGrad)"/>
+                <Area yAxisId="AFN" type="monotone" dataKey="salesAfn" name={`${t.totalSaleAmount} — AFN`} stroke="#d97706" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)"/>
+                <Area yAxisId="AFN" type="monotone" dataKey="profitAfn" name={`${t.dashboardGrossProfit} — AFN`} stroke="#059669" strokeWidth={2} fillOpacity={1} fill="url(#profitGrad)"/>
+                <Area yAxisId="USD" type="monotone" dataKey="salesUsd" name={`${t.totalSaleAmount} — USD`} stroke="#2563eb" strokeWidth={2} fillOpacity={1} fill="url(#salesUsdGrad)"/>
+                <Area yAxisId="USD" type="monotone" dataKey="profitUsd" name={`${t.dashboardGrossProfit} — USD`} stroke="#7c3aed" strokeWidth={2} fillOpacity={1} fill="url(#profitUsdGrad)"/>
               </AreaChart>
             </ResponsiveContainer>
           </div>
