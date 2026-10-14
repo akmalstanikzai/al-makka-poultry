@@ -545,7 +545,7 @@ export const translations = {
         "statementTotalQuantity": "ټوله اندازه",
         "statementTotalSales": "ټول پلور",
         "statementTotalPurchases": "ټولې رانیونې",
-        "statementTheyOweUs": "له پېرودونکي زموږ طلب",
+        "statementTheyOweUs": "د پیریدونکو سره زمونږ پاتی پیسي",
         "statementWeOweSupplier": "عرضه کوونکي ته زموږ پور",
         "dashboardAfnLabel": "افغانۍ (AFN)",
         "dashboardUsdLabel": "امریکایي ډالر (USD)",
