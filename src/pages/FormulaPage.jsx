@@ -2,6 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen, Search, Check } from 'lucide-react';
+const getTodayDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 export const FormulaPage = () => {
     const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
     const [loadedFormulaId, setLoadedFormulaId] = useState(null);
@@ -10,6 +17,7 @@ export const FormulaPage = () => {
     const [operatorName, setOperatorName] = useState('');
     const [batchExpenses, setBatchExpenses] = useState('');
     const [batchExpenseCurrency, setBatchExpenseCurrency] = useState('AFN');
+    const [processingDate, setProcessingDate] = useState(getTodayDate);
     const [productionUnit, setProductionUnit] = useState('ton');
     const [productionQuantity, setProductionQuantity] = useState('');
     // Ingredients list in formulation
@@ -157,6 +165,10 @@ export const FormulaPage = () => {
             setProcessStatus({ type: 'error', text: t.productionAmountMustBePositive });
             return;
         }
+        if (!processingDate) {
+            setProcessStatus({ type: 'error', text: t.processingDateRequired });
+            return;
+        }
         // Check if we have enough raw materials in stock
         for (const ing of scaledIngredients) {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
@@ -173,7 +185,7 @@ export const FormulaPage = () => {
             }
         }
         setIsProducing(true);
-        const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency);
+        const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency, processingDate);
         setIsProducing(false);
         if (result.success) {
             setProcessStatus({
@@ -186,6 +198,7 @@ export const FormulaPage = () => {
             setOperatorName('');
             setBatchExpenses('');
             setProductionQuantity('');
+            setProcessingDate(getTodayDate());
             setLoadedFormulaId(null);
         }
         else {
@@ -201,7 +214,7 @@ export const FormulaPage = () => {
             setFormulaToDelete(null);
         }
     };
-    return (<div className="flex flex-col gap-6">
+    return (<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
       {/* Header */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -286,7 +299,7 @@ export const FormulaPage = () => {
       {/* Main Grid: Recipe Builder (2 Cols) + Live Cost Calculator (1 Col) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Formula Recipe Builder Form (2 Columns) */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="min-w-0 lg:col-span-2 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center mb-4 pb-3 border-b border-slate-100">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Scale className="w-5 h-5 text-amber-600"/>
@@ -299,12 +312,20 @@ export const FormulaPage = () => {
               <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center">1</span>
               <span>{t.formulaDetailsStep}</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {t.formulaNameLabel}
                 </label>
                 <input type="text" required value={formulaName} onChange={(e) => setFormulaName(e.target.value)} placeholder={t.formulaNamePlaceholder} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+              </div>
+
+              <div>
+                <label htmlFor="formula-processing-date" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                  <CalendarClock className="w-3.5 h-3.5 text-amber-600"/>
+                  <span>{t.processingDateLabel}</span>
+                </label>
+                <input id="formula-processing-date" type="date" required value={processingDate} onChange={(event) => setProcessingDate(event.target.value)} className="w-full min-w-0 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
               </div>
 
               {/* Batch Production Expenses Input */}
@@ -409,9 +430,9 @@ export const FormulaPage = () => {
                   <span className="block mt-1">{t.productionScale}: {productionScale.toLocaleString(undefined, { maximumFractionDigits: 4 })}× · {t.formulaRemainsUnchanged}</span>
                 </div>
               </div>
-              <div className="flex flex-wrap items-start justify-end gap-2">
-              <div className="flex flex-col items-stretch sm:items-end">
-                <button type="button" onClick={handleSaveFormula} className="px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
+              <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-start justify-end gap-2">
+              <div className="flex min-w-0 flex-col items-stretch sm:items-end">
+                <button type="button" onClick={handleSaveFormula} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
                   <Bookmark className="w-4 h-4"/>
                   <span>{loadedFormulaId
                       ? (lang === 'fa' ? 'به‌روزرسانی فرمول' : lang === 'ps' ? 'فورمول تازه کول' : 'Update formula')
@@ -419,8 +440,8 @@ export const FormulaPage = () => {
                 </button>
                 {message && <p className={`mt-2 text-xs font-semibold ${message.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`} role="status">{message.text}</p>}
               </div>
-              <div className="flex flex-col items-stretch sm:items-end">
-                <button type="submit" disabled={isProducing} className="px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-wait text-white font-bold text-sm shadow-md shadow-amber-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95">
+              <div className="flex min-w-0 flex-col items-stretch sm:items-end">
+                <button type="submit" disabled={isProducing} className="w-full sm:w-auto px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-wait text-white font-bold text-sm shadow-md shadow-amber-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95">
                   <PackageCheck className="w-4 h-4"/>
                   <span>{isProducing ? (lang === 'fa' ? 'در حال ذخیره...' : lang === 'ps' ? 'د خوندي کولو په حال کې...' : 'Saving...') : t.produceFeedBtn}</span>
                 </button>
@@ -432,7 +453,7 @@ export const FormulaPage = () => {
         </div>
 
         {/* Real-time Calculation Panel (1 Column) - Multi-Unit (Tons, Bags, Kg) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-6 lg:sticky lg:top-24 self-start">
+        <div className="min-w-0 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-6 lg:sticky lg:top-24 self-start">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
               <DollarSign className="w-4 h-4 text-emerald-600"/>
@@ -460,7 +481,7 @@ export const FormulaPage = () => {
 
               {/* Raw Material Cost & Batch Expenses */}
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                <div className="flex justify-between items-center text-slate-600">
+                <div className="flex flex-wrap justify-between items-center gap-1 text-slate-600">
                   <span>{t.rawMaterialsCost}</span>
                   <span className="font-mono font-bold">{scaledRawMaterialCost.AFN.toLocaleString()} AFN · {scaledRawMaterialCost.USD.toLocaleString()} USD</span>
                 </div>
@@ -468,7 +489,7 @@ export const FormulaPage = () => {
                     <span>{t.prodExpensesSub}</span>
                     <span className="font-mono font-bold">+{batchExpenseAmount.toLocaleString()} {batchExpenseCurrency}</span>
                   </div>)}
-                <div className="flex justify-between items-center text-slate-900 font-bold mt-2 pt-2 border-t border-slate-300">
+                <div className="flex flex-wrap justify-between items-center gap-1 text-slate-900 font-bold mt-2 pt-2 border-t border-slate-300">
                   <span>{t.totalBatchCost}:</span>
                   <span className="font-mono text-cyan-700">{totalBatchCost.AFN.toLocaleString()} AFN · {totalBatchCost.USD.toLocaleString()} USD</span>
                 </div>
@@ -532,7 +553,7 @@ export const FormulaPage = () => {
           </div>
 
           {/* Unit Selector Tabs */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto bg-slate-100 p-1 rounded-xl text-xs font-semibold">
             <button type="button" onClick={() => setStockViewUnit('all')} className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${stockViewUnit === 'all'
             ? 'bg-white text-slate-900 shadow-xs font-bold'
             : 'text-slate-600 hover:text-slate-900'}`}>
@@ -557,7 +578,7 @@ export const FormulaPage = () => {
         </div>
 
         {/* Global Processed Stock Overview Banners */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200">
             <span className="text-[11px] font-semibold text-amber-800 block">{t.totalStockInTons}</span>
             <div className="text-xl font-bold font-mono text-amber-900 mt-1">
@@ -584,7 +605,7 @@ export const FormulaPage = () => {
 
           <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
             <span className="text-[11px] font-semibold text-emerald-800 block">{t.totalProcessedStockValue}</span>
-            <div className="text-xl font-bold font-mono text-emerald-900 mt-1">
+            <div className="text-lg sm:text-xl font-bold font-mono text-emerald-900 mt-1 break-words [overflow-wrap:anywhere]">
               {totalProcessedValue.AFN.toLocaleString()} AFN · {totalProcessedValue.USD.toLocaleString()} USD
             </div>
             <span className="text-[10px] text-emerald-700">{db.processedStock.length} {t.readyFeedTypes}</span>
@@ -681,7 +702,7 @@ export const FormulaPage = () => {
                 </div>
 
                 <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-                  <span>{t.date}: {p.lastUpdated}</span>
+                  <span>{t.processingDateLabel}: {p.lastUpdated}</span>
                   <span className="font-mono">ID: {p.id.slice(-6)}</span>
                 </div>
               </div>);
