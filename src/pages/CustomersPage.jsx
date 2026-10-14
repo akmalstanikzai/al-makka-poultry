@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { ReceiptActions } from '../components';
+import { AccountStatement } from '../components/AccountStatement';
+import { ReceiptActions } from '../components/ReceiptActions';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
@@ -10,7 +11,7 @@ const transactionTime = transaction => {
 };
 const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
-    const { db, t, deleteCustomer, updateCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, lang, deleteCustomer, updateCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
@@ -597,7 +598,7 @@ export const CustomersPage = () => {
 
       {/* Customer Transaction History / Statement Modal */}
       {selectedHistoryCustomer && (<div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-xl max-h-[calc(100dvh-2rem)] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 flex flex-col">
+          <div className="bg-white w-full max-w-6xl max-h-[calc(100dvh-2rem)] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 flex flex-col">
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
@@ -621,55 +622,7 @@ export const CustomersPage = () => {
             </div>
 
             <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
-            <div id="customer-receipt" className="receipt-document bg-white p-5">
-              <div className="text-center pb-4 border-b-2 border-slate-900">
-                <h1 className="text-xl font-black text-slate-900">{t.companyName}</h1>
-                <p className="text-xs text-slate-500 mt-1">{t.companySubtitle} · {t.accountStatementAndHistory}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 my-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                <div><span className="text-slate-500 block">{t.customerNameLabel}</span><strong>{selectedHistoryCustomer.name}</strong></div>
-                <div><span className="text-slate-500 block">{t.phone}</span><strong dir="ltr">{selectedHistoryCustomer.phone || '-'}</strong></div>
-                <div><span className="text-slate-500 block">{t.totalPurchasedAmount}</span><strong className="font-mono">{selectedHistoryCustomer.totalPurchasedAmount.toLocaleString()} AFN · {(selectedHistoryCustomer.totalPurchasedAmountUsd || 0).toLocaleString()} USD</strong></div>
-                <div><span className="text-slate-500 block">{t.totalSettledByCustomer}</span><strong className="font-mono text-emerald-700">{((selectedHistoryCustomer.totalPaid || 0) + (selectedHistoryCustomer.rawSettledAmount || 0)).toLocaleString()} AFN · {((selectedHistoryCustomer.totalPaidUsd || 0) + (selectedHistoryCustomer.rawSettledAmountUsd || 0)).toLocaleString()} USD</strong><span className="block text-[10px] text-slate-500 mt-0.5">{t.cashReceivedFromCustomer}: {(selectedHistoryCustomer.totalPaid || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.totalPaidUsd || 0).toLocaleString()} USD<br/>{t.nonCashRawSettled}: {(selectedHistoryCustomer.rawSettledAmount || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.rawSettledAmountUsd || 0).toLocaleString()} USD</span></div>
-                <div><span className="text-slate-500 block">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD</strong></div>
-                <div><span className="text-slate-500 block">{t.weOweThem}</span><strong className="font-mono text-amber-700">{(selectedHistoryCustomer.creditBalance || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.creditBalanceUsd || 0).toLocaleString()} USD</strong></div>
-              </div>
-            <div className="space-y-2.5">
-              {selectedHistoryCustomer.transactions && selectedHistoryCustomer.transactions.length > 0 ? (selectedHistoryCustomer.transactions.map((h) => (<div key={h.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
-                    <div className="flex justify-between items-start gap-3">
-                    <div>
-                      <div className="font-mono text-slate-500">{h.date}</div>
-                      {h.itemName && <div className="text-slate-900 mt-1 font-bold">{h.itemName}</div>}
-                      <div className="text-slate-800 mt-0.5 font-medium">{customerTransactionDescription(h)}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {t.transactionType}: {getLocalizedTxType(h.type)}
-                      </div>
-                    </div>
-                    <div className="text-end">
-                      <div className="font-bold font-mono text-emerald-700 text-sm">
-                        {h.type === 'raw_goods_settlement' ? t.customerDebtReduction : t.cashReceived}: {Number(h.paidAmount || 0).toLocaleString()} {h.currency || 'AFN'}
-                      </div>
-                      <div className="text-[11px] text-rose-700 font-mono mt-0.5">
-                        {t.remainingDebt}: {Number(h.accountBalanceAfter ?? h.remainingAmount ?? 0).toLocaleString()} {h.currency || 'AFN'}
-                      </div>
-                    </div>
-                    </div>
-                    {h.itemName && <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 text-[11px]">
-                      <div><span className="text-slate-500 block">{t.quantity}</span><strong className="font-mono">{Number(h.quantityKg || 0).toLocaleString()} kg</strong></div>
-                      <div><span className="text-slate-500 block">{t.unitPriceKilo}</span><strong className="font-mono">{Number(h.unitPrice || 0).toLocaleString()} {h.currency || 'AFN'}</strong></div>
-                    </div>}
-                  </div>))) : (<div className="p-8 text-center text-slate-500 text-xs">
-                  {t.noTxRecorded}
-                </div>)}
-            </div>
-
-            {/* Print Statement Footer with Branding */}
-            <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
-              <div className="text-[10px] font-mono text-slate-500">
-                {t.developedBy}
-              </div>
-            </div>
-            </div>
+              <AccountStatement id="customer-receipt" party={selectedHistoryCustomer} role="customer" sales={db.sales} t={t} lang={lang}/>
             </div>
           </div>
         </div>)}

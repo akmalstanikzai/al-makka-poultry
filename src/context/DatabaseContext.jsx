@@ -349,6 +349,9 @@ export const DatabaseProvider = ({ children }) => {
                     itemName: item.name,
                     quantityKg: item.stockKg,
                     unitPrice: item.unitPrice,
+                    unitType: item.purchaseUnitType || 'kg',
+                    unitQuantity: item.purchaseUnitQuantity ?? item.stockKg,
+                    unitPricePerUnit: item.purchaseUnitPrice ?? item.unitPrice,
                     date: today,
                     type: 'purchase',
                     description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
@@ -401,7 +404,7 @@ export const DatabaseProvider = ({ children }) => {
         });
     };
     // RESTOCK AN EXISTING RAW MATERIAL & RECORD THE SUPPLIER PURCHASE
-    const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
+    const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, purchaseUnitType = 'kg', purchaseUnitQuantity, purchaseUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
         const material = db.rawMaterials.find(item => item.id === materialId);
         const weight = Number(addedWeightKg);
         const price = Number(newUnitPrice);
@@ -429,6 +432,9 @@ export const DatabaseProvider = ({ children }) => {
                     itemName: material.name,
                     quantityKg: weight,
                     unitPrice: price,
+                    unitType: purchaseUnitType,
+                    unitQuantity: purchaseUnitQuantity ?? weight,
+                    unitPricePerUnit: purchaseUnitPrice ?? price,
                     date: today,
                     type: 'purchase',
                     description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
@@ -718,6 +724,9 @@ export const DatabaseProvider = ({ children }) => {
                 itemName: product.name,
                 quantityKg,
                 unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
+                unitType: settlement.unitType,
+                unitQuantity,
+                unitPricePerUnit: salePricePerUnit,
                 date: today,
                 type: 'goods_settlement',
                 description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
@@ -967,6 +976,12 @@ export const DatabaseProvider = ({ children }) => {
                 c.name.toLowerCase() === custName.toLowerCase());
             const customerTransaction = {
                 id: `ct-${Date.now()}`,
+                itemName: saleData.productName,
+                quantityKg,
+                unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
+                unitType: saleData.unitType,
+                unitQuantity: Number(saleData.unitQuantity),
+                unitPricePerUnit: Number(saleData.salePricePerUnit),
                 date: today,
                 type: 'sale',
                 description: `فروش ${saleData.productName} (${saleData.unitQuantity} ${t[saleData.unitType] || saleData.unitType})`,
@@ -1071,6 +1086,9 @@ export const DatabaseProvider = ({ children }) => {
                 itemName: name,
                 quantityKg,
                 unitPrice: unitPricePerKg,
+                unitType: settlement.unitType,
+                unitQuantity,
+                unitPricePerUnit: unitPriceForSelectedUnit,
                 date: today,
                 type: 'raw_goods_settlement',
                 description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,

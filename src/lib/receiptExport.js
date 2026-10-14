@@ -24,36 +24,90 @@ export const printReceipt = (elementId, title) => {
 
 export const downloadReceiptPdf = async (elementId, filename) => {
     const receipt = getReceiptElement(elementId);
-    const [{ toPng }, { jsPDF }] = await Promise.all([
+    const [{ toCanvas }, { jsPDF }] = await Promise.all([
         import('html-to-image'),
         import('jspdf'),
     ]);
-    const image = await toPng(receipt, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        cacheBust: true,
+    const exportTarget = receipt.cloneNode(true);
+    exportTarget.removeAttribute('id');
+    const exportHost = document.createElement('div');
+    Object.assign(exportHost.style, {
+        position: 'fixed',
+        left: '-10000px',
+        top: '0',
+        width: '820px',
+        zIndex: '-1',
     });
-    const imageSize = await new Promise((resolve, reject) => {
-        const preview = new Image();
-        preview.onload = () => resolve({ width: preview.naturalWidth, height: preview.naturalHeight });
-        preview.onerror = () => reject(new Error('The receipt image could not be prepared.'));
-        preview.src = image;
+    Object.assign(exportTarget.style, {
+        position: 'static',
+        inset: 'auto',
+        width: '820px',
+        maxWidth: 'none',
+        height: 'auto',
+        overflow: 'visible',
+        background: '#ffffff',
     });
+    exportHost.appendChild(exportTarget);
+    document.body.appendChild(exportHost);
+    await document.fonts?.ready;
+    let canvas;
+    let receiptHeight = 0;
+    let protectedBlockPositions = [];
+    try {
+        const receiptRect = exportTarget.getBoundingClientRect();
+        receiptHeight = receiptRect.height;
+        protectedBlockPositions = Array.from(exportTarget.querySelectorAll('.statement-row, .statement-totals, .statement-party-info'))
+            .map(element => {
+                const rect = element.getBoundingClientRect();
+                return {
+                    top: Math.max(0, rect.top - receiptRect.top),
+                    bottom: Math.min(receiptRect.height, rect.bottom - receiptRect.top),
+                };
+            });
+        canvas = await toCanvas(exportTarget, {
+            backgroundColor: '#ffffff',
+            pixelRatio: 2,
+            cacheBust: true,
+        });
+    }
+    finally {
+        exportHost.remove();
+    }
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = 210;
     const pageHeight = 297;
     const margin = 10;
     const imageWidth = pageWidth - (margin * 2);
-    const imageHeight = imageSize.height * imageWidth / imageSize.width;
-    let remainingHeight = imageHeight;
-    let offset = margin;
-    pdf.addImage(image, 'PNG', margin, offset, imageWidth, imageHeight, undefined, 'FAST');
-    remainingHeight -= pageHeight - (margin * 2);
-    while (remainingHeight > 0) {
-        pdf.addPage();
-        offset = margin - (imageHeight - remainingHeight);
-        pdf.addImage(image, 'PNG', margin, offset, imageWidth, imageHeight, undefined, 'FAST');
-        remainingHeight -= pageHeight - (margin * 2);
+    const printableHeight = pageHeight - (margin * 2);
+    const pageHeightPx = canvas.width * printableHeight / imageWidth;
+    const scaleY = canvas.height / receiptHeight;
+    const protectedBlocks = protectedBlockPositions.map(block => ({
+        top: block.top * scaleY,
+        bottom: block.bottom * scaleY,
+    }));
+
+    let pageStart = 0;
+    let pageNumber = 0;
+    while (pageStart < canvas.height) {
+        const targetEnd = Math.min(canvas.height, pageStart + pageHeightPx);
+        const crossingBlock = protectedBlocks.find(block => block.top < targetEnd
+            && block.bottom > targetEnd
+            && block.top > pageStart + 80);
+        const pageEnd = crossingBlock ? Math.floor(crossingBlock.top) : Math.floor(targetEnd);
+        const sliceHeight = Math.max(1, pageEnd - pageStart);
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+        const context = pageCanvas.getContext('2d');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        context.drawImage(canvas, 0, pageStart, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        const image = pageCanvas.toDataURL('image/png');
+        const imageHeight = sliceHeight * imageWidth / canvas.width;
+        if (pageNumber > 0) pdf.addPage();
+        pdf.addImage(image, 'PNG', margin, margin, imageWidth, imageHeight, undefined, 'FAST');
+        pageStart = pageEnd;
+        pageNumber += 1;
     }
     pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
 };

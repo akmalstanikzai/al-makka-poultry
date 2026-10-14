@@ -35,6 +35,13 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 /* Clean printing styles for reports and invoices */
+.statement-row,
+.statement-totals,
+.statement-party-info {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -45,5 +52,18 @@ input[type="number"]::-webkit-inner-spin-button {
   body {
     background-color: white !important;
     color: black !important;
+  }
+  .statement-document {
+    width: 100% !important;
+    padding: 0 !important;
+  }
+  .statement-ledger {
+    overflow: visible !important;
+  }
+  .statement-ledger table {
+    min-width: 0 !important;
+  }
+  .statement-ledger thead {
+    display: table-header-group;
   }
 }
