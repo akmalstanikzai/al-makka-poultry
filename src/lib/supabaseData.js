@@ -168,6 +168,8 @@ export async function loadStateFromSupabase() {
                 .map(tx => ({
                 id: tx.id,
                 rawMaterialId: tx.raw_material_id || undefined,
+                productId: tx.product_id || undefined,
+                sourceSaleId: tx.source_sale_id || undefined,
                 itemName: tx.item_name || undefined,
                 quantityKg: tx.quantity_kg == null ? undefined : Number(tx.quantity_kg),
                 unitPrice: tx.unit_price == null ? undefined : Number(tx.unit_price),
@@ -181,8 +183,14 @@ export async function loadStateFromSupabase() {
                 description: tx.description,
                 amount: Number(tx.amount) || 0,
                 paidAmount: Number(tx.paid_amount) || 0,
+                cashAmount: Number(tx.cash_amount) || 0,
                 remainingAmount: Number(tx.remaining_amount) || 0,
                 currency: tx.currency || 'AFN',
+                status: tx.status || 'active',
+                reversalOf: tx.reversal_of || undefined,
+                replacedByTransactionId: tx.replaced_by_transaction_id || undefined,
+                correctionReason: tx.correction_reason || undefined,
+                correctedAt: tx.corrected_at || undefined,
             })),
         }));
         let supplierBalanceReconciliationNeeded = false;
@@ -223,6 +231,9 @@ export async function loadStateFromSupabase() {
                 .filter(tx => tx.customer_id === c.id)
                 .map(tx => ({
                 id: tx.id,
+                rawMaterialId: tx.raw_material_id || undefined,
+                productId: tx.product_id || undefined,
+                sourceSaleId: tx.source_sale_id || undefined,
                 itemName: tx.item_name || undefined,
                 quantityKg: tx.quantity_kg == null ? undefined : Number(tx.quantity_kg),
                 unitPrice: tx.unit_price == null ? undefined : Number(tx.unit_price),
@@ -235,8 +246,14 @@ export async function loadStateFromSupabase() {
                 description: tx.description,
                 amount: Number(tx.amount) || 0,
                 paidAmount: Number(tx.paid_amount) || 0,
+                cashAmount: Number(tx.cash_amount) || 0,
                 remainingAmount: Number(tx.remaining_amount) || 0,
                 currency: tx.currency || 'AFN',
+                status: tx.status || 'active',
+                reversalOf: tx.reversal_of || undefined,
+                replacedByTransactionId: tx.replaced_by_transaction_id || undefined,
+                correctionReason: tx.correction_reason || undefined,
+                correctedAt: tx.corrected_at || undefined,
             })),
         }));
         // Customer debt has one accounting source of truth:
@@ -271,7 +288,7 @@ export async function loadStateFromSupabase() {
             currency: p.currency || 'AFN',
             lastUpdated: p.last_updated || new Date().toISOString().split('T')[0],
         }));
-        const sales = (salesRes.data || []).map(s => ({
+        const sales = (salesRes.data || []).filter(s => (s.status || 'active') === 'active').map(s => ({
             id: s.id,
             date: s.date,
             customerId: s.customer_id || '',
@@ -291,6 +308,7 @@ export async function loadStateFromSupabase() {
             profit: Number(s.profit) || 0,
             profitUsd: Number(s.profit_usd) || 0,
             paidAmount: Number(s.paid_amount) || 0,
+            cashAmount: Number(s.cash_amount) || 0,
             remainingAmount: Number(s.remaining_amount) || 0,
             notes: s.notes || undefined,
             currency: s.currency || 'AFN',
@@ -427,6 +445,8 @@ export async function writeStateToSupabase(state) {
                 id: t.id,
                 supplier_id: s.id,
                 raw_material_id: t.rawMaterialId || null,
+                product_id: t.productId || null,
+                source_sale_id: t.sourceSaleId || null,
                 item_name: t.itemName || null,
                 quantity_kg: t.quantityKg ?? null,
                 unit_price: t.unitPrice ?? null,
@@ -440,8 +460,14 @@ export async function writeStateToSupabase(state) {
                 description: t.description,
                 amount: t.amount,
                 paid_amount: t.paidAmount,
+                cash_amount: t.cashAmount ?? (t.type === 'purchase' || t.type === 'payment' ? t.paidAmount : 0),
                 remaining_amount: t.remainingAmount,
                 currency: t.currency || 'AFN',
+                status: t.status || 'active',
+                reversal_of: t.reversalOf || null,
+                replaced_by_transaction_id: t.replacedByTransactionId || null,
+                correction_reason: t.correctionReason || null,
+                corrected_at: t.correctedAt || null,
             })));
             if (txRows.length > 0) {
                 await checked(supabase.from('supplier_transactions').upsert(txRows), 'supplier_transactions seed');
@@ -488,6 +514,9 @@ export async function writeStateToSupabase(state) {
             const custTxRows = state.customers.flatMap(c => c.transactions.map(t => ({
                 id: t.id,
                 customer_id: c.id,
+                raw_material_id: t.rawMaterialId || null,
+                product_id: t.productId || null,
+                source_sale_id: t.sourceSaleId || null,
                 item_name: t.itemName || null,
                 quantity_kg: t.quantityKg ?? null,
                 unit_price: t.unitPrice ?? null,
@@ -500,8 +529,14 @@ export async function writeStateToSupabase(state) {
                 description: t.description,
                 amount: t.amount,
                 paid_amount: t.paidAmount,
+                cash_amount: t.cashAmount ?? (t.type === 'sale' || t.type === 'payment' ? t.paidAmount : 0),
                 remaining_amount: t.remainingAmount,
                 currency: t.currency || 'AFN',
+                status: t.status || 'active',
+                reversal_of: t.reversalOf || null,
+                replaced_by_transaction_id: t.replacedByTransactionId || null,
+                correction_reason: t.correctionReason || null,
+                corrected_at: t.correctedAt || null,
             })));
             if (custTxRows.length > 0) {
                 await checked(supabase.from('customer_transactions').upsert(custTxRows), 'customer_transactions seed');
@@ -567,6 +602,7 @@ export async function writeStateToSupabase(state) {
                 sale_price_per_unit: s.salePricePerUnit,
                 total_amount: s.totalAmount,
                 paid_amount: s.paidAmount,
+                cash_amount: s.cashAmount ?? s.paidAmount,
                 remaining_amount: s.remainingAmount,
                 total_cost_of_goods: s.totalCostOfGoods,
                 total_cost_of_goods_usd: s.totalCostOfGoodsUsd || 0,
@@ -574,6 +610,7 @@ export async function writeStateToSupabase(state) {
                 profit_usd: s.profitUsd || 0,
                 notes: s.notes || null,
                 currency: s.currency || 'AFN',
+                status: s.status || 'active',
             }));
             await checked(supabase.from('sales').upsert(saleRows), 'sales seed');
         }
@@ -654,6 +691,25 @@ export async function deleteCustomerFromSupabase(customerId) {
             console.error('Supabase error deleting customer:', err);
         }
     });
+}
+export async function correctAccountTransactionInSupabase({ role, partyId, transactionId, action, replacement, reason }) {
+    if (!supabase) return { success: false, error: 'Supabase is not configured.' };
+    try {
+        const { data, error } = await supabase.rpc('correct_account_transaction_v2', {
+            p_role: role,
+            p_party_id: partyId,
+            p_transaction_id: transactionId,
+            p_action: action,
+            p_replacement: replacement || null,
+            p_reason: reason,
+        });
+        if (error) throw error;
+        return data?.success ? data : { success: false, error: 'The correction was not completed.' };
+    }
+    catch (err) {
+        console.error('Supabase transaction correction failed:', err);
+        return { success: false, error: err.message || String(err) };
+    }
 }
 export async function deleteRawMaterialFromSupabase(id) {
     if (!supabase)

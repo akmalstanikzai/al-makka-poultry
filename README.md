@@ -22,6 +22,12 @@ Migrations are stored in `supabase/migrations` in execution order:
 3. `20261010000000_disable_realtime.sql` removes the application tables from
    Realtime because the UI loads once and performs targeted REST writes. Apply
    this migration to existing projects to stop unused replication traffic.
+4. `20261015000000_add_auditable_transaction_corrections.sql` adds atomic
+   Reverse-and-Replace/Void corrections for customer and supplier history.
+   Apply it before using the history correction buttons; it preserves originals
+   and updates linked accounts, cash, inventory, and sales in one transaction.
+5. `20261015010000_allow_transaction_type_corrections.sql` allows a corrected
+   replacement to use another valid transaction type on the same account.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { AccountStatement } from '../components/AccountStatement';
 import { ReceiptActions } from '../components/ReceiptActions';
+import { TransactionHistoryEditor, TransactionVoidDialog } from '../components/TransactionHistoryEditor';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
@@ -9,9 +10,9 @@ const transactionTime = transaction => {
     const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
     return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
 };
-const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
+const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' && (transaction.status || 'active') === 'active' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
-    const { db, t, lang, deleteCustomer, updateCustomer, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, lang, deleteCustomer, updateCustomer, updateCustomerTransaction, voidCustomerTransaction, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
@@ -33,6 +34,8 @@ export const CustomersPage = () => {
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [customerEdit, setCustomerEdit] = useState(null);
     const [customerEditError, setCustomerEditError] = useState('');
+    const [editingHistoryEntry, setEditingHistoryEntry] = useState(null);
+    const [deletingHistoryEntry, setDeletingHistoryEntry] = useState(null);
     // Delete customer modal
     const [customerToDelete, setCustomerToDelete] = useState(null);
     // Status Filter: 'all' | 'debtors' | 'settled'
@@ -434,10 +437,11 @@ export const CustomersPage = () => {
                                       <th className="py-2 px-3 text-start">{t.invoiceAmount}</th>
                                       <th className="py-2 px-3 text-start">{t.paymentOrDebtReduction}</th>
                                       <th className="py-2 px-3 text-start">{t.remainingDebtBalance}</th>
+                                      <th className="py-2 px-3 text-center print:hidden">{t.actions}</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
-                                    {cust.transactions.map((tr) => (<tr key={tr.id} className="hover:bg-slate-50/50">
+                                    {cust.transactions.map((tr) => (<tr key={tr.id} className={`hover:bg-slate-50/50 ${(tr.status || 'active') !== 'active' ? 'bg-slate-50 opacity-70' : ''}`}>
                                         <td className="py-2.5 px-3 font-mono text-slate-600">{tr.date}</td>
                                         <td className="py-2.5 px-3">
                                           {tr.type === 'sale' ? (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
@@ -451,6 +455,7 @@ export const CustomersPage = () => {
                                         <td className="py-2.5 px-3 text-slate-700 font-medium">
                                           {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
                                           {customerTransactionDescription(tr)}
+                                          {((tr.status || 'active') !== 'active' || tr.reversalOf) && <div className="mt-1"><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{tr.reversalOf ? t.replacementEntry : (tr.status === 'voided' ? t.voided : t.corrected)}</span>{tr.correctionReason && <span className="ms-2 text-[10px] text-slate-500">{tr.correctionReason}</span>}</div>}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono text-slate-700">
                                           {tr.quantityKg != null ? `${Number(tr.quantityKg).toLocaleString()} kg` : '-'}
@@ -466,6 +471,12 @@ export const CustomersPage = () => {
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-rose-700">
                                           {Number(tr.accountBalanceAfter ?? tr.remainingAmount ?? 0).toLocaleString()} {tr.currency || 'AFN'}
+                                        </td>
+                                        <td className="py-2.5 px-3 print:hidden">
+                                          <div className="flex items-center justify-center gap-1">
+                                            <button type="button" disabled={(tr.status || 'active') !== 'active'} onClick={() => setEditingHistoryEntry({ partyId: cust.id, partyName: cust.name, transaction: tr })} className="rounded-lg bg-blue-50 p-1.5 text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40" title={t.editHistoryEntry} aria-label={t.editHistoryEntry}><Pencil className="h-3.5 w-3.5"/></button>
+                                            <button type="button" disabled={(tr.status || 'active') !== 'active'} onClick={() => setDeletingHistoryEntry({ partyId: cust.id, partyName: cust.name, transaction: tr })} className="rounded-lg bg-rose-50 p-1.5 text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40" title={t.voidHistoryEntry} aria-label={t.voidHistoryEntry}><Trash2 className="h-3.5 w-3.5"/></button>
+                                          </div>
                                         </td>
                                       </tr>))}
                                   </tbody>
@@ -489,6 +500,25 @@ export const CustomersPage = () => {
           </table>
         </div>
       </div>
+
+      {editingHistoryEntry && <TransactionHistoryEditor
+        partyName={editingHistoryEntry.partyName}
+        transaction={editingHistoryEntry.transaction}
+        role="customer"
+        rawStockOptions={db.rawMaterials}
+        processedStockOptions={db.processedStock}
+        t={t}
+        getLocalizedTxType={getLocalizedTxType}
+        onClose={() => setEditingHistoryEntry(null)}
+        onSave={updates => updateCustomerTransaction(editingHistoryEntry.partyId, editingHistoryEntry.transaction.id, updates)}
+      />}
+      {deletingHistoryEntry && <TransactionVoidDialog
+        partyName={deletingHistoryEntry.partyName}
+        transaction={deletingHistoryEntry.transaction}
+        t={t}
+        onClose={() => setDeletingHistoryEntry(null)}
+        onConfirm={reason => voidCustomerTransaction(deletingHistoryEntry.partyId, deletingHistoryEntry.transaction.id, reason)}
+      />}
 
       {/* Customer account editor; related inventory, sales, and history remain unchanged. */}
       {editingCustomer && customerEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">

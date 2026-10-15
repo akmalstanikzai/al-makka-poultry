@@ -5,6 +5,10 @@ const idTime = value => Number(String(value || '').match(/(\d{10,})$/)?.[1] || 0
 const money = (value, currency) => `${amount(value).toLocaleString()} ${currency || 'AFN'}`;
 
 const findRelatedSale = (transaction, party, role, sales) => {
+    if (transaction.sourceSaleId) {
+        const linkedSale = (sales || []).find(sale => sale.id === transaction.sourceSaleId);
+        if (linkedSale) return linkedSale;
+    }
     const candidates = (sales || []).filter(sale => {
         const belongsToParty = role === 'customer'
             ? sale.customerId === party.id
@@ -20,6 +24,10 @@ const findRelatedSale = (transaction, party, role, sales) => {
 
 const cleanNotes = (transaction, relatedSale, t) => {
     if (transaction.type === 'payment') return transaction.description || '';
+    const transactionNotes = String(transaction.description || '').trim();
+    const looksGenerated = /^(فروش|خرید|restock|supplier debt settlement|customer debt settlement)/i.test(transactionNotes)
+        || [t.supplierGoodsSettlement, t.customerRawSettlement].filter(Boolean).some(prefix => transactionNotes.startsWith(prefix));
+    if (transactionNotes && !looksGenerated) return transactionNotes;
     const notes = String(relatedSale?.notes || '').trim();
     const defaultSettlementNotes = [t.supplierGoodsSettlement, t.customerRawSettlement].filter(Boolean);
     if (!notes || defaultSettlementNotes.includes(notes) || /supplier debt settlement|customer debt settlement/i.test(notes)) return '';
@@ -30,10 +38,10 @@ const getStatementRow = (transaction, party, role, sales, t) => {
     const relatedSale = (transaction.type === 'sale' || transaction.type === 'goods_settlement')
         ? findRelatedSale(transaction, party, role, sales)
         : null;
-    const unitType = relatedSale?.unitType || transaction.unitType || (transaction.quantityKg != null ? 'kg' : '');
-    const unitQuantity = relatedSale?.unitQuantity ?? transaction.unitQuantity ?? transaction.quantityKg;
-    const pricePerUnit = relatedSale?.salePricePerUnit ?? transaction.unitPricePerUnit ?? transaction.unitPrice;
-    const itemName = relatedSale?.productName || transaction.itemName || (transaction.type === 'payment' ? t.statementCashPayment : '-');
+    const unitType = transaction.unitType || relatedSale?.unitType || (transaction.quantityKg != null ? 'kg' : '');
+    const unitQuantity = transaction.unitQuantity ?? relatedSale?.unitQuantity ?? transaction.quantityKg;
+    const pricePerUnit = transaction.unitPricePerUnit ?? relatedSale?.salePricePerUnit ?? transaction.unitPrice;
+    const itemName = transaction.itemName || relatedSale?.productName || (transaction.type === 'payment' ? t.statementCashPayment : '-');
     return {
         ...transaction,
         itemName,
@@ -68,7 +76,9 @@ const MoneyPair = ({ afn, usd, tone = 'text-slate-900' }) => (
 
 export const AccountStatement = ({ id, party, role, sales = [], t, lang }) => {
     const isCustomer = role === 'customer';
-    const rows = (party.transactions || []).map(transaction => getStatementRow(transaction, party, role, sales, t));
+    const rows = (party.transactions || [])
+        .filter(transaction => (transaction.status || 'active') === 'active')
+        .map(transaction => getStatementRow(transaction, party, role, sales, t));
     const cashAfn = amount(party.totalPaid);
     const cashUsd = amount(party.totalPaidUsd);
     const nonCashAfn = amount(isCustomer ? party.rawSettledAmount : party.goodsSettledAmount);

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { translations, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
-import { clearAllDataFromSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
+import { clearAllDataFromSupabase, correctAccountTransactionInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
     rawMaterials: [],
@@ -373,6 +373,7 @@ export const DatabaseProvider = ({ children }) => {
                     description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
                     amount: totalBill,
                     paidAmount: paid,
+                    cashAmount: paid,
                     remainingAmount: remaining,
                     currency,
                 };
@@ -456,6 +457,7 @@ export const DatabaseProvider = ({ children }) => {
                     description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
                     amount: totalBill,
                     paidAmount: paid,
+                    cashAmount: paid,
                     remainingAmount: remaining,
                     currency,
                 };
@@ -622,6 +624,42 @@ export const DatabaseProvider = ({ children }) => {
         });
         return { success: true };
     };
+    const applyHistoryCorrection = async (role, partyId, transactionId, action, updates = null, reason = '') => {
+        const parties = role === 'supplier' ? db.suppliers : db.customers;
+        const party = parties.find(item => item.id === partyId);
+        const original = party?.transactions?.find(transaction => transaction.id === transactionId);
+        if (!party || !original) return { success: false, error: t.historyEntryNotFound };
+        if ((original.status || 'active') !== 'active') return { success: false, error: t.historyEntryAlreadyClosed };
+        if (!String(reason || '').trim()) return { success: false, error: t.correctionReasonRequired };
+        const result = await correctAccountTransactionInSupabase({
+            role,
+            partyId,
+            transactionId,
+            action,
+            replacement: updates,
+            reason: String(reason).trim(),
+        });
+        if (!result?.success) {
+            const missingMigration = /correct_account_transaction|schema cache|function/i.test(result?.error || '');
+            return { success: false, error: missingMigration ? t.historyMigrationRequired : (result?.error || t.historyChangeSaveFailed) };
+        }
+        const refreshed = await loadStateFromSupabase();
+        if (!refreshed?.state) return { success: false, error: t.historyReloadFailed };
+        lastSyncedState.current = JSON.stringify(refreshed.state);
+        persistedStateRef.current = refreshed.state;
+        setDb(refreshed.state);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
+        return { success: true };
+    };
+    const updateSupplierTransaction = (supplierId, transactionId, updates) =>
+        applyHistoryCorrection('supplier', supplierId, transactionId, 'correct', updates, updates?.correctionReason);
+    const voidSupplierTransaction = (supplierId, transactionId, reason) =>
+        applyHistoryCorrection('supplier', supplierId, transactionId, 'void', null, reason);
+    const updateCustomerTransaction = (customerId, transactionId, updates) =>
+        applyHistoryCorrection('customer', customerId, transactionId, 'correct', updates, updates?.correctionReason);
+    const voidCustomerTransaction = (customerId, transactionId, reason) =>
+        applyHistoryCorrection('customer', customerId, transactionId, 'void', null, reason);
     // DELETE RAW MATERIAL
     const deleteRawMaterial = (id) => {
         if (!db.rawMaterials.some(rm => rm.id === id))
@@ -657,6 +695,7 @@ export const DatabaseProvider = ({ children }) => {
                 description: note || 'پرداخت قرض و تصفیه حساب با عرضه کننده',
                 amount: 0,
                 paidAmount: actualPay,
+                cashAmount: actualPay,
                 remainingAmount: newRemaining,
                 currency,
             };
@@ -720,6 +759,7 @@ export const DatabaseProvider = ({ children }) => {
             profit: (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods,
             profitUsd: (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd,
             paidAmount: offsetAmount,
+            cashAmount: 0,
             remainingAmount: customerDebt,
             notes: settlement.notes?.trim() || t.supplierGoodsSettlement,
             currency,
@@ -748,11 +788,13 @@ export const DatabaseProvider = ({ children }) => {
                 description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
                 amount: totalAmount,
                 paidAmount: offsetAmount,
+                cashAmount: 0,
                 remainingAmount: newSupplierBalance,
                 accountBalanceAfter: newSupplierBalance,
                 receivableAfter: newSupplierPosition.receivable,
                 currency,
                 productId: product.id,
+                sourceSaleId: sale.id,
                 customerDebt: newSupplierPosition.receivable,
             };
             const updatedSuppliers = db.suppliers.map(item => item.id === supplier.id ? {
@@ -964,6 +1006,7 @@ export const DatabaseProvider = ({ children }) => {
             profit,
             profitUsd,
             paidAmount,
+            cashAmount: paidAmount,
             remainingAmount,
             notes: saleData.notes?.trim(),
             currency,
@@ -994,6 +1037,8 @@ export const DatabaseProvider = ({ children }) => {
             const customerTransaction = {
                 id: `ct-${Date.now()}`,
                 itemName: saleData.productName,
+                productId: product?.id || saleData.productId || '',
+                sourceSaleId: saleId,
                 quantityKg,
                 unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
                 unitType: saleData.unitType,
@@ -1004,6 +1049,7 @@ export const DatabaseProvider = ({ children }) => {
                 description: `فروش ${saleData.productName} (${saleData.unitQuantity} ${t[saleData.unitType] || saleData.unitType})`,
                 amount: totalAmount,
                 paidAmount,
+                cashAmount: paidAmount,
                 remainingAmount: remainingAmount,
                 currency,
             };
@@ -1089,6 +1135,8 @@ export const DatabaseProvider = ({ children }) => {
         const customerCreditCreated = Math.max(0, totalValue - customerOffset);
         const timestamp = Date.now();
         const today = new Date().toISOString().split('T')[0];
+        const existingMaterialIndex = db.rawMaterials.findIndex(material => material.name.trim().toLowerCase() === name.toLowerCase() && currencyCode(material.currency) === currency);
+        const rawMaterialId = existingMaterialIndex >= 0 ? db.rawMaterials[existingMaterialIndex].id : `rm-${timestamp}`;
 
         const nextState = (() => {
             const updatedRawSettledAmount = (Number(customer[rawSettledField]) || 0) + totalValue;
@@ -1100,6 +1148,7 @@ export const DatabaseProvider = ({ children }) => {
             const newCustomerBalance = newCustomerPosition.debt;
             const customerTransaction = {
                 id: `ct-${timestamp}`,
+                rawMaterialId,
                 itemName: name,
                 quantityKg,
                 unitPrice: unitPricePerKg,
@@ -1111,6 +1160,7 @@ export const DatabaseProvider = ({ children }) => {
                 description: `${t.customerRawSettlement}: ${name} (${quantityKg.toLocaleString()} ${t.kilo})`,
                 amount: totalValue,
                 paidAmount: customerOffset,
+                cashAmount: 0,
                 remainingAmount: newCustomerBalance,
                 accountBalanceAfter: newCustomerBalance,
                 currency,
@@ -1122,7 +1172,6 @@ export const DatabaseProvider = ({ children }) => {
                 transactions: [customerTransaction, ...(item.transactions || [])],
             } : item);
 
-            const existingMaterialIndex = db.rawMaterials.findIndex(material => material.name.trim().toLowerCase() === name.toLowerCase() && currencyCode(material.currency) === currency);
             const updatedRawMaterials = [...db.rawMaterials];
             if (existingMaterialIndex >= 0) {
                 const material = updatedRawMaterials[existingMaterialIndex];
@@ -1141,7 +1190,7 @@ export const DatabaseProvider = ({ children }) => {
                 };
             } else {
                 updatedRawMaterials.unshift({
-                    id: `rm-${timestamp}`,
+                    id: rawMaterialId,
                     name,
                     category,
                     stockKg: quantityKg,
@@ -1196,6 +1245,7 @@ export const DatabaseProvider = ({ children }) => {
                 description: note || 'دریافت طلب و باقی‌داری مشتری',
                 amount: 0,
                 paidAmount: actualReceived,
+                cashAmount: actualReceived,
                 remainingAmount: newRemaining,
                 currency,
             };
@@ -1317,6 +1367,10 @@ export const DatabaseProvider = ({ children }) => {
             updateRawMaterial,
             updateSupplier,
             updateCustomer,
+            updateSupplierTransaction,
+            voidSupplierTransaction,
+            updateCustomerTransaction,
+            voidCustomerTransaction,
             lowStockMaterials,
             getLocalizedName,
             getLocalizedTxType,
