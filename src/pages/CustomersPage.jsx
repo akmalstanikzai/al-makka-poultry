@@ -4,6 +4,7 @@ import { AccountStatement } from '../components/AccountStatement';
 import { ReceiptActions } from '../components/ReceiptActions';
 import { TransactionHistoryEditor, TransactionVoidDialog } from '../components/TransactionHistoryEditor';
 import { normalizeDecimalInput } from '../lib/numberInput';
+import { isCanonicalSupplierName } from '../lib/partyRoles';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 const transactionTime = transaction => {
@@ -42,6 +43,9 @@ export const CustomersPage = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     // Expanded row IDs for inline transaction histories
     const [expandedCustomerIds, setExpandedCustomerIds] = useState({});
+    // Never show a confirmed supplier as a customer while a server-side role
+    // cleanup is pending or an older browser still has stale data.
+    const customers = db.customers.filter(customer => !isCanonicalSupplierName(customer.name));
     const customerTransactionDescription = transaction => transaction.type === 'raw_goods_settlement' && transaction.itemName
         ? `${t.customerRawSettlement}: ${transaction.itemName}`
         : getLocalizedTxDesc(transaction.description);
@@ -142,16 +146,16 @@ export const CustomersPage = () => {
         setRawSettlementCustomer(null);
     };
     // Aggregated totals
-    const totalSalesAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };
-    const totalCashReceivedAll = { AFN: db.customers.reduce((a,c)=>a+(c.totalPaid||0),0), USD: db.customers.reduce((a,c)=>a+(c.totalPaidUsd||0),0) };
-    const totalRawSettledAll = { AFN: db.customers.reduce((a,c)=>a+(c.rawSettledAmount||0),0), USD: db.customers.reduce((a,c)=>a+(c.rawSettledAmountUsd||0),0) };
+    const totalSalesAll = { AFN: customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };
+    const totalCashReceivedAll = { AFN: customers.reduce((a,c)=>a+(c.totalPaid||0),0), USD: customers.reduce((a,c)=>a+(c.totalPaidUsd||0),0) };
+    const totalRawSettledAll = { AFN: customers.reduce((a,c)=>a+(c.rawSettledAmount||0),0), USD: customers.reduce((a,c)=>a+(c.rawSettledAmountUsd||0),0) };
     const totalSettledAll = { AFN: totalCashReceivedAll.AFN + totalRawSettledAll.AFN, USD: totalCashReceivedAll.USD + totalRawSettledAll.USD };
-    const totalReceivableDebtAll = { AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
-    const totalCustomerCreditAll = { AFN: db.customers.reduce((a,c)=>a+(c.creditBalance||0),0), USD: db.customers.reduce((a,c)=>a+(c.creditBalanceUsd||0),0) };
-    const debtorCount = db.customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length;
-    const customerCreditCount = db.customers.filter(c => (c.creditBalance || 0) > 0 || (c.creditBalanceUsd || 0) > 0).length;
-    const settledCustomerCount = db.customers.filter(c => (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0 && (c.creditBalance || 0) <= 0 && (c.creditBalanceUsd || 0) <= 0).length;
-    const filteredCustomers = db.customers.filter(c => {
+    const totalReceivableDebtAll = { AFN: customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
+    const totalCustomerCreditAll = { AFN: customers.reduce((a,c)=>a+(c.creditBalance||0),0), USD: customers.reduce((a,c)=>a+(c.creditBalanceUsd||0),0) };
+    const debtorCount = customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length;
+    const customerCreditCount = customers.filter(c => (c.creditBalance || 0) > 0 || (c.creditBalanceUsd || 0) > 0).length;
+    const settledCustomerCount = customers.filter(c => (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0 && (c.creditBalance || 0) <= 0 && (c.creditBalanceUsd || 0) <= 0).length;
+    const filteredCustomers = customers.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (c.phone && c.phone.includes(searchTerm)) ||
             (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -203,7 +207,7 @@ export const CustomersPage = () => {
             <div className="text-xl font-bold font-mono text-slate-900 mt-1">
               {totalSalesAll.AFN.toLocaleString()} AFN · {totalSalesAll.USD.toLocaleString()} USD
             </div>
-            <span className="text-xs text-slate-500">{db.customers.length} {t.navCustomers}</span>
+            <span className="text-xs text-slate-500">{customers.length} {t.navCustomers}</span>
           </div>
           <div className="p-3 bg-blue-100 text-blue-700 rounded-xl border border-blue-200">
             <Users className="w-6 h-6"/>
@@ -268,7 +272,7 @@ export const CustomersPage = () => {
             <button type="button" onClick={() => setStatusFilter('all')} className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'all'
             ? 'bg-blue-600 text-white shadow-xs'
             : 'text-slate-600 hover:text-slate-900'}`}>
-              {t.allUnits} ({db.customers.length})
+              {t.allUnits} ({customers.length})
             </button>
             <button type="button" onClick={() => setStatusFilter('debtors')} className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'debtors'
             ? 'bg-rose-600 text-white shadow-xs'

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { translations, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
 import { clearAllDataFromSupabase, correctAccountTransactionInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
+import { canonicalSupplierNames, normalizePartyName } from '../lib/partyRoles';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
     rawMaterials: [],
@@ -17,7 +18,6 @@ const emptyFactoryData = {
 };
 const DatabaseContext = createContext(undefined);
 const currencyCode = value => value === 'USD' ? 'USD' : 'AFN';
-const normalizePartyName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 const normalizeStockName = value => String(value || '')
     .normalize('NFKC')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
@@ -342,6 +342,12 @@ export const DatabaseProvider = ({ children }) => {
     };
     // 1. ADD RAW MATERIAL TO INVENTORY & AUTO-UPDATE SUPPLIER
     const addRawMaterial = (item, paidAmount, supplierPhone) => {
+        const requestedSupplierName = String(item.supplierName || '').trim();
+        const requestedSupplierKey = normalizePartyName(requestedSupplierName);
+        const matchesCustomer = requestedSupplierKey && db.customers.some(customer => normalizePartyName(customer.name) === requestedSupplierKey);
+        if (requestedSupplierName && matchesCustomer && !canonicalSupplierNames.has(requestedSupplierKey)) {
+            return { success: false, error: t.customerMustUseRawSettlement };
+        }
         const today = new Date().toISOString().split('T')[0];
         const newId = `rm-${Date.now()}`;
         const currency = currencyCode(item.currency);
@@ -419,6 +425,7 @@ export const DatabaseProvider = ({ children }) => {
                 ...cashPatch(prev, -paid, currency),
             };
         });
+        return { success: true };
     };
     // RESTOCK AN EXISTING RAW MATERIAL & RECORD THE SUPPLIER PURCHASE
     const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, purchaseUnitType = 'kg', purchaseUnitQuantity, purchaseUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
@@ -430,6 +437,12 @@ export const DatabaseProvider = ({ children }) => {
             return { success: false, error: 'Raw material not found.' };
         if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(price) || price < 0)
             return { success: false, error: 'Restock quantity and unit price are invalid.' };
+        const requestedSupplierName = String(supplierName || material.supplierName || '').trim();
+        const requestedSupplierKey = normalizePartyName(requestedSupplierName);
+        const matchesCustomer = requestedSupplierKey && db.customers.some(customer => normalizePartyName(customer.name) === requestedSupplierKey);
+        if (requestedSupplierName && matchesCustomer && !canonicalSupplierNames.has(requestedSupplierKey)) {
+            return { success: false, error: t.customerMustUseRawSettlement };
+        }
         const today = new Date().toISOString().split('T')[0];
         const totalBill = weight * price;
         const paid = Math.min(Math.max(0, Number(paidAmount) || 0), totalBill);
@@ -958,6 +971,14 @@ export const DatabaseProvider = ({ children }) => {
     // 3. RECORD SALE (DEDUCT PROCESSED STOCK, AUTO-UPDATE CUSTOMER, ADD CASH)
     const recordSale = async (saleData) => {
         const quantityKg = convertToKg(saleData.unitType, saleData.unitQuantity);
+        const requestedCustomerKey = normalizePartyName(saleData.customerName);
+        const matchesSupplier = requestedCustomerKey && (
+            canonicalSupplierNames.has(requestedCustomerKey)
+            || db.suppliers.some(supplier => normalizePartyName(supplier.name) === requestedCustomerKey)
+        );
+        if (matchesSupplier) {
+            return { success: false, error: t.supplierMustUseGoodsSettlement };
+        }
         // Check processed stock
         let product = saleData.productId ? db.processedStock.find(p => p.id === saleData.productId) : undefined;
         if (!product) {

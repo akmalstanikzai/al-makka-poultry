@@ -109,7 +109,7 @@ export const InventoryPage = () => {
             }
             if (numericThreshold !== undefined) updateRawMaterialThreshold(existingMaterial.id, numericThreshold);
         } else {
-            addRawMaterial({
+            const result = addRawMaterial({
                 name: itemName.trim(),
                 category: 'Uncategorized',
                 stockKg: numericStock,
@@ -123,6 +123,10 @@ export const InventoryPage = () => {
                 notes: notes.trim() || undefined,
                 lowStockThreshold: numericThreshold,
             }, numericPaid, supplierPhone.trim() || undefined);
+            if (!result?.success) {
+                setErrorMsg(result?.error || t.restockFailed);
+                return;
+            }
         }
         // Reset form
         setItemName('');
