@@ -14,6 +14,7 @@ export const SuppliersPage = () => {
     const { db, t, lang, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, updateSupplierTransaction, voidSupplierTransaction, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);
+    const [statementMode, setStatementMode] = useState('current');
     const [settleModalSupplier, setSettleModalSupplier] = useState(null);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentCurrency, setPaymentCurrency] = useState('AFN');
@@ -363,7 +364,7 @@ export const SuppliersPage = () => {
 
                           <button type="button" onClick={() => openSupplierEdit(sup)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.editSupplier}><Pencil className="w-4 h-4"/></button>
 
-                          <button type="button" onClick={() => setSelectedHistorySupplier(sup)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
+                          <button type="button" onClick={() => { setStatementMode('current'); setSelectedHistorySupplier(sup); }} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
                             <Printer className="w-4 h-4"/>
                           </button>
 
@@ -385,7 +386,7 @@ export const SuppliersPage = () => {
                                   {t.detailedTransactionRecordFor} {sup.name}
                                 </span>
                               </div>
-                              <button type="button" onClick={() => setSelectedHistorySupplier(sup)} className="text-xs font-semibold text-amber-600 hover:text-amber-800 flex items-center gap-1 cursor-pointer">
+                              <button type="button" onClick={() => { setStatementMode('current'); setSelectedHistorySupplier(sup); }} className="text-xs font-semibold text-amber-600 hover:text-amber-800 flex items-center gap-1 cursor-pointer">
                                 <Printer className="w-3.5 h-3.5"/>
                                 <span>{t.printFullStatement}</span>
                               </button>
@@ -605,7 +606,8 @@ export const SuppliersPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <ReceiptActions elementId="supplier-receipt" filename={`supplier-statement-${selectedHistorySupplier.id}`} title={`${t.accountStatementAndHistory} - ${selectedHistorySupplier.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
+                <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[10px] font-bold"><button type="button" onClick={()=>setStatementMode('current')} className={`rounded-md px-2 py-1 ${statementMode==='current'?'bg-amber-600 text-white':'text-slate-600'}`}>{t.currentStatement}</button><button type="button" onClick={()=>setStatementMode('audit')} className={`rounded-md px-2 py-1 ${statementMode==='audit'?'bg-slate-700 text-white':'text-slate-600'}`}>{t.auditStatement}</button></div>
+                <ReceiptActions elementId="supplier-receipt" filename={`supplier-${statementMode}-statement-${selectedHistorySupplier.id}`} title={`${statementMode === 'audit' ? t.auditStatement : t.currentAccountStatement} - ${selectedHistorySupplier.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
                 <button type="button" onClick={() => setSelectedHistorySupplier(null)} className="text-slate-400 hover:text-slate-900 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>
@@ -613,7 +615,7 @@ export const SuppliersPage = () => {
             </div>
 
             <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
-              <AccountStatement id="supplier-receipt" party={selectedHistorySupplier} role="supplier" sales={db.sales} t={t} lang={lang}/>
+              <AccountStatement id="supplier-receipt" party={selectedHistorySupplier} role="supplier" sales={db.sales} t={t} lang={lang} audit={statementMode === 'audit'}/>
             </div>
           </div>
         </div>)}

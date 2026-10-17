@@ -16,6 +16,7 @@ export const CustomersPage = () => {
     const { db, t, lang, deleteCustomer, updateCustomer, updateCustomerTransaction, voidCustomerTransaction, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
+    const [statementMode, setStatementMode] = useState('current');
     const [receiveModalCustomer, setReceiveModalCustomer] = useState(null);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentCurrency, setPaymentCurrency] = useState('AFN');
@@ -401,7 +402,7 @@ export const CustomersPage = () => {
                               {t.receivePayment}
                             </button>
 
-                          <button type="button" onClick={() => setSelectedHistoryCustomer(cust)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
+                          <button type="button" onClick={() => { setStatementMode('current'); setSelectedHistoryCustomer(cust); }} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer" title={t.printOfficialStatement}>
                             <Printer className="w-4 h-4"/>
                           </button>
 
@@ -423,7 +424,7 @@ export const CustomersPage = () => {
                                   {t.detailedTransactionRecordFor} {cust.name}
                                 </span>
                               </div>
-                              <button type="button" onClick={() => setSelectedHistoryCustomer(cust)} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer">
+                              <button type="button" onClick={() => { setStatementMode('current'); setSelectedHistoryCustomer(cust); }} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer">
                                 <Printer className="w-3.5 h-3.5"/>
                                 <span>{t.printFullStatement}</span>
                               </button>
@@ -648,7 +649,8 @@ export const CustomersPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <ReceiptActions elementId="customer-receipt" filename={`customer-statement-${selectedHistoryCustomer.id}`} title={`${t.accountStatementAndHistory} - ${selectedHistoryCustomer.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
+                <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[10px] font-bold"><button type="button" onClick={()=>setStatementMode('current')} className={`rounded-md px-2 py-1 ${statementMode==='current'?'bg-blue-600 text-white':'text-slate-600'}`}>{t.currentStatement}</button><button type="button" onClick={()=>setStatementMode('audit')} className={`rounded-md px-2 py-1 ${statementMode==='audit'?'bg-slate-700 text-white':'text-slate-600'}`}>{t.auditStatement}</button></div>
+                <ReceiptActions elementId="customer-receipt" filename={`customer-${statementMode}-statement-${selectedHistoryCustomer.id}`} title={`${statementMode === 'audit' ? t.auditStatement : t.currentAccountStatement} - ${selectedHistoryCustomer.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
                 <button type="button" onClick={() => setSelectedHistoryCustomer(null)} className="text-slate-400 hover:text-slate-900 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>
@@ -656,7 +658,7 @@ export const CustomersPage = () => {
             </div>
 
             <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
-              <AccountStatement id="customer-receipt" party={selectedHistoryCustomer} role="customer" sales={db.sales} t={t} lang={lang}/>
+              <AccountStatement id="customer-receipt" party={selectedHistoryCustomer} role="customer" sales={db.sales} t={t} lang={lang} audit={statementMode === 'audit'}/>
             </div>
           </div>
         </div>)}

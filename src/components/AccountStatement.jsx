@@ -74,11 +74,12 @@ const MoneyPair = ({ afn, usd, tone = 'text-slate-900' }) => (
     <strong dir="ltr" className={`inline-block font-mono ${tone}`}>{amount(afn).toLocaleString()} AFN · {amount(usd).toLocaleString()} USD</strong>
 );
 
-export const AccountStatement = ({ id, party, role, sales = [], t, lang }) => {
+export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit = false }) => {
     const isCustomer = role === 'customer';
     const rows = (party.transactions || [])
-        .filter(transaction => (transaction.status || 'active') === 'active')
+        .filter(transaction => audit || (transaction.status || 'active') === 'active')
         .map(transaction => getStatementRow(transaction, party, role, sales, t));
+    const activeRows = rows.filter(transaction => (transaction.status || 'active') === 'active');
     const cashAfn = amount(party.totalPaid);
     const cashUsd = amount(party.totalPaidUsd);
     const nonCashAfn = amount(isCustomer ? party.rawSettledAmount : party.goodsSettledAmount);
@@ -88,7 +89,7 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang }) => {
       <header className="statement-header border-b-2 border-slate-900 pb-4">
         <div className="text-center">
           <h1 className="text-xl font-black">{t.companyName}</h1>
-          <p className="text-xs text-slate-500 mt-1">{t.accountStatementAndHistory}</p>
+          <p className="text-xs text-slate-500 mt-1">{audit ? t.auditStatement : t.currentAccountStatement}</p>
         </div>
         <div className="statement-party-info mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-xl border border-slate-300 bg-slate-50 p-3 text-xs">
           <div><span className="block text-slate-500">{isCustomer ? t.customerNameLabel : t.supplier}</span><strong>{party.name}</strong></div>
@@ -110,10 +111,14 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang }) => {
               <th className="p-2 text-start">{t.totalAmount}</th>
               <th className="p-2 text-start">{t.statementPaidSettled}</th>
               <th className="p-2 text-start">{t.statementBalance}</th>
+              {audit && <th className="p-2 text-start">{t.statementStatus}</th>}
             </tr>
           </thead>
           <tbody>
-            {rows.length ? rows.map((row, index) => <tr key={row.id} className="statement-row border-t border-slate-200 odd:bg-white even:bg-slate-50 align-top">
+            {rows.length ? rows.map((row, index) => {
+              const rowStatus = row.status || 'active';
+              const inactive = rowStatus !== 'active';
+              return <tr key={row.id} className={`statement-row border-t border-slate-200 odd:bg-white even:bg-slate-50 align-top ${inactive ? 'text-slate-500 line-through opacity-70' : ''}`}>
               <td className="p-2 font-mono text-slate-500">{rows.length - index}</td>
               <td dir="ltr" className="p-2 font-mono whitespace-nowrap">{row.date}</td>
               <td className="p-2 min-w-28">
@@ -125,14 +130,18 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang }) => {
               <td dir="ltr" className="p-2 font-mono font-bold whitespace-nowrap">{row.type === 'payment' ? '-' : money(row.amount, row.currency)}</td>
               <td dir="ltr" className="p-2 font-mono text-emerald-700 font-bold whitespace-nowrap">{money(row.paidAmount, row.currency)}</td>
               <td dir="ltr" className="p-2 font-mono text-rose-700 font-bold whitespace-nowrap">{money(row.accountBalanceAfter ?? row.remainingAmount, row.currency)}</td>
-            </tr>) : <tr><td colSpan="8" className="p-8 text-center text-slate-500">{t.noTxRecorded}</td></tr>}
+              {audit && <td className="p-2 min-w-24 no-underline">
+                <strong className={inactive ? 'text-rose-700' : 'text-emerald-700'}>{inactive ? (rowStatus === 'voided' ? t.voided : t.corrected) : t.activeTransaction}</strong>
+                {row.correctionReason && <span className="mt-1 block text-[9px] leading-4 text-slate-600">{row.correctionReason}</span>}
+              </td>}
+            </tr>}) : <tr><td colSpan={audit ? 9 : 8} className="p-8 text-center text-slate-500">{t.noTxRecorded}</td></tr>}
           </tbody>
         </table>
       </section>
 
       <section className="statement-totals mt-5 rounded-xl border-2 border-slate-900 p-4">
         <h2 className="text-sm font-black mb-3">{t.statementFinalTotals}</h2>
-        <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2 text-xs"><span className="text-slate-500">{t.statementTotalQuantity}: </span><strong>{quantityTotals(rows, t, role)}</strong></div>
+        <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2 text-xs"><span className="text-slate-500">{t.statementTotalQuantity}: </span><strong>{quantityTotals(activeRows, t, role)}</strong></div>
         <div className="grid grid-cols-2 gap-x-5 gap-y-3 text-xs">
           <div><span className="block text-slate-500">{isCustomer ? t.statementTotalSales : t.statementTotalPurchases}</span><MoneyPair afn={party.totalPurchasedAmount} usd={party.totalPurchasedAmountUsd}/></div>
           <div><span className="block text-slate-500">{isCustomer ? t.cashReceivedFromCustomer : t.cashPaidToSupplier}</span><MoneyPair afn={cashAfn} usd={cashUsd} tone="text-emerald-700"/></div>
@@ -142,6 +151,8 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang }) => {
           <div><span className="block text-slate-500">{isCustomer ? t.weOweThem : t.theyOweUs}</span><MoneyPair afn={isCustomer ? party.creditBalance : party.receivableBalance} usd={isCustomer ? party.creditBalanceUsd : party.receivableBalanceUsd} tone="text-amber-700"/></div>
         </div>
       </section>
+
+      <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[9px] leading-4 text-slate-600">{audit ? t.auditStatementNote : t.currentStatementNote}</p>
 
       <footer className="mt-5 border-t border-slate-300 pt-3 text-center text-[9px] text-slate-500">{t.developedBy}</footer>
     </div>;
