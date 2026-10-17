@@ -1054,7 +1054,8 @@ export const DatabaseProvider = ({ children }) => {
             let assignedCustId = saleData.customerId;
             const custName = saleData.customerName.trim();
             const existingCustIndex = updatedCustomers.findIndex(c => (saleData.customerId && c.id === saleData.customerId) ||
-                c.name.toLowerCase() === custName.toLowerCase());
+                normalizePartyName(c.name) === normalizePartyName(custName) ||
+                (saleData.customerPhone?.trim() && c.phone === saleData.customerPhone.trim()));
             const customerTransaction = {
                 id: `ct-${Date.now()}`,
                 itemName: saleData.productName,

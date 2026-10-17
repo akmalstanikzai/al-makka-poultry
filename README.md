@@ -35,6 +35,9 @@ Migrations are stored in `supabase/migrations` in execution order:
 7. `20261017010000_fix_cross_currency_raw_settlement_corrections.sql` handles a
    currency correction that moves a receipt between same-named raw-material
    inventory rows without temporarily making the original row negative.
+8. `20261017020000_allow_flexible_raw_transaction_corrections.sql` allows an
+   incoming raw-material correction to change material, currency, quantity, and
+   price while capping inventory reversals at the physical stock on hand.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration

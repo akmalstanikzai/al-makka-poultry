@@ -339,7 +339,11 @@ declare
   v_new_raw_name text;
   v_old_raw_stock numeric;
   v_old_raw_price numeric;
+  v_new_raw_stock numeric;
+  v_new_raw_price numeric;
   v_transfer_quantity numeric;
+  v_quantity_delta numeric;
+  v_value_delta numeric;
   v_source_sale_id text;
   v_new_date date;
   v_description text;
@@ -420,26 +424,39 @@ begin
       raise exception 'Select a raw-material record that uses the corrected currency.';
     end if;
     if p_action = 'correct' and v_old_raw_id = v_new_raw_id then
-      perform public._apply_raw_stock_correction(v_old_raw_id, v_new_quantity - v_old_quantity, v_new_amount - v_old_amount, v_new_date);
-    elsif p_action = 'correct' and v_old_currency <> v_new_currency then
-      select old_material.name, old_material.stock_kg, old_material.unit_price, new_material.name
-      into v_old_raw_name, v_old_raw_stock, v_old_raw_price, v_new_raw_name
+      select stock_kg, unit_price into v_old_raw_stock, v_old_raw_price
+      from public.raw_materials where id = v_old_raw_id for update;
+      v_quantity_delta := greatest(v_new_quantity - v_old_quantity, -v_old_raw_stock);
+      v_value_delta := case when v_quantity_delta >= 0
+        then v_quantity_delta * (v_new_amount / v_new_quantity)
+        else v_quantity_delta * v_old_raw_price end;
+      v_value_delta := v_value_delta
+        + least(v_old_quantity, v_old_raw_stock)
+          * ((v_new_amount / v_new_quantity) - case when v_old_quantity > 0 then v_old_amount / v_old_quantity else v_old_raw_price end);
+      v_value_delta := greatest(v_value_delta, -(v_old_raw_stock * v_old_raw_price));
+      perform public._apply_raw_stock_correction(v_old_raw_id, v_quantity_delta, v_value_delta, v_new_date);
+    elsif p_action = 'correct' then
+      select old_material.name, old_material.stock_kg, old_material.unit_price,
+             new_material.name, new_material.stock_kg, new_material.unit_price
+      into v_old_raw_name, v_old_raw_stock, v_old_raw_price,
+           v_new_raw_name, v_new_raw_stock, v_new_raw_price
       from public.raw_materials old_material
       cross join public.raw_materials new_material
       where old_material.id = v_old_raw_id and new_material.id = v_new_raw_id;
       if not found then raise exception 'The linked raw-material record was not found.'; end if;
-      if lower(regexp_replace(btrim(v_old_raw_name), '\s+', '', 'g')) = lower(regexp_replace(btrim(v_new_raw_name), '\s+', '', 'g')) then
-        -- A currency correction commonly points to another inventory row for
-        -- the same material. Move only stock that still physically remains;
-        -- consumed stock must not be subtracted and added back as new stock.
-        v_transfer_quantity := least(v_old_quantity, v_old_raw_stock);
-        if v_transfer_quantity > 0 then
-          perform public._apply_raw_stock_correction(v_old_raw_id, -v_transfer_quantity, -(v_transfer_quantity * v_old_raw_price), (v_old->>'date')::date);
-          perform public._apply_raw_stock_correction(v_new_raw_id, v_transfer_quantity, v_transfer_quantity * (v_new_amount / v_new_quantity), v_new_date);
-        end if;
-      else
-        perform public._apply_raw_stock_correction(v_old_raw_id, -v_old_quantity, -v_old_amount, (v_old->>'date')::date);
-        perform public._apply_raw_stock_correction(v_new_raw_id, v_new_quantity, v_new_amount, v_new_date);
+      -- Historical receipts may already be partly consumed. Transfer only the
+      -- stock still on hand, then apply the corrected net quantity to the new
+      -- material without ever allowing either inventory row to go negative.
+      v_transfer_quantity := least(v_old_quantity, v_old_raw_stock);
+      v_quantity_delta := greatest(v_transfer_quantity + v_new_quantity - v_old_quantity, -v_new_raw_stock);
+      if v_transfer_quantity > 0 then
+        perform public._apply_raw_stock_correction(v_old_raw_id, -v_transfer_quantity, -(v_transfer_quantity * v_old_raw_price), (v_old->>'date')::date);
+      end if;
+      if v_quantity_delta <> 0 then
+        v_value_delta := case when v_quantity_delta > 0
+          then v_quantity_delta * (v_new_amount / v_new_quantity)
+          else v_quantity_delta * v_new_raw_price end;
+        perform public._apply_raw_stock_correction(v_new_raw_id, v_quantity_delta, v_value_delta, v_new_date);
       end if;
     else
       perform public._apply_raw_stock_correction(v_old_raw_id, -v_old_quantity, -v_old_amount, (v_old->>'date')::date);
