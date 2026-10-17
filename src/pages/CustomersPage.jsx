@@ -127,6 +127,15 @@ export const CustomersPage = () => {
     const rawCustomerDebt = rawSettlementCustomer ? Number(rawCurrency === 'USD' ? rawSettlementCustomer.balanceOwedUsd : rawSettlementCustomer.balanceOwed) || 0 : 0;
     const rawCustomerOffset = Math.min(rawTotalValue, rawCustomerDebt);
     const rawSupplierDebt = Math.max(0, rawTotalValue - rawCustomerOffset);
+    const paymentAmountNumber = Number(receivedAmount) || 0;
+    const paymentDebt = receiveModalCustomer
+        ? Number(paymentCurrency === 'USD' ? receiveModalCustomer.balanceOwedUsd : receiveModalCustomer.balanceOwed) || 0
+        : 0;
+    const existingCustomerCredit = receiveModalCustomer
+        ? Number(paymentCurrency === 'USD' ? receiveModalCustomer.creditBalanceUsd : receiveModalCustomer.creditBalance) || 0
+        : 0;
+    const paymentAppliedToDebt = Math.min(paymentAmountNumber, paymentDebt);
+    const customerCreditAfterPayment = existingCustomerCredit + Math.max(0, paymentAmountNumber - paymentDebt);
     const handleRawSettlement = async event => {
         event.preventDefault();
         setRawSettlementError('');
@@ -609,6 +618,12 @@ export const CustomersPage = () => {
                     {t.currency}
                   </span>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+                <div><span className="block text-slate-500">{t.appliedToCustomerDebt}</span><strong className="font-mono text-emerald-700">{paymentAppliedToDebt.toLocaleString()} {paymentCurrency}</strong></div>
+                <div><span className="block text-slate-500">{t.weOweCustomerAfterPayment}</span><strong className="font-mono text-amber-700">{customerCreditAfterPayment.toLocaleString()} {paymentCurrency}</strong></div>
+                {paymentAmountNumber > paymentDebt && <p className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-4 text-amber-800">{t.customerOverpaymentNotice}</p>}
               </div>
 
               <div>
