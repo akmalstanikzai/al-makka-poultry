@@ -32,6 +32,9 @@ Migrations are stored in `supabase/migrations` in execution order:
    corrected account-history RPC so editing an incoming raw-material transaction
    adjusts stock by the net quantity difference instead of temporarily removing
    the full original quantity.
+7. `20261017010000_fix_cross_currency_raw_settlement_corrections.sql` handles a
+   currency correction that moves a receipt between same-named raw-material
+   inventory rows without temporarily making the original row negative.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration

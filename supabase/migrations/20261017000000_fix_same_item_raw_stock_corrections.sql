@@ -27,6 +27,11 @@ declare
   v_new_raw_id text;
   v_old_product_id text;
   v_new_product_id text;
+  v_old_raw_name text;
+  v_new_raw_name text;
+  v_old_raw_stock numeric;
+  v_old_raw_price numeric;
+  v_transfer_quantity numeric;
   v_source_sale_id text;
   v_new_date date;
   v_description text;
@@ -108,6 +113,26 @@ begin
     end if;
     if p_action = 'correct' and v_old_raw_id = v_new_raw_id then
       perform public._apply_raw_stock_correction(v_old_raw_id, v_new_quantity - v_old_quantity, v_new_amount - v_old_amount, v_new_date);
+    elsif p_action = 'correct' and v_old_currency <> v_new_currency then
+      select old_material.name, old_material.stock_kg, old_material.unit_price, new_material.name
+      into v_old_raw_name, v_old_raw_stock, v_old_raw_price, v_new_raw_name
+      from public.raw_materials old_material
+      cross join public.raw_materials new_material
+      where old_material.id = v_old_raw_id and new_material.id = v_new_raw_id;
+      if not found then raise exception 'The linked raw-material record was not found.'; end if;
+      if lower(regexp_replace(btrim(v_old_raw_name), '\s+', '', 'g')) = lower(regexp_replace(btrim(v_new_raw_name), '\s+', '', 'g')) then
+        -- A currency correction commonly points to another inventory row for
+        -- the same material. Move only stock that still physically remains;
+        -- consumed stock must not be subtracted and added back as new stock.
+        v_transfer_quantity := least(v_old_quantity, v_old_raw_stock);
+        if v_transfer_quantity > 0 then
+          perform public._apply_raw_stock_correction(v_old_raw_id, -v_transfer_quantity, -(v_transfer_quantity * v_old_raw_price), (v_old->>'date')::date);
+          perform public._apply_raw_stock_correction(v_new_raw_id, v_transfer_quantity, v_transfer_quantity * (v_new_amount / v_new_quantity), v_new_date);
+        end if;
+      else
+        perform public._apply_raw_stock_correction(v_old_raw_id, -v_old_quantity, -v_old_amount, (v_old->>'date')::date);
+        perform public._apply_raw_stock_correction(v_new_raw_id, v_new_quantity, v_new_amount, v_new_date);
+      end if;
     else
       perform public._apply_raw_stock_correction(v_old_raw_id, -v_old_quantity, -v_old_amount, (v_old->>'date')::date);
       if p_action = 'correct' then
