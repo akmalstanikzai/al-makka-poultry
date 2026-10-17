@@ -28,6 +28,10 @@ Migrations are stored in `supabase/migrations` in execution order:
    and updates linked accounts, cash, inventory, and sales in one transaction.
 5. `20261015010000_allow_transaction_type_corrections.sql` allows a corrected
    replacement to use another valid transaction type on the same account.
+6. `20261017000000_fix_same_item_raw_stock_corrections.sql` reapplies the
+   corrected account-history RPC so editing an incoming raw-material transaction
+   adjusts stock by the net quantity difference instead of temporarily removing
+   the full original quantity.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration
