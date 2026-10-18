@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, X, RefreshCw } from 'lucide-react';
 const normalizeSupplierName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
@@ -21,6 +21,8 @@ export const InventoryPage = () => {
     const [restockPaid, setRestockPaid] = useState('');
     const [restockNotes, setRestockNotes] = useState('');
     const [restockError, setRestockError] = useState('');
+    const [isSavingRestock, setIsSavingRestock] = useState(false);
+    const restockSaveLock = useRef(false);
     // Form State
     const [itemName, setItemName] = useState('');
     const [stockUnit, setStockUnit] = useState('kg');
@@ -34,6 +36,8 @@ export const InventoryPage = () => {
     const [notes, setNotes] = useState('');
     const [threshold, setThreshold] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [isSavingStock, setIsSavingStock] = useState(false);
+    const stockSaveLock = useRef(false);
     const handleMaterialNameChange = (value) => {
         setItemName(value);
         const normalizedName = value.trim().toLowerCase();
@@ -73,8 +77,9 @@ export const InventoryPage = () => {
     const purchasePricePerKg = enteredUnitPrice / stockUnitMultiplier;
     const totalBillCalculated = stockInputQuantity * enteredUnitPrice;
     const remainingCalculated = Math.max(0, totalBillCalculated - (Number(paidAmount) || 0));
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        if (stockSaveLock.current) return;
         setErrorMsg('');
         if (!itemName.trim() || stockKg === '' || unitPrice === '') {
             setErrorMsg(t.invalidCredentials || 'Please fill in all required fields');
@@ -88,8 +93,12 @@ export const InventoryPage = () => {
         const numericPrice = purchasePricePerKg;
         const numericPaid = paidAmount === '' ? 0 : Math.min(Math.max(0, Number(paidAmount) || 0), totalBillCalculated);
         const numericThreshold = threshold === '' ? undefined : Number(threshold);
-        if (existingMaterial) {
-            const result = restockRawMaterial({
+        stockSaveLock.current = true;
+        setIsSavingStock(true);
+        let result;
+        try {
+            if (existingMaterial) {
+                result = await restockRawMaterial({
                 materialId: existingMaterial.id,
                 addedWeightKg: numericStock,
                 newUnitPrice: numericPrice,
@@ -102,14 +111,11 @@ export const InventoryPage = () => {
                 paidAmount: numericPaid,
                 notes: notes.trim() || undefined,
                 currency,
-            });
-            if (!result.success) {
-                setErrorMsg(result.error || t.restockFailed);
-                return;
+                });
+                if (result.success && numericThreshold !== undefined) updateRawMaterialThreshold(existingMaterial.id, numericThreshold);
             }
-            if (numericThreshold !== undefined) updateRawMaterialThreshold(existingMaterial.id, numericThreshold);
-        } else {
-            const result = addRawMaterial({
+            else {
+                result = await addRawMaterial({
                 name: itemName.trim(),
                 category: 'Uncategorized',
                 stockKg: numericStock,
@@ -122,11 +128,16 @@ export const InventoryPage = () => {
                 supplierName: supplierName.trim() || undefined,
                 notes: notes.trim() || undefined,
                 lowStockThreshold: numericThreshold,
-            }, numericPaid, supplierPhone.trim() || undefined);
+                }, numericPaid, supplierPhone.trim() || undefined);
+            }
             if (!result?.success) {
                 setErrorMsg(result?.error || t.restockFailed);
                 return;
             }
+        }
+        finally {
+            stockSaveLock.current = false;
+            setIsSavingStock(false);
         }
         // Reset form
         setItemName('');
@@ -163,31 +174,38 @@ export const InventoryPage = () => {
     const restockPricePerKg = restockEnteredUnitPrice / restockUnitMultiplier;
     const restockTotal = restockInputQuantity * restockEnteredUnitPrice;
     const restockPaidAmount = restockPaid === '' ? 0 : Math.min(Math.max(0, Number(restockPaid) || 0), restockTotal);
-    const handleRestock = (event) => {
+    const handleRestock = async (event) => {
         event.preventDefault();
+        if (restockSaveLock.current) return;
         setRestockError('');
         if (restockPhone.trim() && !/^\d{10}$/.test(restockPhone.trim())) {
             setRestockError(t.phoneMustBe10Digits);
             return;
         }
-        const result = restockRawMaterial({
-            materialId: restockItem.id,
-            addedWeightKg: restockWeightKg,
-            newUnitPrice: restockPricePerKg,
-            purchaseUnitType: restockUnit,
-            purchaseUnitQuantity: restockInputQuantity,
-            purchaseUnitPrice: restockEnteredUnitPrice,
-            supplierId: restockSupplierId || undefined,
-            supplierName: restockSupplier.trim() || undefined,
-            supplierPhone: restockPhone.trim() || undefined,
-            paidAmount: restockPaidAmount,
-            notes: restockNotes.trim() || undefined,
-            currency: restockCurrency,
-        });
-        if (result.success)
-            setRestockItem(null);
-        else
-            setRestockError(result.error || 'Could not restock this material.');
+        restockSaveLock.current = true;
+        setIsSavingRestock(true);
+        try {
+            const result = await restockRawMaterial({
+                materialId: restockItem.id,
+                addedWeightKg: restockWeightKg,
+                newUnitPrice: restockPricePerKg,
+                purchaseUnitType: restockUnit,
+                purchaseUnitQuantity: restockInputQuantity,
+                purchaseUnitPrice: restockEnteredUnitPrice,
+                supplierId: restockSupplierId || undefined,
+                supplierName: restockSupplier.trim() || undefined,
+                supplierPhone: restockPhone.trim() || undefined,
+                paidAmount: restockPaidAmount,
+                notes: restockNotes.trim() || undefined,
+                currency: restockCurrency,
+            });
+            if (result.success) setRestockItem(null);
+            else setRestockError(result.error || 'Could not restock this material.');
+        }
+        finally {
+            restockSaveLock.current = false;
+            setIsSavingRestock(false);
+        }
     };
     // Filter raw materials by their exact stored name or supplier.
     const filteredItems = db.rawMaterials.filter(item => {
@@ -488,8 +506,8 @@ export const InventoryPage = () => {
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer">
                   {t.cancel}
                 </button>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/25 cursor-pointer">
-                  {t.save}
+                <button type="submit" disabled={isSavingStock} className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-amber-600/25 cursor-pointer">
+                  {isSavingStock ? (t.goodsSaving || 'Saving...') : t.save}
                 </button>
               </div>
               {errorMsg && (<div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2" role="status">
@@ -561,7 +579,7 @@ export const InventoryPage = () => {
                 <div><span className="text-slate-500 block">{t.totalAmount}</span><strong className="font-mono text-slate-900">{restockTotal.toLocaleString()} {restockCurrency}</strong><span className="block text-[10px] text-slate-500">{restockInputQuantity.toLocaleString()} {t[restockUnit] || restockUnit} × {restockEnteredUnitPrice.toLocaleString()} {restockCurrency}</span></div>
                 <div><span className="text-slate-500 block">{t.remainingSupplierBill}</span><strong className="font-mono text-rose-700">{Math.max(0, restockTotal - restockPaidAmount).toLocaleString()} {restockCurrency}</strong></div>
               </div>
-              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setRestockItem(null)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-700">{t.cancel}</button><button type="submit" className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold">{lang === 'fa' ? 'ثبت افزایش موجودی' : lang === 'ps' ? 'ذخیره ثبتول' : 'Save restock'}</button></div>
+              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setRestockItem(null)} className="flex-1 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-700">{t.cancel}</button><button type="submit" disabled={isSavingRestock} className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-bold">{isSavingRestock ? (t.goodsSaving || 'Saving...') : (lang === 'fa' ? 'ثبت افزایش موجودی' : lang === 'ps' ? 'ذخیره ثبتول' : 'Save restock')}</button></div>
               {restockError && (<div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs" role="status">{restockError}</div>)}
             </form>
           </div>

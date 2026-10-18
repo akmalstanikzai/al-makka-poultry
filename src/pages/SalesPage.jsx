@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -22,6 +22,7 @@ export const SalesPage = () => {
     const [notes, setNotes] = useState('');
     const [saveStatus, setSaveStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const saleSaveLock = useRef(false);
     // Selected Product details
     const selectedProduct = db.processedStock.find(p => p.id === productId);
     // Quantity in kg calculation
@@ -62,6 +63,7 @@ export const SalesPage = () => {
     };
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (saleSaveLock.current) return;
         setSaveStatus(null);
         const productName = selectedProduct ? selectedProduct.name : '';
         if (!productName) {
@@ -91,26 +93,28 @@ export const SalesPage = () => {
                 return;
             }
         }
+        saleSaveLock.current = true;
         setIsSaving(true);
-        const result = await recordSale({
-            productName,
-            productId,
-            customerId: customerId || undefined,
-            customerName: customerName.trim(),
-            customerPhone: customerPhone.trim() || undefined,
-            unitType,
-            unitQuantity: qtyNumber,
-            salePricePerUnit: priceNumber,
-            currency,
-            paidAmount: paidNumber,
-            notes: notes.trim() || undefined,
-        });
-        setIsSaving(false);
-        if (result.success) {
-            setIsModalOpen(false);
+        try {
+            const result = await recordSale({
+                productName,
+                productId,
+                customerId: customerId || undefined,
+                customerName: customerName.trim(),
+                customerPhone: customerPhone.trim() || undefined,
+                unitType,
+                unitQuantity: qtyNumber,
+                salePricePerUnit: priceNumber,
+                currency,
+                paidAmount: paidNumber,
+                notes: notes.trim() || undefined,
+            });
+            if (result.success) setIsModalOpen(false);
+            else setSaveStatus({ type: 'error', text: result.error || 'The sale was not saved to the database.' });
         }
-        else {
-            setSaveStatus({ type: 'error', text: result.error || 'The sale was not saved to the database.' });
+        finally {
+            saleSaveLock.current = false;
+            setIsSaving(false);
         }
     };
     // Filter sales - search by customer name, phone number, and invoice number (id)

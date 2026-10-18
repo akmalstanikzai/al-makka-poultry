@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { AccountStatement } from '../components/AccountStatement';
 import { ReceiptActions } from '../components/ReceiptActions';
@@ -23,6 +23,7 @@ export const CustomersPage = () => {
     const [paymentNote, setPaymentNote] = useState('');
     const [paymentStatus, setPaymentStatus] = useState(null);
     const [isSavingPayment, setIsSavingPayment] = useState(false);
+    const paymentSaveLock = useRef(false);
     const [rawSettlementCustomer, setRawSettlementCustomer] = useState(null);
     const [rawMaterialName, setRawMaterialName] = useState('');
     const [rawUnit, setRawUnit] = useState('bag');
@@ -33,6 +34,7 @@ export const CustomersPage = () => {
     const [rawNotes, setRawNotes] = useState('');
     const [rawSettlementError, setRawSettlementError] = useState('');
     const [isSavingRawSettlement, setIsSavingRawSettlement] = useState(false);
+    const rawSettlementSaveLock = useRef(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [customerEdit, setCustomerEdit] = useState(null);
     const [customerEditError, setCustomerEditError] = useState('');
@@ -85,20 +87,28 @@ export const CustomersPage = () => {
     };
     const handleReceiveSubmit = async (e) => {
         e.preventDefault();
-        if (!receiveModalCustomer)
+        if (!receiveModalCustomer || paymentSaveLock.current)
             return;
         const amount = Number(receivedAmount);
         if (isNaN(amount) || amount <= 0) {
             setPaymentStatus({ type: 'error', text: 'Payment must be greater than zero.' });
             return;
         }
+        paymentSaveLock.current = true;
         setIsSavingPayment(true);
         setPaymentStatus(null);
-        const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote, paymentCurrency);
-        setIsSavingPayment(false);
-        setPaymentStatus(result.success
-            ? { type: 'success', text: 'Customer payment saved to the database.' }
-            : { type: 'error', text: result.error || 'Customer payment was not saved.' });
+        try {
+            const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote, paymentCurrency);
+            if (result.success) {
+                setReceiveModalCustomer(null);
+                return;
+            }
+            setPaymentStatus({ type: 'error', text: result.error || 'Customer payment was not saved.' });
+        }
+        finally {
+            paymentSaveLock.current = false;
+            setIsSavingPayment(false);
+        }
     };
     const openRawSettlement = customer => {
         setRawSettlementCustomer(customer);
@@ -138,22 +148,29 @@ export const CustomersPage = () => {
     const customerCreditAfterPayment = existingCustomerCredit + Math.max(0, paymentAmountNumber - paymentDebt);
     const handleRawSettlement = async event => {
         event.preventDefault();
+        if (!rawSettlementCustomer || rawSettlementSaveLock.current) return;
+        rawSettlementSaveLock.current = true;
         setRawSettlementError('');
         setIsSavingRawSettlement(true);
-        const result = await settleCustomerWithRawMaterial({
-            customerId: rawSettlementCustomer.id,
-            materialName: rawMaterialName,
-            category: 'Uncategorized',
-            unitType: rawUnit,
-            unitQuantity: rawQuantityNumber,
-            unitPrice: Number(rawUnitPrice),
-            currency: rawCurrency,
-            lowStockThreshold: rawThreshold,
-            notes: rawNotes,
-        });
-        setIsSavingRawSettlement(false);
-        if (!result.success) { setRawSettlementError(result.error); return; }
-        setRawSettlementCustomer(null);
+        try {
+            const result = await settleCustomerWithRawMaterial({
+                customerId: rawSettlementCustomer.id,
+                materialName: rawMaterialName,
+                category: 'Uncategorized',
+                unitType: rawUnit,
+                unitQuantity: rawQuantityNumber,
+                unitPrice: Number(rawUnitPrice),
+                currency: rawCurrency,
+                lowStockThreshold: rawThreshold,
+                notes: rawNotes,
+            });
+            if (!result.success) { setRawSettlementError(result.error); return; }
+            setRawSettlementCustomer(null);
+        }
+        finally {
+            rawSettlementSaveLock.current = false;
+            setIsSavingRawSettlement(false);
+        }
     };
     // Aggregated totals
     const totalSalesAll = { AFN: customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };

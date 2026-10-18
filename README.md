@@ -42,6 +42,10 @@ Migrations are stored in `supabase/migrations` in execution order:
    purchase/settlement links whose inventory row was replaced, resolves future
    missing links by normalized material name, and lets voids safely remove only
    the matching stock still on hand.
+10. `20261018010000_reconcile_goods_settlement_totals.sql` recalculates customer
+    raw-settlement and supplier processed-goods totals from active ledger rows,
+    repairs balances after duplicate rows are voided, and keeps those summaries
+    synchronized automatically.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration

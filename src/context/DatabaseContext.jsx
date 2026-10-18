@@ -153,6 +153,40 @@ export const DatabaseProvider = ({ children }) => {
         }
     };
     const [db, setDb] = useState(emptyFactoryData);
+    const commitConfirmedState = async (nextState, isConfirmed) => {
+        const saved = await persistStateChanges(db, nextState);
+        let committedState = nextState;
+        if (!saved) {
+            // A REST sequence can fail after the important rows were already
+            // committed. Reload before reporting failure so a successful
+            // transaction is never submitted a second time by the user.
+            let refreshed = await loadStateFromSupabase();
+            if (!refreshed?.state) return false;
+            if (!isConfirmed?.(refreshed.state)) {
+                // Resume the same operation with the same record IDs. Upserts
+                // make this idempotent and avoid creating a duplicate retry.
+                const resumed = await persistStateChanges(refreshed.state, nextState);
+                if (!resumed) {
+                    refreshed = await loadStateFromSupabase();
+                    if (!refreshed?.state || !isConfirmed?.(refreshed.state)) return false;
+                    committedState = refreshed.state;
+                }
+                else {
+                    committedState = nextState;
+                }
+            }
+            else {
+                committedState = refreshed.state;
+            }
+        }
+        lastSyncedState.current = JSON.stringify(committedState);
+        persistedStateRef.current = committedState;
+        pendingStateRef.current = null;
+        setDb(committedState);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
+        return true;
+    };
     useEffect(() => {
         const handleDatabaseError = event => {
             const message = String(event.detail || 'An unknown Supabase error occurred.');
@@ -341,7 +375,7 @@ export const DatabaseProvider = ({ children }) => {
         }
     };
     // 1. ADD RAW MATERIAL TO INVENTORY & AUTO-UPDATE SUPPLIER
-    const addRawMaterial = (item, paidAmount, supplierPhone) => {
+    const addRawMaterial = async (item, paidAmount, supplierPhone) => {
         const requestedSupplierName = String(item.supplierName || '').trim();
         const requestedSupplierKey = normalizePartyName(requestedSupplierName);
         const matchesCustomer = requestedSupplierKey && db.customers.some(customer => normalizePartyName(customer.name) === requestedSupplierKey);
@@ -349,7 +383,8 @@ export const DatabaseProvider = ({ children }) => {
             return { success: false, error: t.customerMustUseRawSettlement };
         }
         const today = new Date().toISOString().split('T')[0];
-        const newId = `rm-${Date.now()}`;
+        const operationTimestamp = Date.now();
+        const newId = `rm-${operationTimestamp}`;
         const currency = currencyCode(item.currency);
         const totalBill = item.stockKg * item.unitPrice;
         const paid = Math.min(Math.max(0, Number(paidAmount) || 0), totalBill);
@@ -359,76 +394,80 @@ export const DatabaseProvider = ({ children }) => {
             id: newId,
             dateAdded: today,
         };
-        setDb(prev => {
-            let updatedSuppliers = [...prev.suppliers];
-            let assignedSupplierId = item.supplierId;
-            if (item.supplierName && item.supplierName.trim()) {
-                const supName = item.supplierName.trim();
-                const existingSupIndex = updatedSuppliers.findIndex(s => (item.supplierId && s.id === item.supplierId) || normalizePartyName(s.name) === normalizePartyName(supName));
-                const transaction = {
-                    id: `st-${Date.now()}`,
-                    rawMaterialId: newId,
-                    itemName: item.name,
-                    quantityKg: item.stockKg,
-                    unitPrice: item.unitPrice,
-                    unitType: item.purchaseUnitType || 'kg',
-                    unitQuantity: item.purchaseUnitQuantity ?? item.stockKg,
-                    unitPricePerUnit: item.purchaseUnitPrice ?? item.unitPrice,
-                    date: today,
-                    type: 'purchase',
-                    description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
-                    amount: totalBill,
-                    paidAmount: paid,
-                    cashAmount: paid,
-                    remainingAmount: remaining,
-                    currency,
-                };
-                if (existingSupIndex >= 0) {
-                    const sup = updatedSuppliers[existingSupIndex];
-                    assignedSupplierId = sup.id;
-                    newItem.supplierName = sup.name;
-                    const supplierAfterPurchase = applySupplierPurchase(sup, totalBill, paid, currency);
-                    const updatedSup = {
-                        ...supplierAfterPurchase,
-                        phone: supplierPhone || sup.phone,
-                        transactions: [{ ...transaction, accountBalanceAfter: supplierAfterPurchase[currencyField('balanceOwed', currency)] }, ...sup.transactions],
-                    };
-                    updatedSuppliers[existingSupIndex] = updatedSup;
-                }
-                else {
-                    assignedSupplierId = `sup-${Date.now()}`;
-                    const newSup = {
-                        id: assignedSupplierId,
-                        name: supName,
-                        phone: supplierPhone || '',
-                        totalPurchasedAmount: currency === 'AFN' ? totalBill : 0,
-                        totalPurchasedAmountUsd: currency === 'USD' ? totalBill : 0,
-                        totalPaid: currency === 'AFN' ? paid : 0,
-                        totalPaidUsd: currency === 'USD' ? paid : 0,
-                        balanceOwed: currency === 'AFN' ? remaining : 0,
-                        balanceOwedUsd: currency === 'USD' ? remaining : 0,
-                        goodsSettledAmount: 0,
-                        goodsSettledAmountUsd: 0,
-                        receivableBalance: 0,
-                        receivableBalanceUsd: 0,
-                        transactions: [{ ...transaction, accountBalanceAfter: remaining }],
-                        createdAt: today,
-                    };
-                    updatedSuppliers.unshift(newSup);
-                }
-            }
-            newItem.supplierId = assignedSupplierId;
-            return {
-                ...prev,
-                rawMaterials: [newItem, ...prev.rawMaterials],
-                suppliers: updatedSuppliers,
-                ...cashPatch(prev, -paid, currency),
+        let updatedSuppliers = [...db.suppliers];
+        let assignedSupplierId = item.supplierId;
+        let supplierTransactionId = null;
+        if (item.supplierName && item.supplierName.trim()) {
+            const supName = item.supplierName.trim();
+            const existingSupIndex = updatedSuppliers.findIndex(s => (item.supplierId && s.id === item.supplierId) || normalizePartyName(s.name) === normalizePartyName(supName));
+            supplierTransactionId = `st-${operationTimestamp}`;
+            const transaction = {
+                id: supplierTransactionId,
+                rawMaterialId: newId,
+                itemName: item.name,
+                quantityKg: item.stockKg,
+                unitPrice: item.unitPrice,
+                unitType: item.purchaseUnitType || 'kg',
+                unitQuantity: item.purchaseUnitQuantity ?? item.stockKg,
+                unitPricePerUnit: item.purchaseUnitPrice ?? item.unitPrice,
+                date: today,
+                type: 'purchase',
+                description: `خرید ${item.name} (${item.stockKg.toLocaleString()} کیلو)`,
+                amount: totalBill,
+                paidAmount: paid,
+                cashAmount: paid,
+                remainingAmount: remaining,
+                currency,
             };
+            if (existingSupIndex >= 0) {
+                const sup = updatedSuppliers[existingSupIndex];
+                assignedSupplierId = sup.id;
+                newItem.supplierName = sup.name;
+                const supplierAfterPurchase = applySupplierPurchase(sup, totalBill, paid, currency);
+                updatedSuppliers[existingSupIndex] = {
+                    ...supplierAfterPurchase,
+                    phone: supplierPhone || sup.phone,
+                    transactions: [{ ...transaction, accountBalanceAfter: supplierAfterPurchase[currencyField('balanceOwed', currency)] }, ...sup.transactions],
+                };
+            }
+            else {
+                assignedSupplierId = `sup-${operationTimestamp}`;
+                updatedSuppliers.unshift({
+                    id: assignedSupplierId,
+                    name: supName,
+                    phone: supplierPhone || '',
+                    totalPurchasedAmount: currency === 'AFN' ? totalBill : 0,
+                    totalPurchasedAmountUsd: currency === 'USD' ? totalBill : 0,
+                    totalPaid: currency === 'AFN' ? paid : 0,
+                    totalPaidUsd: currency === 'USD' ? paid : 0,
+                    balanceOwed: currency === 'AFN' ? remaining : 0,
+                    balanceOwedUsd: currency === 'USD' ? remaining : 0,
+                    goodsSettledAmount: 0,
+                    goodsSettledAmountUsd: 0,
+                    receivableBalance: 0,
+                    receivableBalanceUsd: 0,
+                    transactions: [{ ...transaction, accountBalanceAfter: remaining }],
+                    createdAt: today,
+                });
+            }
+        }
+        newItem.supplierId = assignedSupplierId;
+        const nextState = {
+            ...db,
+            rawMaterials: [newItem, ...db.rawMaterials],
+            suppliers: updatedSuppliers,
+            ...cashPatch(db, -paid, currency),
+        };
+        const saved = await commitConfirmedState(nextState, state => {
+            const materialSaved = state.rawMaterials.some(material => material.id === newId);
+            const transactionSaved = !supplierTransactionId || state.suppliers.some(supplier =>
+                supplier.transactions?.some(transaction => transaction.id === supplierTransactionId));
+            return materialSaved && transactionSaved;
         });
-        return { success: true };
+        return saved ? { success: true } : { success: false, error: t.restockFailed };
     };
     // RESTOCK AN EXISTING RAW MATERIAL & RECORD THE SUPPLIER PURCHASE
-    const restockRawMaterial = ({ materialId, addedWeightKg, newUnitPrice, purchaseUnitType = 'kg', purchaseUnitQuantity, purchaseUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
+    const restockRawMaterial = async ({ materialId, addedWeightKg, newUnitPrice, purchaseUnitType = 'kg', purchaseUnitQuantity, purchaseUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
         const material = db.rawMaterials.find(item => item.id === materialId);
         const weight = Number(addedWeightKg);
         const price = Number(newUnitPrice);
@@ -447,83 +486,91 @@ export const DatabaseProvider = ({ children }) => {
         const totalBill = weight * price;
         const paid = Math.min(Math.max(0, Number(paidAmount) || 0), totalBill);
         const remaining = Math.max(0, totalBill - paid);
-        setDb(prev => {
-            let updatedSuppliers = [...prev.suppliers];
-            let supplierId = requestedSupplierId || material.supplierId;
-            let resolvedName = supplierName?.trim() || material.supplierName || '';
-            if (resolvedName) {
-                // An explicitly entered supplier name takes precedence over the
-                // material's previous supplier. Otherwise a restock from a new
-                // supplier would incorrectly update the old supplier account.
-                const supplierIndex = updatedSuppliers.findIndex(supplier => (requestedSupplierId && supplier.id === requestedSupplierId) || normalizePartyName(supplier.name) === normalizePartyName(resolvedName));
-                const transaction = {
-                    id: `st-${Date.now()}`,
-                    rawMaterialId: materialId,
-                    itemName: material.name,
-                    quantityKg: weight,
-                    unitPrice: price,
-                    unitType: purchaseUnitType,
-                    unitQuantity: purchaseUnitQuantity ?? weight,
-                    unitPricePerUnit: purchaseUnitPrice ?? price,
-                    date: today,
-                    type: 'purchase',
-                    description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
-                    amount: totalBill,
-                    paidAmount: paid,
-                    cashAmount: paid,
-                    remainingAmount: remaining,
-                    currency,
-                };
-                if (supplierIndex >= 0) {
-                    const supplier = updatedSuppliers[supplierIndex];
-                    supplierId = supplier.id;
-                    resolvedName = supplier.name;
-                    const supplierAfterPurchase = applySupplierPurchase(supplier, totalBill, paid, currency);
-                    updatedSuppliers[supplierIndex] = {
-                        ...supplierAfterPurchase,
-                        phone: supplierPhone || supplier.phone,
-                        transactions: [{ ...transaction, accountBalanceAfter: supplierAfterPurchase[currencyField('balanceOwed', currency)] }, ...supplier.transactions],
-                    };
-                }
-                else {
-                    supplierId = `sup-${Date.now()}`;
-                    updatedSuppliers.unshift({
-                        id: supplierId,
-                        name: resolvedName,
-                        phone: supplierPhone || '',
-                        address: '',
-                        totalPurchasedAmount: currency === 'AFN' ? totalBill : 0,
-                        totalPurchasedAmountUsd: currency === 'USD' ? totalBill : 0,
-                        totalPaid: currency === 'AFN' ? paid : 0,
-                        totalPaidUsd: currency === 'USD' ? paid : 0,
-                        balanceOwed: currency === 'AFN' ? remaining : 0,
-                        balanceOwedUsd: currency === 'USD' ? remaining : 0,
-                        goodsSettledAmount: 0,
-                        goodsSettledAmountUsd: 0,
-                        receivableBalance: 0,
-                        receivableBalanceUsd: 0,
-                        transactions: [{ ...transaction, accountBalanceAfter: remaining }],
-                        createdAt: today,
-                    });
-                }
-            }
-            return {
-                ...prev,
-                rawMaterials: prev.rawMaterials.map(item => item.id === materialId ? {
-                    ...item,
-                    stockKg: item.stockKg + weight,
-                    unitPrice: price,
-                    currency,
-                    supplierId,
-                    supplierName: resolvedName || item.supplierName,
-                    notes: notes || item.notes,
-                    dateAdded: today,
-                } : item),
-                suppliers: updatedSuppliers,
-                ...cashPatch(prev, -paid, currency),
+        const operationTimestamp = Date.now();
+        let updatedSuppliers = [...db.suppliers];
+        let supplierId = requestedSupplierId || material.supplierId;
+        let resolvedName = supplierName?.trim() || material.supplierName || '';
+        let supplierTransactionId = null;
+        if (resolvedName) {
+            // An explicitly entered supplier name takes precedence over the
+            // material's previous supplier. Otherwise a restock from a new
+            // supplier would incorrectly update the old supplier account.
+            const supplierIndex = updatedSuppliers.findIndex(supplier => (requestedSupplierId && supplier.id === requestedSupplierId) || normalizePartyName(supplier.name) === normalizePartyName(resolvedName));
+            supplierTransactionId = `st-${operationTimestamp}`;
+            const transaction = {
+                id: supplierTransactionId,
+                rawMaterialId: materialId,
+                itemName: material.name,
+                quantityKg: weight,
+                unitPrice: price,
+                unitType: purchaseUnitType,
+                unitQuantity: purchaseUnitQuantity ?? weight,
+                unitPricePerUnit: purchaseUnitPrice ?? price,
+                date: today,
+                type: 'purchase',
+                description: notes || `Restock ${material.name} (${weight.toLocaleString()} kg)`,
+                amount: totalBill,
+                paidAmount: paid,
+                cashAmount: paid,
+                remainingAmount: remaining,
+                currency,
             };
+            if (supplierIndex >= 0) {
+                const supplier = updatedSuppliers[supplierIndex];
+                supplierId = supplier.id;
+                resolvedName = supplier.name;
+                const supplierAfterPurchase = applySupplierPurchase(supplier, totalBill, paid, currency);
+                updatedSuppliers[supplierIndex] = {
+                    ...supplierAfterPurchase,
+                    phone: supplierPhone || supplier.phone,
+                    transactions: [{ ...transaction, accountBalanceAfter: supplierAfterPurchase[currencyField('balanceOwed', currency)] }, ...supplier.transactions],
+                };
+            }
+            else {
+                supplierId = `sup-${operationTimestamp}`;
+                updatedSuppliers.unshift({
+                    id: supplierId,
+                    name: resolvedName,
+                    phone: supplierPhone || '',
+                    address: '',
+                    totalPurchasedAmount: currency === 'AFN' ? totalBill : 0,
+                    totalPurchasedAmountUsd: currency === 'USD' ? totalBill : 0,
+                    totalPaid: currency === 'AFN' ? paid : 0,
+                    totalPaidUsd: currency === 'USD' ? paid : 0,
+                    balanceOwed: currency === 'AFN' ? remaining : 0,
+                    balanceOwedUsd: currency === 'USD' ? remaining : 0,
+                    goodsSettledAmount: 0,
+                    goodsSettledAmountUsd: 0,
+                    receivableBalance: 0,
+                    receivableBalanceUsd: 0,
+                    transactions: [{ ...transaction, accountBalanceAfter: remaining }],
+                    createdAt: today,
+                });
+            }
+        }
+        const expectedStock = material.stockKg + weight;
+        const nextState = {
+            ...db,
+            rawMaterials: db.rawMaterials.map(item => item.id === materialId ? {
+                ...item,
+                stockKg: expectedStock,
+                unitPrice: price,
+                currency,
+                supplierId,
+                supplierName: resolvedName || item.supplierName,
+                notes: notes || item.notes,
+                dateAdded: today,
+            } : item),
+            suppliers: updatedSuppliers,
+            ...cashPatch(db, -paid, currency),
+        };
+        const saved = await commitConfirmedState(nextState, state => {
+            const materialSaved = state.rawMaterials.some(item => item.id === materialId && Math.abs(item.stockKg - expectedStock) < 0.001);
+            const transactionSaved = !supplierTransactionId || state.suppliers.some(supplier =>
+                supplier.transactions?.some(transaction => transaction.id === supplierTransactionId));
+            return materialSaved && transactionSaved;
         });
-        return { success: true };
+        return saved ? { success: true } : { success: false, error: t.restockFailed };
     };
     // UPDATE RAW MATERIAL THRESHOLD PER ITEM
     const updateRawMaterialThreshold = (id, threshold) => {
@@ -687,45 +734,45 @@ export const DatabaseProvider = ({ children }) => {
         void deleteRawMaterialFromSupabase(id);
     };
     // SETTLE PAYMENT TO SUPPLIER
-    const settleSupplierPayment = (supplierId, amountToPay, note, currency = 'AFN') => {
+    const settleSupplierPayment = async (supplierId, amountToPay, note, currency = 'AFN') => {
         if (amountToPay <= 0)
-            return;
+            return { success: false, error: t.paymentAmountRequired };
         const today = new Date().toISOString().split('T')[0];
-        setDb(prev => {
-            const supIndex = prev.suppliers.findIndex(s => s.id === supplierId);
-            if (supIndex === -1)
-                return prev;
-            const sup = prev.suppliers[supIndex];
-            currency = currencyCode(currency);
-            const balanceField = currencyField('balanceOwed', currency);
-            const paidField = currencyField('totalPaid', currency);
-            const actualPay = Math.min(amountToPay, Number(sup[balanceField]) || 0);
-            const newRemaining = Math.max(0, (Number(sup[balanceField]) || 0) - actualPay);
-            const transaction = {
-                id: `st-${Date.now()}`,
-                date: today,
-                type: 'payment',
-                description: note || 'پرداخت قرض و تصفیه حساب با عرضه کننده',
-                amount: 0,
-                paidAmount: actualPay,
-                cashAmount: actualPay,
-                remainingAmount: newRemaining,
-                currency,
-            };
-            const updatedSuppliers = [...prev.suppliers];
-            const updatedSup = {
-                ...sup,
-                [paidField]: (Number(sup[paidField]) || 0) + actualPay,
-                [balanceField]: newRemaining,
-                transactions: [transaction, ...sup.transactions],
-            };
-            updatedSuppliers[supIndex] = updatedSup;
-            return {
-                ...prev,
-                suppliers: updatedSuppliers,
-                ...cashPatch(prev, -actualPay, currency),
-            };
-        });
+        const supIndex = db.suppliers.findIndex(s => s.id === supplierId);
+        if (supIndex === -1) return { success: false, error: t.invalidSupplierOrProduct };
+        const sup = db.suppliers[supIndex];
+        currency = currencyCode(currency);
+        const balanceField = currencyField('balanceOwed', currency);
+        const paidField = currencyField('totalPaid', currency);
+        const actualPay = Math.min(amountToPay, Number(sup[balanceField]) || 0);
+        const newRemaining = Math.max(0, (Number(sup[balanceField]) || 0) - actualPay);
+        const transactionId = `st-${Date.now()}`;
+        const transaction = {
+            id: transactionId,
+            date: today,
+            type: 'payment',
+            description: note || 'پرداخت قرض و تصفیه حساب با عرضه کننده',
+            amount: 0,
+            paidAmount: actualPay,
+            cashAmount: actualPay,
+            remainingAmount: newRemaining,
+            currency,
+        };
+        const updatedSuppliers = [...db.suppliers];
+        updatedSuppliers[supIndex] = {
+            ...sup,
+            [paidField]: (Number(sup[paidField]) || 0) + actualPay,
+            [balanceField]: newRemaining,
+            transactions: [transaction, ...sup.transactions],
+        };
+        const nextState = {
+            ...db,
+            suppliers: updatedSuppliers,
+            ...cashPatch(db, -actualPay, currency),
+        };
+        const saved = await commitConfirmedState(nextState, state => state.suppliers.some(supplier =>
+            supplier.id === supplierId && supplier.transactions?.some(item => item.id === transactionId)));
+        return saved ? { success: true } : { success: false, error: t.historyChangeSaveFailed };
     };
     // SETTLE A SUPPLIER BALANCE WITH PROCESSED GOODS. The supplier remains on
     // the supplier ledger; any value above our debt becomes a receivable on
@@ -819,13 +866,11 @@ export const DatabaseProvider = ({ children }) => {
             return { ...db, processedStock: updatedProcessedStock, suppliers: updatedSuppliers, sales: [sale, ...db.sales] };
         })();
 
-        const saved = await writeStateToSupabase(nextState);
+        const saved = await commitConfirmedState(nextState, state =>
+            state.sales.some(item => item.id === sale.id)
+            && state.suppliers.some(item => item.id === supplier.id
+                && item.transactions?.some(transaction => transaction.id === `st-${timestamp}`)));
         if (!saved) return { success: false, error: t.supplierGoodsSettlementSaveFailed };
-        lastSyncedState.current = JSON.stringify(nextState);
-        persistedStateRef.current = nextState;
-        setDb(nextState);
-        setIsSupabaseConnected(true);
-        setDatabaseError(null);
         return { success: true, offsetAmount, customerDebt: Math.max(0, totalAmount - offsetAmount) };
     };
     // DELETE SUPPLIER
@@ -893,9 +938,15 @@ export const DatabaseProvider = ({ children }) => {
         }
         const expense = Number(batchExpenses) > 0 ? { id: `exp-${operationTimestamp}`, date: recordDate, category: 'electricity', description: `مصارف تولید بچ: ${name}`, amount: Number(batchExpenses), currency: expenseCurrency, paidBy: operatorName || 'مسئول فابریکه' } : null;
         const nextState = { ...db, rawMaterials: updatedRaw, processedStock: updatedProcessedStock, formulas: db.formulas, productionBatches: produceBatchImmediately ? [newBatch, ...db.productionBatches] : db.productionBatches, expenses: expense ? [expense, ...db.expenses] : db.expenses, ...(expense ? cashPatch(db, -expense.amount, expense.currency) : {}) };
-        const saved = await writeStateToSupabase(nextState);
+        const expectedProduct = updatedProcessedStock.find(item => normalizeStockName(item.name) === normalizedProductName);
+        const saved = await commitConfirmedState(nextState, state =>
+            state.productionBatches.some(batch => batch.id === newBatch.id)
+            && state.processedStock.some(item => item.id === expectedProduct?.id
+                && Math.abs(item.stockKg - expectedProduct.stockKg) < 0.001)
+            && updatedRaw.filter(item => materialUsage.has(item.id)).every(expected =>
+                state.rawMaterials.some(item => item.id === expected.id
+                    && Math.abs(item.stockKg - expected.stockKg) < 0.001)));
         if (!saved) return { success: false, error: 'The production batch was not saved to the database.' };
-        lastSyncedState.current = JSON.stringify(nextState); persistedStateRef.current = nextState; setDb(nextState); setIsSupabaseConnected(true); setDatabaseError(null);
         return { success: true };
     };
     // SAVE OR UPDATE A REUSABLE FORMULA WITHOUT PRODUCING A BATCH
@@ -944,14 +995,10 @@ export const DatabaseProvider = ({ children }) => {
                 ? db.formulas.map(item => item.id === id ? formula : item)
                 : [formula, ...db.formulas],
         };
-        const saved = await writeStateToSupabase(nextState);
+        const saved = await commitConfirmedState(nextState, state =>
+            state.formulas.some(item => item.id === id));
         if (!saved)
             return { success: false, error: 'The formula was not saved to the database.' };
-        lastSyncedState.current = JSON.stringify(nextState);
-        persistedStateRef.current = nextState;
-        setDb(nextState);
-        setIsSupabaseConnected(true);
-        setDatabaseError(null);
         return { success: true, formulaId: id };
     };
     // DELETE FORMULA
@@ -1007,7 +1054,9 @@ export const DatabaseProvider = ({ children }) => {
         const profit = (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods;
         const profitUsd = (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd;
         const today = new Date().toISOString().split('T')[0];
-        const saleId = `sale-${Date.now()}`;
+        const operationTimestamp = Date.now();
+        const saleId = `sale-${operationTimestamp}`;
+        const customerTransactionId = `ct-${operationTimestamp}`;
         const newSale = {
             id: saleId,
             date: today,
@@ -1057,7 +1106,7 @@ export const DatabaseProvider = ({ children }) => {
                 normalizePartyName(c.name) === normalizePartyName(custName) ||
                 (saleData.customerPhone?.trim() && c.phone === saleData.customerPhone.trim()));
             const customerTransaction = {
-                id: `ct-${Date.now()}`,
+                id: customerTransactionId,
                 itemName: saleData.productName,
                 productId: product?.id || saleData.productId || '',
                 sourceSaleId: saleId,
@@ -1122,14 +1171,12 @@ export const DatabaseProvider = ({ children }) => {
                 ...cashPatch(prev, paidAmount, currency),
             };
         })();
-        const saved = await writeStateToSupabase(nextState);
+        const saved = await commitConfirmedState(nextState, state =>
+            state.sales.some(sale => sale.id === saleId)
+            && state.customers.some(customer => customer.id === newSale.customerId
+                && customer.transactions?.some(transaction => transaction.id === customerTransactionId)));
         if (!saved)
             return { success: false, error: 'The sale was not saved to the database.' };
-        lastSyncedState.current = JSON.stringify(nextState);
-        persistedStateRef.current = nextState;
-        setDb(nextState);
-        setIsSupabaseConnected(true);
-        setDatabaseError(null);
         return { success: true };
     };
     // RECEIVE RAW MATERIAL FROM A CUSTOMER AS A NON-CASH DEBT SETTLEMENT.
@@ -1229,13 +1276,12 @@ export const DatabaseProvider = ({ children }) => {
             return { ...db, customers: updatedCustomers, rawMaterials: updatedRawMaterials, sales: updatedSales };
         })();
 
-        const saved = await writeStateToSupabase(nextState);
+        const transactionId = `ct-${timestamp}`;
+        const saved = await commitConfirmedState(nextState, state =>
+            state.customers.some(item => item.id === customer.id
+                && item.transactions?.some(transaction => transaction.id === transactionId))
+            && state.rawMaterials.some(item => item.id === rawMaterialId));
         if (!saved) return { success: false, error: t.customerRawSettlementSaveFailed };
-        lastSyncedState.current = JSON.stringify(nextState);
-        persistedStateRef.current = nextState;
-        setDb(nextState);
-        setIsSupabaseConnected(true);
-        setDatabaseError(null);
         return { success: true, customerOffset, supplierDebt: customerCreditCreated, customerCreditCreated };
     };
     // RECEIVE PAYMENT FROM CUSTOMER
@@ -1243,6 +1289,7 @@ export const DatabaseProvider = ({ children }) => {
         if (amount <= 0)
             return { success: false, error: 'Payment must be greater than zero.' };
         const today = new Date().toISOString().split('T')[0];
+        const transactionId = `ct-${Date.now()}`;
         const nextState = (() => {
             const prev = db;
             const custIndex = prev.customers.findIndex(c => c.id === customerId);
@@ -1261,7 +1308,7 @@ export const DatabaseProvider = ({ children }) => {
             const newPosition = customerAccountPosition(customerAfterPayment, currency);
             const newRemaining = newPosition.debt;
             const transaction = {
-                id: `ct-${Date.now()}`,
+                id: transactionId,
                 date: today,
                 type: 'payment',
                 description: note || 'دریافت طلب و باقی‌داری مشتری',
@@ -1289,14 +1336,11 @@ export const DatabaseProvider = ({ children }) => {
         })();
         if (!nextState)
             return { success: false, error: 'Customer was not found.' };
-        const saved = await writeStateToSupabase(nextState);
+        const saved = await commitConfirmedState(nextState, state =>
+            state.customers.some(customer => customer.id === customerId
+                && customer.transactions?.some(transaction => transaction.id === transactionId)));
         if (!saved)
             return { success: false, error: 'The customer payment was not saved to the database.' };
-        lastSyncedState.current = JSON.stringify(nextState);
-        persistedStateRef.current = nextState;
-        setDb(nextState);
-        setIsSupabaseConnected(true);
-        setDatabaseError(null);
         return { success: true };
     };
     // DELETE CUSTOMER

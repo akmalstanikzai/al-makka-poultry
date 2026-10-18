@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { AccountStatement } from '../components/AccountStatement';
 import { ReceiptActions } from '../components/ReceiptActions';
@@ -20,6 +20,8 @@ export const SuppliersPage = () => {
     const [paymentCurrency, setPaymentCurrency] = useState('AFN');
     const [paymentNote, setPaymentNote] = useState('');
     const [paymentError, setPaymentError] = useState('');
+    const [isSavingPayment, setIsSavingPayment] = useState(false);
+    const paymentSaveLock = useRef(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
     const [supplierEdit, setSupplierEdit] = useState(null);
     const [supplierEditError, setSupplierEditError] = useState('');
@@ -34,6 +36,7 @@ export const SuppliersPage = () => {
     const [goodsNotes, setGoodsNotes] = useState('');
     const [goodsError, setGoodsError] = useState('');
     const [isSavingGoods, setIsSavingGoods] = useState(false);
+    const goodsSaveLock = useRef(false);
     // Delete supplier modal
     const [supplierToDelete, setSupplierToDelete] = useState(null);
     // Status Filter: 'all' | 'creditors' | 'settled'
@@ -56,9 +59,9 @@ export const SuppliersPage = () => {
         setPaymentNote('');
         setPaymentError('');
     };
-    const handleSettleSubmit = (e) => {
+    const handleSettleSubmit = async (e) => {
         e.preventDefault();
-        if (!settleModalSupplier)
+        if (!settleModalSupplier || paymentSaveLock.current)
             return;
         const amount = Number(paymentAmount);
         const availableBalance = Number(paymentCurrency === 'USD' ? settleModalSupplier.balanceOwedUsd : settleModalSupplier.balanceOwed) || 0;
@@ -71,8 +74,17 @@ export const SuppliersPage = () => {
             return;
         }
         setPaymentError('');
-        settleSupplierPayment(settleModalSupplier.id, amount, paymentNote, paymentCurrency);
-        setSettleModalSupplier(null);
+        paymentSaveLock.current = true;
+        setIsSavingPayment(true);
+        try {
+            const result = await settleSupplierPayment(settleModalSupplier.id, amount, paymentNote, paymentCurrency);
+            if (!result?.success) { setPaymentError(result?.error || t.historyChangeSaveFailed); return; }
+            setSettleModalSupplier(null);
+        }
+        finally {
+            paymentSaveLock.current = false;
+            setIsSavingPayment(false);
+        }
     };
     const openSupplierEdit = supplier => {
         setEditingSupplier(supplier);
@@ -113,20 +125,27 @@ export const SuppliersPage = () => {
     const goodsCustomerDebt = Math.max(0, goodsTotal - goodsDebtOffset);
     const handleGoodsSettlement = async event => {
         event.preventDefault();
+        if (!goodsSupplier || goodsSaveLock.current) return;
+        goodsSaveLock.current = true;
         setGoodsError('');
         setIsSavingGoods(true);
-        const result = await settleSupplierWithProcessedStock({
-            supplierId: goodsSupplier.id,
-            productId: goodsProductId,
-            unitType: goodsUnit,
-            unitQuantity: goodsQuantityNumber,
-            salePricePerUnit: goodsPriceNumber,
-            currency: goodsCurrency,
-            notes: goodsNotes,
-        });
-        setIsSavingGoods(false);
-        if (!result.success) { setGoodsError(result.error); return; }
-        setGoodsSupplier(null);
+        try {
+            const result = await settleSupplierWithProcessedStock({
+                supplierId: goodsSupplier.id,
+                productId: goodsProductId,
+                unitType: goodsUnit,
+                unitQuantity: goodsQuantityNumber,
+                salePricePerUnit: goodsPriceNumber,
+                currency: goodsCurrency,
+                notes: goodsNotes,
+            });
+            if (!result.success) { setGoodsError(result.error); return; }
+            setGoodsSupplier(null);
+        }
+        finally {
+            goodsSaveLock.current = false;
+            setIsSavingGoods(false);
+        }
     };
     // Aggregated totals
     const totalPurchasesAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmount||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.totalPurchasedAmountUsd||0),0) };
@@ -580,8 +599,8 @@ export const SuppliersPage = () => {
                 <button type="button" onClick={() => setSettleModalSupplier(null)} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer">
                   {t.cancel}
                 </button>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/25 cursor-pointer">
-                  {t.save}
+                <button type="submit" disabled={isSavingPayment} className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-amber-600/25 cursor-pointer">
+                  {isSavingPayment ? t.goodsSaving : t.save}
                 </button>
               </div>
             </form>
