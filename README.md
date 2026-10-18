@@ -38,6 +38,10 @@ Migrations are stored in `supabase/migrations` in execution order:
 8. `20261017020000_allow_flexible_raw_transaction_corrections.sql` allows an
    incoming raw-material correction to change material, currency, quantity, and
    price while capping inventory reversals at the physical stock on hand.
+9. `20261018000000_repair_orphaned_raw_transaction_links.sql` repairs legacy
+   purchase/settlement links whose inventory row was replaced, resolves future
+   missing links by normalized material name, and lets voids safely remove only
+   the matching stock still on hand.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration
