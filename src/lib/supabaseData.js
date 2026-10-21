@@ -222,6 +222,8 @@ export async function loadStateFromSupabase() {
             totalPaidUsd: Number(c.total_paid_usd) || 0,
             rawSettledAmount: Number(c.raw_settled_amount) || 0,
             rawSettledAmountUsd: Number(c.raw_settled_amount_usd) || 0,
+            accountCharges: Number(c.account_charges) || 0,
+            accountChargesUsd: Number(c.account_charges_usd) || 0,
             creditBalance: Number(c.credit_balance) || 0,
             creditBalanceUsd: Number(c.credit_balance_usd) || 0,
             balanceOwed: Number(c.balance_owed) || 0,
@@ -262,13 +264,13 @@ export async function loadStateFromSupabase() {
         let customerBalanceReconciliationNeeded = false;
         customers.forEach(customer => {
             const expectedAfnBalance = Math.max(0,
-                customer.totalPurchasedAmount - customer.totalPaid - customer.rawSettledAmount);
+                customer.totalPurchasedAmount + customer.accountCharges - customer.totalPaid - customer.rawSettledAmount);
             const expectedUsdBalance = Math.max(0,
-                customer.totalPurchasedAmountUsd - customer.totalPaidUsd - customer.rawSettledAmountUsd);
+                customer.totalPurchasedAmountUsd + customer.accountChargesUsd - customer.totalPaidUsd - customer.rawSettledAmountUsd);
             const expectedAfnCredit = Math.max(0,
-                customer.totalPaid + customer.rawSettledAmount - customer.totalPurchasedAmount);
+                customer.totalPaid + customer.rawSettledAmount - customer.totalPurchasedAmount - customer.accountCharges);
             const expectedUsdCredit = Math.max(0,
-                customer.totalPaidUsd + customer.rawSettledAmountUsd - customer.totalPurchasedAmountUsd);
+                customer.totalPaidUsd + customer.rawSettledAmountUsd - customer.totalPurchasedAmountUsd - customer.accountChargesUsd);
             if (customer.balanceOwed !== expectedAfnBalance || customer.balanceOwedUsd !== expectedUsdBalance
                 || customer.creditBalance !== expectedAfnCredit || customer.creditBalanceUsd !== expectedUsdCredit) {
                 customerBalanceReconciliationNeeded = true;
@@ -504,6 +506,8 @@ export async function writeStateToSupabase(state) {
                 total_paid_usd: c.totalPaidUsd || 0,
                 raw_settled_amount: c.rawSettledAmount || 0,
                 raw_settled_amount_usd: c.rawSettledAmountUsd || 0,
+                account_charges: c.accountCharges || 0,
+                account_charges_usd: c.accountChargesUsd || 0,
                 credit_balance: c.creditBalance || 0,
                 credit_balance_usd: c.creditBalanceUsd || 0,
                 balance_owed: c.balanceOwed,
@@ -695,19 +699,68 @@ export async function deleteCustomerFromSupabase(customerId) {
 export async function correctAccountTransactionInSupabase({ role, partyId, transactionId, action, replacement, reason }) {
     if (!supabase) return { success: false, error: 'Supabase is not configured.' };
     try {
-        const { data, error } = await supabase.rpc('correct_account_transaction_v2', {
-            p_role: role,
-            p_party_id: partyId,
+        const functionName = role === 'customer'
+            ? 'correct_customer_account_transaction_v3'
+            : 'correct_account_transaction_v2';
+        const parameters = role === 'customer'
+            ? {
+                p_customer_id: partyId,
+                p_transaction_id: transactionId,
+                p_action: action,
+                p_replacement: replacement || null,
+                p_reason: reason,
+            }
+            : {
+                p_role: role,
+                p_party_id: partyId,
+                p_transaction_id: transactionId,
+                p_action: action,
+                p_replacement: replacement || null,
+                p_reason: reason,
+            };
+        const { data, error } = await supabase.rpc(functionName, parameters);
+        if (error) throw error;
+        return data?.success ? data : { success: false, error: 'The correction was not completed.' };
+    }
+    catch (err) {
+        console.error('Supabase transaction correction failed:', err);
+        return { success: false, error: err.message || String(err) };
+    }
+}
+export async function addCustomerAccountEntryInSupabase({ customerId, type, amount, currency, date, description }) {
+    if (!supabase) return { success: false, error: 'Supabase is not configured.' };
+    try {
+        const { data, error } = await supabase.rpc('add_customer_account_entry', {
+            p_customer_id: customerId,
+            p_type: type,
+            p_amount: amount,
+            p_currency: currency,
+            p_date: date,
+            p_description: description || null,
+        });
+        if (error) throw error;
+        return data?.success ? data : { success: false, error: 'The customer account entry was not saved.' };
+    }
+    catch (err) {
+        console.error('Supabase customer account entry failed:', err);
+        return { success: false, error: err.message || String(err) };
+    }
+}
+export async function correctCustomerAccountEntryInSupabase({ customerId, transactionId, action, replacement, reason }) {
+    if (!supabase) return { success: false, error: 'Supabase is not configured.' };
+    try {
+        const { data, error } = await supabase.rpc('correct_customer_account_entry', {
+            p_customer_id: customerId,
             p_transaction_id: transactionId,
             p_action: action,
             p_replacement: replacement || null,
             p_reason: reason,
         });
         if (error) throw error;
-        return data?.success ? data : { success: false, error: 'The correction was not completed.' };
+        return data?.success ? data : { success: false, error: 'The customer account entry was not changed.' };
     }
     catch (err) {
-        console.error('Supabase transaction correction failed:', err);
+        console.error('Supabase customer account correction failed:', err);
         return { success: false, error: err.message || String(err) };
     }
 }

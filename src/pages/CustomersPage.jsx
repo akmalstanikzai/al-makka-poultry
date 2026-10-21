@@ -5,15 +5,19 @@ import { ReceiptActions } from '../components/ReceiptActions';
 import { TransactionHistoryEditor, TransactionVoidDialog } from '../components/TransactionHistoryEditor';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { isCanonicalSupplierName } from '../lib/partyRoles';
-import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil, HandCoins, Truck } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
+const localDateValue = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 const transactionTime = transaction => {
     const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
     return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
 };
 const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' && (transaction.status || 'active') === 'active' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
-    const { db, t, lang, deleteCustomer, updateCustomer, updateCustomerTransaction, voidCustomerTransaction, receiveCustomerPayment, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, lang, deleteCustomer, updateCustomer, updateCustomerTransaction, voidCustomerTransaction, receiveCustomerPayment, addCustomerAccountEntry, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [statementMode, setStatementMode] = useState('current');
@@ -40,6 +44,15 @@ export const CustomersPage = () => {
     const [customerEditError, setCustomerEditError] = useState('');
     const [editingHistoryEntry, setEditingHistoryEntry] = useState(null);
     const [deletingHistoryEntry, setDeletingHistoryEntry] = useState(null);
+    const [accountEntryCustomer, setAccountEntryCustomer] = useState(null);
+    const [accountEntryType, setAccountEntryType] = useState('cash_given');
+    const [accountEntryCurrency, setAccountEntryCurrency] = useState('AFN');
+    const [accountEntryAmount, setAccountEntryAmount] = useState('');
+    const [accountEntryDate, setAccountEntryDate] = useState(localDateValue());
+    const [accountEntryNote, setAccountEntryNote] = useState('');
+    const [accountEntryError, setAccountEntryError] = useState('');
+    const [isSavingAccountEntry, setIsSavingAccountEntry] = useState(false);
+    const accountEntrySaveLock = useRef(false);
     // Delete customer modal
     const [customerToDelete, setCustomerToDelete] = useState(null);
     // Status Filter: 'all' | 'debtors' | 'settled'
@@ -65,11 +78,55 @@ export const CustomersPage = () => {
             totalPurchasedAmount: customer.totalPurchasedAmount || 0,
             totalPaid: customer.totalPaid || 0,
             rawSettledAmount: customer.rawSettledAmount || 0,
+            accountCharges: customer.accountCharges || 0,
             totalPurchasedAmountUsd: customer.totalPurchasedAmountUsd || 0,
             totalPaidUsd: customer.totalPaidUsd || 0,
             rawSettledAmountUsd: customer.rawSettledAmountUsd || 0,
+            accountChargesUsd: customer.accountChargesUsd || 0,
         });
         setCustomerEditError('');
+    };
+    const openAccountEntry = customer => {
+        setAccountEntryCustomer(customer);
+        setAccountEntryType('cash_given');
+        setAccountEntryCurrency((customer.balanceOwed || customer.creditBalance) ? 'AFN' : 'USD');
+        setAccountEntryAmount('');
+        setAccountEntryDate(localDateValue());
+        setAccountEntryNote('');
+        setAccountEntryError('');
+    };
+    const accountEntryNumber = Number(accountEntryAmount) || 0;
+    const currentAccountNet = accountEntryCustomer
+        ? (Number(accountEntryCurrency === 'USD' ? accountEntryCustomer.balanceOwedUsd : accountEntryCustomer.balanceOwed) || 0)
+          - (Number(accountEntryCurrency === 'USD' ? accountEntryCustomer.creditBalanceUsd : accountEntryCustomer.creditBalance) || 0)
+        : 0;
+    const accountNetAfterEntry = currentAccountNet + accountEntryNumber;
+    const accountDebtAfterEntry = Math.max(0, accountNetAfterEntry);
+    const accountCreditAfterEntry = Math.max(0, -accountNetAfterEntry);
+    const cashAfterAccountEntry = (Number(accountEntryCurrency === 'USD' ? db.cashInHandUsd : db.cashInHand) || 0) - accountEntryNumber;
+    const handleAccountEntrySubmit = async event => {
+        event.preventDefault();
+        if (!accountEntryCustomer || accountEntrySaveLock.current) return;
+        if (accountEntryNumber <= 0) return setAccountEntryError(t.accountEntryAmountRequired);
+        accountEntrySaveLock.current = true;
+        setIsSavingAccountEntry(true);
+        setAccountEntryError('');
+        try {
+            const result = await addCustomerAccountEntry({
+                customerId: accountEntryCustomer.id,
+                type: accountEntryType,
+                amount: accountEntryNumber,
+                currency: accountEntryCurrency,
+                date: accountEntryDate,
+                note: accountEntryNote || (accountEntryType === 'cash_given' ? t.cashGivenToCustomer : t.transportFeeEntry),
+            });
+            if (!result.success) return setAccountEntryError(result.error || t.accountEntrySaveFailed);
+            setAccountEntryCustomer(null);
+        }
+        finally {
+            accountEntrySaveLock.current = false;
+            setIsSavingAccountEntry(false);
+        }
     };
     const handleCustomerEdit = event => {
         event.preventDefault();
@@ -176,6 +233,7 @@ export const CustomersPage = () => {
     const totalSalesAll = { AFN: customers.reduce((a,c)=>a+(c.totalPurchasedAmount||0),0), USD: customers.reduce((a,c)=>a+(c.totalPurchasedAmountUsd||0),0) };
     const totalCashReceivedAll = { AFN: customers.reduce((a,c)=>a+(c.totalPaid||0),0), USD: customers.reduce((a,c)=>a+(c.totalPaidUsd||0),0) };
     const totalRawSettledAll = { AFN: customers.reduce((a,c)=>a+(c.rawSettledAmount||0),0), USD: customers.reduce((a,c)=>a+(c.rawSettledAmountUsd||0),0) };
+    const totalAccountChargesAll = { AFN: customers.reduce((a,c)=>a+(c.accountCharges||0),0), USD: customers.reduce((a,c)=>a+(c.accountChargesUsd||0),0) };
     const totalSettledAll = { AFN: totalCashReceivedAll.AFN + totalRawSettledAll.AFN, USD: totalCashReceivedAll.USD + totalRawSettledAll.USD };
     const totalReceivableDebtAll = { AFN: customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
     const totalCustomerCreditAll = { AFN: customers.reduce((a,c)=>a+(c.creditBalance||0),0), USD: customers.reduce((a,c)=>a+(c.creditBalanceUsd||0),0) };
@@ -234,6 +292,7 @@ export const CustomersPage = () => {
             <div className="text-xl font-bold font-mono text-slate-900 mt-1">
               {totalSalesAll.AFN.toLocaleString()} AFN · {totalSalesAll.USD.toLocaleString()} USD
             </div>
+            <span className="block text-[10px] text-blue-700">{t.customerAccountCharges}: {totalAccountChargesAll.AFN.toLocaleString()} AFN · {totalAccountChargesAll.USD.toLocaleString()} USD</span>
             <span className="text-xs text-slate-500">{customers.length} {t.navCustomers}</span>
           </div>
           <div className="p-3 bg-blue-100 text-blue-700 rounded-xl border border-blue-200">
@@ -383,6 +442,7 @@ export const CustomersPage = () => {
                       {/* Total Purchases */}
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
                         {cust.totalPurchasedAmount.toLocaleString()} AFN · {(cust.totalPurchasedAmountUsd || 0).toLocaleString()} USD
+                        <span className="mt-0.5 block text-[10px] font-medium text-blue-700">{t.customerAccountCharges}: {(cust.accountCharges || 0).toLocaleString()} AFN · {(cust.accountChargesUsd || 0).toLocaleString()} USD</span>
                       </td>
 
                       {/* Total Payments */}
@@ -424,6 +484,7 @@ export const CustomersPage = () => {
                         <div className="flex items-center justify-center gap-1.5">
                           <button type="button" onClick={() => openCustomerEdit(cust)} className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer" title={t.editCustomer}><Pencil className="w-4 h-4"/></button>
                           <button type="button" onClick={() => openRawSettlement(cust)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.settleWithRawMaterial}><Wheat className="w-4 h-4"/></button>
+                          <button type="button" onClick={() => openAccountEntry(cust)} className="inline-flex items-center gap-1 rounded-xl bg-violet-600 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-xs transition-colors hover:bg-violet-700" title={t.addAccountEntry}><HandCoins className="h-3.5 w-3.5"/><span>{t.addAccountEntry}</span></button>
                           <button type="button" onClick={() => handleOpenReceiveModal(cust)} className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.receivePayment}
                             </button>
@@ -478,7 +539,7 @@ export const CustomersPage = () => {
                                           {tr.type === 'sale' ? (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
                                               <Receipt className="w-3 h-3"/>
                                               {getLocalizedTxType(tr.type)}
-                                            </span>) : (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                                            </span>) : ['cash_given', 'transport_fee'].includes(tr.type) ? (<span className="inline-flex items-center gap-1 rounded bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700"><HandCoins className="h-3 w-3"/>{getLocalizedTxType(tr.type)}</span>) : (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                                               <ArrowDownLeft className="w-3 h-3"/>
                                               {getLocalizedTxType(tr.type)}
                                             </span>)}
@@ -498,7 +559,7 @@ export const CustomersPage = () => {
                                           {tr.amount ? `${tr.amount.toLocaleString()} ${tr.currency || 'AFN'}` : '-'}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                                          {Number(tr.paidAmount || 0).toLocaleString()} {tr.currency || 'AFN'}
+                                          {['cash_given', 'transport_fee'].includes(tr.type) ? '-' : `${Number(tr.paidAmount || 0).toLocaleString()} ${tr.currency || 'AFN'}`}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono font-bold text-rose-700">
                                           {Number(tr.accountBalanceAfter ?? tr.remainingAmount ?? 0).toLocaleString()} {tr.currency || 'AFN'}
@@ -551,6 +612,38 @@ export const CustomersPage = () => {
         onConfirm={reason => voidCustomerTransaction(deletingHistoryEntry.partyId, deletingHistoryEntry.transaction.id, reason)}
       />}
 
+      {accountEntryCustomer && <div className="fixed inset-0 z-[65] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-3 backdrop-blur-xs sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="customer-account-entry-title">
+        <div className="my-2 max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl sm:p-6">
+          <div className="mb-4 flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+            <div><h3 id="customer-account-entry-title" className="flex items-center gap-2 font-bold"><HandCoins className="h-5 w-5 text-violet-600"/>{t.customerAccountEntry}</h3><p className="mt-1 text-xs text-slate-500">{accountEntryCustomer.name}</p></div>
+            <button type="button" onClick={()=>setAccountEntryCustomer(null)} aria-label={t.cancel} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5"/></button>
+          </div>
+          <p className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs leading-5 text-violet-900">{t.accountEntryHelp}</p>
+          <form onSubmit={handleAccountEntrySubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button type="button" onClick={()=>setAccountEntryType('cash_given')} className={`rounded-xl border p-3 text-start transition-colors ${accountEntryType==='cash_given'?'border-violet-500 bg-violet-50 text-violet-800':'border-slate-200 hover:bg-slate-50'}`}><HandCoins className="mb-2 h-5 w-5"/><strong className="block text-xs">{t.cashGivenToCustomer}</strong></button>
+              <button type="button" onClick={()=>setAccountEntryType('transport_fee')} className={`rounded-xl border p-3 text-start transition-colors ${accountEntryType==='transport_fee'?'border-violet-500 bg-violet-50 text-violet-800':'border-slate-200 hover:bg-slate-50'}`}><Truck className="mb-2 h-5 w-5"/><strong className="block text-xs">{t.transportFeeEntry}</strong></button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <CustomerEditField label={t.currency}><select value={accountEntryCurrency} onChange={event=>{setAccountEntryCurrency(event.target.value);setAccountEntryAmount('');}} className={customerEditControlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></CustomerEditField>
+              <CustomerEditField label={t.accountEntryAmount}><input required type="text" inputMode="decimal" value={accountEntryAmount} onChange={event=>setAccountEntryAmount(normalizeDecimalInput(event.target.value))} className={`${customerEditControlClass} font-mono`}/></CustomerEditField>
+              <CustomerEditField label={t.accountEntryDate}><input required type="date" value={accountEntryDate} onChange={event=>setAccountEntryDate(event.target.value)} className={customerEditControlClass}/></CustomerEditField>
+            </div>
+            <CustomerEditField label={t.accountEntryNote}><textarea rows="2" value={accountEntryNote} onChange={event=>setAccountEntryNote(event.target.value)} className={`${customerEditControlClass} resize-y`}/></CustomerEditField>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <strong className="mb-2 block text-xs text-slate-700">{t.accountEntryPreview}</strong>
+              <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                <div className="rounded-lg bg-white p-2"><span className="block text-slate-500">{t.remainingDebt}</span><b className="font-mono text-rose-700">{accountDebtAfterEntry.toLocaleString()} {accountEntryCurrency}</b></div>
+                <div className="rounded-lg bg-white p-2"><span className="block text-slate-500">{t.weOweThem}</span><b className="font-mono text-amber-700">{accountCreditAfterEntry.toLocaleString()} {accountEntryCurrency}</b></div>
+                <div className="rounded-lg bg-white p-2"><span className="block text-slate-500">{t.cashInHandReduction}</span><b className="font-mono text-violet-700">{accountEntryNumber.toLocaleString()} {accountEntryCurrency}</b><span className="block text-[10px] text-slate-500">→ {cashAfterAccountEntry.toLocaleString()} {accountEntryCurrency}</span></div>
+              </div>
+            </div>
+            {accountEntryError&&<p className="text-xs font-semibold text-rose-700" role="alert">{accountEntryError}</p>}
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end"><button type="button" onClick={()=>setAccountEntryCustomer(null)} className="rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700">{t.cancel}</button><button type="submit" disabled={isSavingAccountEntry} className="rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-60">{isSavingAccountEntry?t.savingChanges:t.saveAccountEntry}</button></div>
+          </form>
+        </div>
+      </div>}
+
       {/* Customer account editor; related inventory, sales, and history remain unchanged. */}
       {editingCustomer && customerEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
@@ -562,8 +655,8 @@ export const CustomersPage = () => {
               <div className="sm:col-span-2"><CustomerEditField label={t.address}><textarea rows="2" value={customerEdit.address} onChange={event=>setCustomerEdit({...customerEdit,address:event.target.value})} className={`${customerEditControlClass} resize-none`}/></CustomerEditField></div>
             </div>
             <div className="border-t border-slate-200 pt-4"><h4 className="font-bold text-sm mb-3">{t.financialAmounts}</h4><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <CurrencyCustomerEdit t={t} currency="AFN" total={customerEdit.totalPurchasedAmount} cash={customerEdit.totalPaid} raw={customerEdit.rawSettledAmount} onTotal={value=>setCustomerEdit({...customerEdit,totalPurchasedAmount:value})} onCash={value=>setCustomerEdit({...customerEdit,totalPaid:value})} onRaw={value=>setCustomerEdit({...customerEdit,rawSettledAmount:value})}/>
-              <CurrencyCustomerEdit t={t} currency="USD" total={customerEdit.totalPurchasedAmountUsd} cash={customerEdit.totalPaidUsd} raw={customerEdit.rawSettledAmountUsd} onTotal={value=>setCustomerEdit({...customerEdit,totalPurchasedAmountUsd:value})} onCash={value=>setCustomerEdit({...customerEdit,totalPaidUsd:value})} onRaw={value=>setCustomerEdit({...customerEdit,rawSettledAmountUsd:value})}/>
+              <CurrencyCustomerEdit t={t} currency="AFN" total={customerEdit.totalPurchasedAmount} cash={customerEdit.totalPaid} raw={customerEdit.rawSettledAmount} charges={customerEdit.accountCharges} onTotal={value=>setCustomerEdit({...customerEdit,totalPurchasedAmount:value})} onCash={value=>setCustomerEdit({...customerEdit,totalPaid:value})} onRaw={value=>setCustomerEdit({...customerEdit,rawSettledAmount:value})}/>
+              <CurrencyCustomerEdit t={t} currency="USD" total={customerEdit.totalPurchasedAmountUsd} cash={customerEdit.totalPaidUsd} raw={customerEdit.rawSettledAmountUsd} charges={customerEdit.accountChargesUsd} onTotal={value=>setCustomerEdit({...customerEdit,totalPurchasedAmountUsd:value})} onCash={value=>setCustomerEdit({...customerEdit,totalPaidUsd:value})} onRaw={value=>setCustomerEdit({...customerEdit,rawSettledAmountUsd:value})}/>
             </div></div>
             {customerEditError&&<p className="text-xs font-semibold text-rose-700">{customerEditError}</p>}
             <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={()=>setEditingCustomer(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold">{t.cancel}</button><button type="submit" className="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">{t.save}</button></div>
@@ -682,7 +775,7 @@ export const CustomersPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[10px] font-bold"><button type="button" onClick={()=>setStatementMode('current')} className={`rounded-md px-2 py-1 ${statementMode==='current'?'bg-blue-600 text-white':'text-slate-600'}`}>{t.currentStatement}</button><button type="button" onClick={()=>setStatementMode('audit')} className={`rounded-md px-2 py-1 ${statementMode==='audit'?'bg-slate-700 text-white':'text-slate-600'}`}>{t.auditStatement}</button></div>
-                <ReceiptActions elementId="customer-receipt" filename={`customer-${statementMode}-statement-${selectedHistoryCustomer.id}`} title={`${statementMode === 'audit' ? t.auditStatement : t.currentAccountStatement} - ${selectedHistoryCustomer.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
+                <ReceiptActions elementId="customer-receipt" filename={`customer-${statementMode}-statement-${selectedHistoryCustomer.id}`} title={`${statementMode === 'audit' ? t.auditStatement : t.currentAccountStatement} - ${selectedHistoryCustomer.name}`} printLabel={t.printInvoice} downloadLabel="PDF" creatingLabel={t.pdfCreating} downloadErrorLabel={t.pdfDownloadFailed}/>
                 <button type="button" onClick={() => setSelectedHistoryCustomer(null)} className="text-slate-400 hover:text-slate-900 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>
@@ -725,10 +818,10 @@ export const CustomersPage = () => {
 
 const customerEditControlClass = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-600';
 const CustomerEditField = ({label,children}) => <label className="block"><span className="block text-xs font-semibold text-slate-700 mb-1">{label}</span>{children}</label>;
-const CurrencyCustomerEdit = ({t,currency,total,cash,raw,onTotal,onCash,onRaw}) => {
+const CurrencyCustomerEdit = ({t,currency,total,cash,raw,charges,onTotal,onCash,onRaw}) => {
     const update = setter => event => setter(normalizeDecimalInput(event.target.value));
-    const net = (Number(total) || 0) - (Number(cash) || 0) - (Number(raw) || 0);
+    const net = (Number(total) || 0) + (Number(charges) || 0) - (Number(cash) || 0) - (Number(raw) || 0);
     const debt = Math.max(0, net);
     const credit = Math.max(0, -net);
-    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><CustomerEditField label={t.totalPurchasedAmount}><input type="text" inputMode="decimal" required value={total} onChange={update(onTotal)} className={customerEditControlClass}/></CustomerEditField><CustomerEditField label={t.cashReceivedFromCustomer}><input type="text" inputMode="decimal" required value={cash} onChange={update(onCash)} className={customerEditControlClass}/></CustomerEditField><CustomerEditField label={t.nonCashRawSettled}><input type="text" inputMode="decimal" required value={raw} onChange={update(onRaw)} className={customerEditControlClass}/></CustomerEditField><div className="grid grid-cols-2 gap-2"><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{debt.toLocaleString()} {currency}</strong></div><div className="rounded-lg bg-white border border-amber-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.weOweThem}</span><strong className="font-mono text-amber-700">{credit.toLocaleString()} {currency}</strong></div></div></div></div>;
+    return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h5 className="font-bold text-sm text-slate-800 mb-3">{currency}</h5><div className="space-y-3"><CustomerEditField label={t.totalPurchasedAmount}><input type="text" inputMode="decimal" required value={total} onChange={update(onTotal)} className={customerEditControlClass}/></CustomerEditField><CustomerEditField label={t.customerAccountCharges}><div className={`${customerEditControlClass} bg-slate-100 font-mono`}>{Number(charges || 0).toLocaleString()} {currency}</div></CustomerEditField><CustomerEditField label={t.cashReceivedFromCustomer}><input type="text" inputMode="decimal" required value={cash} onChange={update(onCash)} className={customerEditControlClass}/></CustomerEditField><CustomerEditField label={t.nonCashRawSettled}><input type="text" inputMode="decimal" required value={raw} onChange={update(onRaw)} className={customerEditControlClass}/></CustomerEditField><div className="grid grid-cols-2 gap-2"><div className="rounded-lg bg-white border border-slate-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.remainingDebt}</span><strong className="font-mono text-rose-700">{debt.toLocaleString()} {currency}</strong></div><div className="rounded-lg bg-white border border-amber-200 px-3 py-2"><span className="block text-[10px] text-slate-500">{t.weOweThem}</span><strong className="font-mono text-amber-700">{credit.toLocaleString()} {currency}</strong></div></div></div></div>;
 };

@@ -21,10 +21,16 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const isPayment = form.type === 'payment';
+    const isAccountCharge = form.type === 'cash_given' || form.type === 'transport_fee';
+    const originalIsAccountCharge = transaction.type === 'cash_given' || transaction.type === 'transport_fee';
     const acceptsCash = form.type === 'purchase' || form.type === 'sale' || isPayment;
     const isRawStock = form.type === 'purchase' || form.type === 'raw_goods_settlement';
     const stockOptions = isRawStock ? rawStockOptions : processedStockOptions;
-    const allowedTypes = role === 'supplier' ? ['purchase', 'payment', 'goods_settlement'] : ['sale', 'payment', 'raw_goods_settlement'];
+    const allowedTypes = role === 'supplier'
+        ? ['purchase', 'payment', 'goods_settlement']
+        : originalIsAccountCharge
+            ? ['cash_given', 'transport_fee']
+            : ['sale', 'payment', 'raw_goods_settlement'];
     const computedAmount = (Number(form.unitQuantity) || 0) * (Number(form.unitPricePerUnit) || 0);
     const visibleStockOptions = isRawStock ? stockOptions.filter(item => (item.currency || 'AFN') === form.currency) : stockOptions;
     const buttonColor = accent === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700';
@@ -39,21 +45,22 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
         type: event.target.value,
         linkedItemId: '',
         itemName: '',
-        unitQuantity: event.target.value === 'payment' ? '' : current.unitQuantity,
-        unitPricePerUnit: event.target.value === 'payment' ? '' : current.unitPricePerUnit,
+        unitQuantity: ['payment', 'cash_given', 'transport_fee'].includes(event.target.value) ? '' : current.unitQuantity,
+        unitPricePerUnit: ['payment', 'cash_given', 'transport_fee'].includes(event.target.value) ? '' : current.unitPricePerUnit,
         paidAmount: ['purchase', 'sale', 'payment'].includes(event.target.value) ? current.paidAmount : '0',
     }));
     const handleSubmit = async event => {
         event.preventDefault();
         setError('');
         if (!form.correctionReason.trim()) return setError(t.correctionReasonRequired);
-        if (!isPayment && (!form.linkedItemId || Number(form.unitQuantity) <= 0 || Number(form.unitPricePerUnit) < 0)) return setError(t.historyStockSelectionRequired);
+        if (!isPayment && !isAccountCharge && (!form.linkedItemId || Number(form.unitQuantity) <= 0 || Number(form.unitPricePerUnit) < 0)) return setError(t.historyStockSelectionRequired);
+        if (isAccountCharge && Number(form.paidAmount) <= 0) return setError(t.accountEntryAmountRequired);
         if (acceptsCash && !isPayment && Number(form.paidAmount || 0) > computedAmount) return setError(t.historyPaidExceedsAmount);
         setIsSaving(true);
         const result = await Promise.resolve(onSave({
-            ...form, amount: isPayment ? 0 : computedAmount,
+            ...form, amount: isPayment ? 0 : isAccountCharge ? Number(form.paidAmount) : computedAmount,
             rawMaterialId: isRawStock ? form.linkedItemId : undefined,
-            productId: !isRawStock && !isPayment ? form.linkedItemId : undefined,
+            productId: !isRawStock && !isPayment && !isAccountCharge ? form.linkedItemId : undefined,
             paidAmount: form.paidAmount || '0',
         }));
         setIsSaving(false);
@@ -72,7 +79,7 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
             <Field label={t.transactionType}><select value={form.type} onChange={handleTypeChange} className={`${controlClass} font-semibold`}>{allowedTypes.map(type => <option key={type} value={type}>{getLocalizedTxType(type)}</option>)}</select></Field>
             <Field label={t.currency}><select value={form.currency} onChange={event => setForm(current => ({ ...current, currency: event.target.value, linkedItemId: isRawStock ? '' : current.linkedItemId }))} className={controlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></Field>
           </div>
-          {!isPayment && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {!isPayment && !isAccountCharge && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label={isRawStock ? t.rawMaterialsSection : t.processedStockCard} className="sm:col-span-2 lg:col-span-1"><select required value={form.linkedItemId} onChange={handleItemChange} className={controlClass}><option value="">{isRawStock ? t.selectRawMaterial : t.selectProduct}</option>{visibleStockOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
             <Field label={t.saleUnit}><select value={form.unitType} onChange={event => setForm(current => ({ ...current, unitType: event.target.value }))} className={controlClass}><option value="kg">{t.statementKilo}</option><option value="bag">{t.statementBag}</option><option value="ton">{t.statementTon}</option></select></Field>
             <Field label={t.quantity}><input required type="text" inputMode="decimal" value={form.unitQuantity} onChange={updateDecimal('unitQuantity')} className={`${controlClass} font-mono`}/></Field>
@@ -80,7 +87,8 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
           </div>}
           <Field label={t.historyDescription}><textarea rows="2" value={form.description} onChange={event => setForm(current => ({ ...current, description: event.target.value }))} className={`${controlClass} resize-y`}/></Field>
           <div className={`grid grid-cols-1 gap-3 ${acceptsCash && !isPayment ? 'sm:grid-cols-2' : ''}`}>
-            {!isPayment && <Field label={t.totalAmount}><div className={`${controlClass} bg-slate-100 font-mono font-bold`}>{computedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {form.currency}</div></Field>}
+            {!isPayment && !isAccountCharge && <Field label={t.totalAmount}><div className={`${controlClass} bg-slate-100 font-mono font-bold`}>{computedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {form.currency}</div></Field>}
+            {isAccountCharge && <Field label={t.accountEntryAmount}><input required type="text" inputMode="decimal" value={form.paidAmount} onChange={updateDecimal('paidAmount')} className={`${controlClass} font-mono`}/></Field>}
             {acceptsCash && <Field label={isPayment ? t.amountPaidLabel : t.cashPaid}><input required type="text" inputMode="decimal" value={form.paidAmount} onChange={updateDecimal('paidAmount')} className={`${controlClass} font-mono`}/></Field>}
           </div>
           <Field label={t.correctionReason}><textarea required rows="2" value={form.correctionReason} onChange={event => setForm(current => ({ ...current, correctionReason: event.target.value }))} placeholder={t.correctionReasonPlaceholder} className={`${controlClass} resize-y`}/></Field>

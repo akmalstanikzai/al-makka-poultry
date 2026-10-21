@@ -626,7 +626,7 @@ export const SuppliersPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[10px] font-bold"><button type="button" onClick={()=>setStatementMode('current')} className={`rounded-md px-2 py-1 ${statementMode==='current'?'bg-amber-600 text-white':'text-slate-600'}`}>{t.currentStatement}</button><button type="button" onClick={()=>setStatementMode('audit')} className={`rounded-md px-2 py-1 ${statementMode==='audit'?'bg-slate-700 text-white':'text-slate-600'}`}>{t.auditStatement}</button></div>
-                <ReceiptActions elementId="supplier-receipt" filename={`supplier-${statementMode}-statement-${selectedHistorySupplier.id}`} title={`${statementMode === 'audit' ? t.auditStatement : t.currentAccountStatement} - ${selectedHistorySupplier.name}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
+                <ReceiptActions elementId="supplier-receipt" filename={`supplier-${statementMode}-statement-${selectedHistorySupplier.id}`} title={`${statementMode === 'audit' ? t.auditStatement : t.currentAccountStatement} - ${selectedHistorySupplier.name}`} printLabel={t.printInvoice} downloadLabel="PDF" creatingLabel={t.pdfCreating} downloadErrorLabel={t.pdfDownloadFailed}/>
                 <button type="button" onClick={() => setSelectedHistorySupplier(null)} className="text-slate-400 hover:text-slate-900 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>

@@ -32,11 +32,13 @@ export const downloadReceiptPdf = async (elementId, filename) => {
     exportTarget.removeAttribute('id');
     const exportHost = document.createElement('div');
     Object.assign(exportHost.style, {
-        position: 'fixed',
-        left: '-10000px',
+        position: 'absolute',
+        left: '0',
         top: '0',
         width: '820px',
         zIndex: '-1',
+        pointerEvents: 'none',
+        transform: 'translateX(-200vw)',
     });
     Object.assign(exportTarget.style, {
         position: 'static',
@@ -50,12 +52,23 @@ export const downloadReceiptPdf = async (elementId, filename) => {
     exportHost.appendChild(exportTarget);
     document.body.appendChild(exportHost);
     await document.fonts?.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     let canvas;
     let receiptHeight = 0;
     let protectedBlockPositions = [];
     try {
         const receiptRect = exportTarget.getBoundingClientRect();
         receiptHeight = receiptRect.height;
+        const mobileDevice = window.matchMedia?.('(max-width: 768px)').matches
+            || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+        const preferredRatio = mobileDevice ? 1.15 : 1.8;
+        const maxCanvasPixels = mobileDevice ? 14000000 : 32000000;
+        const maxCanvasDimension = mobileDevice ? 14000 : 24000;
+        const safeRatio = Math.max(0.35, Math.min(
+            preferredRatio,
+            maxCanvasDimension / Math.max(820, receiptHeight),
+            Math.sqrt(maxCanvasPixels / Math.max(1, 820 * receiptHeight)),
+        ));
         protectedBlockPositions = Array.from(exportTarget.querySelectorAll('.statement-row, .statement-totals, .statement-party-info'))
             .map(element => {
                 const rect = element.getBoundingClientRect();
@@ -64,11 +77,24 @@ export const downloadReceiptPdf = async (elementId, filename) => {
                     bottom: Math.min(receiptRect.height, rect.bottom - receiptRect.top),
                 };
             });
-        canvas = await toCanvas(exportTarget, {
-            backgroundColor: '#ffffff',
-            pixelRatio: 2,
-            cacheBust: true,
-        });
+        try {
+            canvas = await toCanvas(exportTarget, {
+                backgroundColor: '#ffffff',
+                pixelRatio: safeRatio,
+                cacheBust: true,
+                skipAutoScale: false,
+            });
+        }
+        catch (firstError) {
+            // Mobile WebViews occasionally fail while caching fonts/images or
+            // allocating a large canvas. Retry once at a conservative scale.
+            canvas = await toCanvas(exportTarget, {
+                backgroundColor: '#ffffff',
+                pixelRatio: Math.max(0.35, Math.min(0.75, safeRatio * 0.75)),
+                cacheBust: false,
+                skipAutoScale: false,
+            }).catch(() => { throw firstError; });
+        }
     }
     finally {
         exportHost.remove();
@@ -102,12 +128,33 @@ export const downloadReceiptPdf = async (elementId, filename) => {
         context.fillStyle = '#ffffff';
         context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
         context.drawImage(canvas, 0, pageStart, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        const image = pageCanvas.toDataURL('image/png');
+        const image = pageCanvas.toDataURL('image/jpeg', 0.92);
         const imageHeight = sliceHeight * imageWidth / canvas.width;
         if (pageNumber > 0) pdf.addPage();
-        pdf.addImage(image, 'PNG', margin, margin, imageWidth, imageHeight, undefined, 'FAST');
+        pdf.addImage(image, 'JPEG', margin, margin, imageWidth, imageHeight, undefined, 'FAST');
+        pageCanvas.width = 0;
+        pageCanvas.height = 0;
         pageStart = pageEnd;
         pageNumber += 1;
     }
-    pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+    canvas.width = 0;
+    canvas.height = 0;
+    const safeFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+    const blob = pdf.output('blob');
+    const blobUrl = URL.createObjectURL(blob);
+    const downloadLink = document.createElement('a');
+    downloadLink.href = blobUrl;
+    downloadLink.download = safeFilename;
+    downloadLink.rel = 'noopener';
+    downloadLink.style.display = 'none';
+    document.body.appendChild(downloadLink);
+    try {
+        downloadLink.click();
+    }
+    finally {
+        downloadLink.remove();
+        // Mobile browsers may consume the object URL after the click handler
+        // returns, so keep it alive long enough for the download to start.
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    }
 };

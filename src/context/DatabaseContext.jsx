@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { translations, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
-import { clearAllDataFromSupabase, correctAccountTransactionInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
+import { addCustomerAccountEntryInSupabase, clearAllDataFromSupabase, correctAccountTransactionInSupabase, correctCustomerAccountEntryInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
 import { canonicalSupplierNames, normalizePartyName } from '../lib/partyRoles';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
@@ -64,19 +64,23 @@ const applyCustomerSale = (customer, purchaseAmount, paidAmount, currency) => {
     const balanceField = currencyField('balanceOwed', currency);
     const creditField = currencyField('creditBalance', currency);
     const rawSettledField = currencyField('rawSettledAmount', currency);
+    const accountChargesField = currencyField('accountCharges', currency);
     const updated = {
         ...customer,
         [purchaseField]: (Number(customer[purchaseField]) || 0) + (Number(purchaseAmount) || 0),
         [paidField]: (Number(customer[paidField]) || 0) + (Number(paidAmount) || 0),
     };
-    const netBalance = updated[purchaseField] - updated[paidField] - (Number(updated[rawSettledField]) || 0);
+    const netBalance = updated[purchaseField] + (Number(updated[accountChargesField]) || 0)
+        - updated[paidField] - (Number(updated[rawSettledField]) || 0);
     return { ...updated, [balanceField]: Math.max(0, netBalance), [creditField]: Math.max(0, -netBalance) };
 };
 const customerAccountPosition = (customer, currency) => {
     const purchaseField = currencyField('totalPurchasedAmount', currency);
     const paidField = currencyField('totalPaid', currency);
     const rawSettledField = currencyField('rawSettledAmount', currency);
+    const accountChargesField = currencyField('accountCharges', currency);
     const netBalance = (Number(customer[purchaseField]) || 0)
+        + (Number(customer[accountChargesField]) || 0)
         - (Number(customer[paidField]) || 0)
         - (Number(customer[rawSettledField]) || 0);
     return { debt: Math.max(0, netBalance), credit: Math.max(0, -netBalance) };
@@ -658,8 +662,8 @@ export const DatabaseProvider = ({ children }) => {
         setDb(prev => {
             const currentCustomer = prev.customers.find(customer => customer.id === id);
             if (!currentCustomer) return prev;
-            const afnNet = totalAfn - cashAfn - rawAfn;
-            const usdNet = totalUsd - cashUsd - rawUsd;
+            const afnNet = totalAfn + (Number(currentCustomer.accountCharges) || 0) - cashAfn - rawAfn;
+            const usdNet = totalUsd + (Number(currentCustomer.accountChargesUsd) || 0) - cashUsd - rawUsd;
             return {
                 ...prev,
                 cashInHand: Number(prev.cashInHand || 0) + cashAfn - Number(currentCustomer.totalPaid || 0),
@@ -691,14 +695,23 @@ export const DatabaseProvider = ({ children }) => {
         if (!party || !original) return { success: false, error: t.historyEntryNotFound };
         if ((original.status || 'active') !== 'active') return { success: false, error: t.historyEntryAlreadyClosed };
         if (!String(reason || '').trim()) return { success: false, error: t.correctionReasonRequired };
-        const result = await correctAccountTransactionInSupabase({
-            role,
-            partyId,
-            transactionId,
-            action,
-            replacement: updates,
-            reason: String(reason).trim(),
-        });
+        const isCustomerAccountEntry = role === 'customer' && ['cash_given', 'transport_fee'].includes(original.type);
+        const result = isCustomerAccountEntry
+            ? await correctCustomerAccountEntryInSupabase({
+                customerId: partyId,
+                transactionId,
+                action,
+                replacement: updates,
+                reason: String(reason).trim(),
+            })
+            : await correctAccountTransactionInSupabase({
+                role,
+                partyId,
+                transactionId,
+                action,
+                replacement: updates,
+                reason: String(reason).trim(),
+            });
         if (!result?.success) {
             const missingMigration = /correct_account_transaction|schema cache|function/i.test(result?.error || '');
             return { success: false, error: missingMigration ? t.historyMigrationRequired : (result?.error || t.historyChangeSaveFailed) };
@@ -1153,6 +1166,8 @@ export const DatabaseProvider = ({ children }) => {
                     totalPaidUsd: currency === 'USD' ? paidAmount : 0,
                     rawSettledAmount: 0,
                     rawSettledAmountUsd: 0,
+                    accountCharges: 0,
+                    accountChargesUsd: 0,
                     creditBalance: 0,
                     creditBalanceUsd: 0,
                     balanceOwed: currency === 'AFN' ? remainingAmount : 0,
@@ -1343,6 +1358,38 @@ export const DatabaseProvider = ({ children }) => {
             return { success: false, error: 'The customer payment was not saved to the database.' };
         return { success: true };
     };
+    // Add an outgoing customer-account entry. Both supported entry types move
+    // the customer's single net account toward debt to the factory and reduce
+    // cash in hand; neither one changes sales or inventory.
+    const addCustomerAccountEntry = async ({ customerId, type, amount, currency = 'AFN', date, note }) => {
+        const numericAmount = Number(amount);
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0)
+            return { success: false, error: t.accountEntryAmountRequired };
+        if (!['cash_given', 'transport_fee'].includes(type))
+            return { success: false, error: t.accountEntryTypeRequired };
+        if (!db.customers.some(customer => customer.id === customerId))
+            return { success: false, error: t.customerNotFound };
+        const result = await addCustomerAccountEntryInSupabase({
+            customerId,
+            type,
+            amount: numericAmount,
+            currency: currencyCode(currency),
+            date: normalizeRecordDate(date),
+            description: String(note || '').trim(),
+        });
+        if (!result?.success)
+            return { success: false, error: result?.error || t.accountEntrySaveFailed };
+        const refreshed = await loadStateFromSupabase();
+        if (!refreshed?.state)
+            return { success: false, error: t.historyReloadFailed };
+        lastSyncedState.current = JSON.stringify(refreshed.state);
+        persistedStateRef.current = refreshed.state;
+        pendingStateRef.current = null;
+        setDb(refreshed.state);
+        setIsSupabaseConnected(true);
+        setDatabaseError(null);
+        return { success: true };
+    };
     // DELETE CUSTOMER
     const deleteCustomer = (customerId) => {
         setDb(prev => ({
@@ -1454,6 +1501,7 @@ export const DatabaseProvider = ({ children }) => {
             deleteFormula,
             recordSale,
             receiveCustomerPayment,
+            addCustomerAccountEntry,
             settleCustomerWithRawMaterial,
             deleteCustomer,
             addExpense,

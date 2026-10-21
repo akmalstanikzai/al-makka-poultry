@@ -24,6 +24,7 @@ const findRelatedSale = (transaction, party, role, sales) => {
 
 const cleanNotes = (transaction, relatedSale, t) => {
     if (transaction.type === 'payment') return transaction.description || '';
+    if (transaction.type === 'cash_given' || transaction.type === 'transport_fee') return transaction.description || '';
     const transactionNotes = String(transaction.description || '').trim();
     const looksGenerated = /^(فروش|خرید|restock|supplier debt settlement|customer debt settlement)/i.test(transactionNotes)
         || [t.supplierGoodsSettlement, t.customerRawSettlement].filter(Boolean).some(prefix => transactionNotes.startsWith(prefix));
@@ -41,7 +42,10 @@ const getStatementRow = (transaction, party, role, sales, t) => {
     const unitType = transaction.unitType || relatedSale?.unitType || (transaction.quantityKg != null ? 'kg' : '');
     const unitQuantity = transaction.unitQuantity ?? relatedSale?.unitQuantity ?? transaction.quantityKg;
     const pricePerUnit = transaction.unitPricePerUnit ?? relatedSale?.salePricePerUnit ?? transaction.unitPrice;
-    const itemName = transaction.itemName || relatedSale?.productName || (transaction.type === 'payment' ? t.statementCashPayment : '-');
+    const itemName = transaction.itemName || relatedSale?.productName
+        || (transaction.type === 'payment' ? t.statementCashPayment
+            : transaction.type === 'cash_given' ? t.cashGivenToCustomer
+                : transaction.type === 'transport_fee' ? t.transportFeeEntry : '-');
     return {
         ...transaction,
         itemName,
@@ -84,6 +88,8 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit =
     const cashUsd = amount(party.totalPaidUsd);
     const nonCashAfn = amount(isCustomer ? party.rawSettledAmount : party.goodsSettledAmount);
     const nonCashUsd = amount(isCustomer ? party.rawSettledAmountUsd : party.goodsSettledAmountUsd);
+    const accountChargesAfn = amount(isCustomer ? party.accountCharges : 0);
+    const accountChargesUsd = amount(isCustomer ? party.accountChargesUsd : 0);
     const direction = lang === 'en' ? 'ltr' : 'rtl';
     return <div id={id} className="receipt-document statement-document bg-white text-slate-900 p-5" dir={direction} lang={lang}>
       <header className="statement-header border-b-2 border-slate-900 pb-4">
@@ -128,7 +134,7 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit =
               <td className="p-2 font-mono whitespace-nowrap">{unitText(row, t)}</td>
               <td dir="ltr" className="p-2 font-mono whitespace-nowrap">{row.pricePerUnit == null ? '-' : money(row.pricePerUnit, row.currency)}</td>
               <td dir="ltr" className="p-2 font-mono font-bold whitespace-nowrap">{row.type === 'payment' ? '-' : money(row.amount, row.currency)}</td>
-              <td dir="ltr" className="p-2 font-mono text-emerald-700 font-bold whitespace-nowrap">{money(row.paidAmount, row.currency)}</td>
+              <td dir="ltr" className="p-2 font-mono text-emerald-700 font-bold whitespace-nowrap">{row.type === 'cash_given' || row.type === 'transport_fee' ? '-' : money(row.paidAmount, row.currency)}</td>
               <td dir="ltr" className="p-2 font-mono text-rose-700 font-bold whitespace-nowrap">{money(row.accountBalanceAfter ?? row.remainingAmount, row.currency)}</td>
               {audit && <td className="p-2 min-w-24 no-underline">
                 <strong className={inactive ? 'text-rose-700' : 'text-emerald-700'}>{inactive ? (rowStatus === 'voided' ? t.voided : t.corrected) : t.activeTransaction}</strong>
@@ -144,6 +150,7 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit =
         <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2 text-xs"><span className="text-slate-500">{t.statementTotalQuantity}: </span><strong>{quantityTotals(activeRows, t, role)}</strong></div>
         <div className="grid grid-cols-2 gap-x-5 gap-y-3 text-xs">
           <div><span className="block text-slate-500">{isCustomer ? t.statementTotalSales : t.statementTotalPurchases}</span><MoneyPair afn={party.totalPurchasedAmount} usd={party.totalPurchasedAmountUsd}/></div>
+          {isCustomer && <div><span className="block text-slate-500">{t.customerAccountCharges}</span><MoneyPair afn={accountChargesAfn} usd={accountChargesUsd} tone="text-blue-700"/></div>}
           <div><span className="block text-slate-500">{isCustomer ? t.cashReceivedFromCustomer : t.cashPaidToSupplier}</span><MoneyPair afn={cashAfn} usd={cashUsd} tone="text-emerald-700"/></div>
           <div><span className="block text-slate-500">{isCustomer ? t.nonCashRawSettled : t.nonCashGoodsSettled}</span><MoneyPair afn={nonCashAfn} usd={nonCashUsd} tone="text-emerald-700"/></div>
           <div><span className="block text-slate-500">{isCustomer ? t.totalSettledByCustomer : t.totalSettledWithSupplier}</span><MoneyPair afn={cashAfn + nonCashAfn} usd={cashUsd + nonCashUsd} tone="text-emerald-700"/></div>
