@@ -288,7 +288,7 @@ export const SuppliersPage = () => {
           </div>
 
           {/* Quick Filter Buttons */}
-          <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl text-xs">
+          <div className="flex w-full flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs sm:w-auto">
             <button type="button" onClick={() => setStatusFilter('all')} className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'all'
             ? 'bg-amber-600 text-white shadow-xs'
             : 'text-slate-600 hover:text-slate-900'}`}>
@@ -308,9 +308,9 @@ export const SuppliersPage = () => {
         </div>
 
         {/* Structured Row / Line Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-start text-xs sm:text-sm min-w-[850px]">
-            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold text-[11px] uppercase">
+        <div className="min-w-0 2xl:overflow-x-auto">
+          <table className="block w-full min-w-0 text-start text-xs sm:text-sm 2xl:table 2xl:min-w-[1120px]">
+            <thead className="hidden bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold text-[11px] uppercase 2xl:table-header-group">
               <tr>
                 <th className="py-3.5 px-4 text-start">{t.supplierAndCompany}</th>
                 <th className="py-3.5 px-4 text-start">{t.contactAndAddress}</th>
@@ -321,16 +321,17 @@ export const SuppliersPage = () => {
                 <th className="py-3.5 px-4 text-center">{t.financialActions}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="grid gap-3 p-3 2xl:table-row-group 2xl:divide-y 2xl:divide-slate-100 2xl:p-0">
               {filteredSuppliers.map((sup) => {
             const hasDebt = sup.balanceOwed > 0 || (sup.balanceOwedUsd || 0) > 0;
             const hasReceivable = (sup.receivableBalance || 0) > 0 || (sup.receivableBalanceUsd || 0) > 0;
             const isExpanded = !!expandedSupplierIds[sup.id];
             const transactionsCount = sup.transactions?.length || 0;
             return (<React.Fragment key={sup.id}>
-                    <tr className={`transition-colors ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-slate-50/80'}`}>
+                    <tr className={`grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasReceivable ? 'bg-sky-50/30 hover:bg-sky-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
-                      <td className="py-3.5 px-4">
+                      <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.supplierAndCompany}</span>
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => toggleExpand(sup.id)} className="p-1 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer" title={t.toggleHistoryTooltip}>
                             {isExpanded ? <ChevronUp className="w-4 h-4 text-amber-600"/> : <ChevronDown className="w-4 h-4"/>}
@@ -355,7 +356,8 @@ export const SuppliersPage = () => {
                       </td>
 
                       {/* Contact & Address */}
-                      <td className="py-3.5 px-4">
+                      <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.contactAndAddress}</span>
                         <div className="space-y-0.5">
                           {sup.phone ? (<a href={`tel:${sup.phone}`} className="inline-flex items-center gap-1.5 text-xs text-slate-700 hover:text-amber-600 font-mono transition-colors" dir="ltr">
                               <Phone className="w-3.5 h-3.5 text-amber-600 shrink-0"/>
@@ -369,19 +371,22 @@ export const SuppliersPage = () => {
                       </td>
 
                       {/* Total Purchases from Supplier */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <td className="min-w-0 break-words px-3 py-3 font-mono font-bold text-slate-900 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block font-sans text-[10px] font-semibold text-slate-500 2xl:hidden">{t.totalPurchasesFromSupplier}</span>
                         {sup.totalPurchasedAmount.toLocaleString()} AFN · {(sup.totalPurchasedAmountUsd || 0).toLocaleString()} USD
                       </td>
 
                       {/* Total Paid to Supplier */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
+                      <td className="min-w-0 break-words px-3 py-3 font-mono font-bold text-emerald-700 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block font-sans text-[10px] font-semibold text-slate-500 2xl:hidden">{t.totalSettledWithSupplier}</span>
                         {((sup.totalPaid || 0) + (sup.goodsSettledAmount || 0)).toLocaleString()} AFN · {((sup.totalPaidUsd || 0) + (sup.goodsSettledAmountUsd || 0)).toLocaleString()} USD
                         <span className="block text-[10px] font-medium text-emerald-700 mt-0.5">{t.cashPaidToSupplier}: {(sup.totalPaid || 0).toLocaleString()} AFN · {(sup.totalPaidUsd || 0).toLocaleString()} USD</span>
                         <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashGoodsSettled}: {(sup.goodsSettledAmount || 0).toLocaleString()} AFN · {(sup.goodsSettledAmountUsd || 0).toLocaleString()} USD</span>
                       </td>
 
                       {/* Remaining Debt / Balance Owed */}
-                      <td className="py-3.5 px-4">
+                      <td className="min-w-0 break-words px-3 py-3 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.remainingOwedToSupplier}</span>
                         {hasDebt ? (<div className="inline-flex flex-col">
                             <span className="font-mono font-bold text-rose-700 text-sm">
                               {sup.balanceOwed.toLocaleString()} AFN · {(sup.balanceOwedUsd || 0).toLocaleString()} USD
@@ -396,8 +401,9 @@ export const SuppliersPage = () => {
                       </td>
 
                       {/* Transaction Histories Toggle / Count */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5 2xl:text-center">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.transactionHistory}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 2xl:justify-center">
                           <button type="button" onClick={() => toggleExpand(sup.id)} className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${isExpanded
                     ? 'bg-amber-600 text-white'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
@@ -409,8 +415,9 @@ export const SuppliersPage = () => {
                       </td>
 
                       {/* Action Buttons */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="min-w-0 px-3 py-3 sm:col-span-2 lg:col-span-3 2xl:table-cell 2xl:px-4 2xl:py-3.5 2xl:text-center">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.financialActions}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 2xl:justify-center">
                           <button type="button" onClick={() => openGoodsSettlement(sup)} className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors cursor-pointer" title={t.settleWithProcessedGoods}><Package className="w-4 h-4"/></button>
                           {hasDebt && (<button type="button" onClick={() => handleOpenSettleModal(sup)} className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95">
                               {t.settlePayment}
@@ -430,8 +437,8 @@ export const SuppliersPage = () => {
                     </tr>
 
                     {/* Inline Expandable Transaction Histories Row */}
-                    {isExpanded && (<tr className="bg-slate-50/90 border-b border-slate-200">
-                        <td colSpan={7} className="min-w-0 p-2 sm:p-4">
+                    {isExpanded && (<tr className="block min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 2xl:table-row 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
+                        <td colSpan={7} className="block min-w-0 p-2 sm:p-4 2xl:table-cell">
                           <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
                             <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-100/70 p-3 sm:flex-row sm:items-center sm:justify-between">
                               <div className="flex min-w-0 items-center gap-2">
@@ -540,8 +547,8 @@ export const SuppliersPage = () => {
                   </React.Fragment>);
         })}
 
-              {filteredSuppliers.length === 0 && (<tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+              {filteredSuppliers.length === 0 && (<tr className="block 2xl:table-row">
+                  <td colSpan={7} className="block py-12 text-center text-slate-500 2xl:table-cell">
                     <Truck className="w-10 h-10 text-slate-300 mx-auto mb-2"/>
                     <p className="text-sm font-medium">{t.noSupplierFound}</p>
                   </td>

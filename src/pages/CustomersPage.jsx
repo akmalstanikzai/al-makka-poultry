@@ -382,7 +382,7 @@ export const CustomersPage = () => {
           </div>
 
           {/* Quick Filter Buttons */}
-          <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl text-xs">
+          <div className="flex w-full flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs sm:w-auto">
             <button type="button" onClick={() => setStatusFilter('all')} className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'all'
             ? 'bg-blue-600 text-white shadow-xs'
             : 'text-slate-600 hover:text-slate-900'}`}>
@@ -407,9 +407,9 @@ export const CustomersPage = () => {
         </div>
 
         {/* Structured Row / Line Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-start text-xs sm:text-sm min-w-[850px]">
-            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold text-[11px] uppercase">
+        <div className="min-w-0 2xl:overflow-x-auto">
+          <table className="block w-full min-w-0 text-start text-xs sm:text-sm 2xl:table 2xl:min-w-[1120px]">
+            <thead className="hidden bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold text-[11px] uppercase 2xl:table-header-group">
               <tr>
                 <th className="py-3.5 px-4 text-start">{t.nameAndFarm}</th>
                 <th className="py-3.5 px-4 text-start">{t.contactAndAddress}</th>
@@ -420,16 +420,17 @@ export const CustomersPage = () => {
                 <th className="py-3.5 px-4 text-center">{t.financialActions}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="grid gap-3 p-3 2xl:table-row-group 2xl:divide-y 2xl:divide-slate-100 2xl:p-0">
               {filteredCustomers.map((cust) => {
             const hasDebt = cust.balanceOwed > 0 || (cust.balanceOwedUsd || 0) > 0;
             const hasCredit = (cust.creditBalance || 0) > 0 || (cust.creditBalanceUsd || 0) > 0;
             const isExpanded = !!expandedCustomerIds[cust.id];
             const transactionsCount = cust.transactions?.length || 0;
             return (<React.Fragment key={cust.id}>
-                    <tr className={`transition-colors ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasCredit ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/80'}`}>
+                    <tr className={`grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasCredit ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
-                      <td className="py-3.5 px-4">
+                      <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.nameAndFarm}</span>
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => toggleExpand(cust.id)} className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer" title={t.toggleHistoryTooltip}>
                             {isExpanded ? <ChevronUp className="w-4 h-4 text-blue-600"/> : <ChevronDown className="w-4 h-4"/>}
@@ -454,7 +455,8 @@ export const CustomersPage = () => {
                       </td>
 
                       {/* Contact & Address */}
-                      <td className="py-3.5 px-4">
+                      <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.contactAndAddress}</span>
                         <div className="space-y-0.5">
                           {cust.phone ? (<a href={`tel:${cust.phone}`} className="inline-flex items-center gap-1.5 text-xs text-slate-700 hover:text-blue-600 font-mono transition-colors" dir="ltr">
                               <Phone className="w-3.5 h-3.5 text-blue-600 shrink-0"/>
@@ -468,20 +470,23 @@ export const CustomersPage = () => {
                       </td>
 
                       {/* Total Purchases */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <td className="min-w-0 break-words px-3 py-3 font-mono font-bold text-slate-900 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block font-sans text-[10px] font-semibold text-slate-500 2xl:hidden">{t.totalCustomerPurchases}</span>
                         {cust.totalPurchasedAmount.toLocaleString()} AFN · {(cust.totalPurchasedAmountUsd || 0).toLocaleString()} USD
                         <span className="mt-0.5 block text-[10px] font-medium text-blue-700">{t.customerAccountCharges}: {(cust.accountCharges || 0).toLocaleString()} AFN · {(cust.accountChargesUsd || 0).toLocaleString()} USD</span>
                       </td>
 
                       {/* Total Payments */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
+                      <td className="min-w-0 break-words px-3 py-3 font-mono font-bold text-emerald-700 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block font-sans text-[10px] font-semibold text-slate-500 2xl:hidden">{t.totalSettledByCustomer}</span>
                         {((cust.totalPaid || 0) + (cust.rawSettledAmount || 0)).toLocaleString()} AFN · {((cust.totalPaidUsd || 0) + (cust.rawSettledAmountUsd || 0)).toLocaleString()} USD
                         <span className="block text-[10px] font-medium text-emerald-700 mt-0.5">{t.cashReceivedFromCustomer}: {(cust.totalPaid || 0).toLocaleString()} AFN · {(cust.totalPaidUsd || 0).toLocaleString()} USD</span>
                         <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashRawSettled}: {(cust.rawSettledAmount || 0).toLocaleString()} AFN · {(cust.rawSettledAmountUsd || 0).toLocaleString()} USD</span>
                       </td>
 
                       {/* Remaining Debt */}
-                      <td className="py-3.5 px-4">
+                      <td className="min-w-0 break-words px-3 py-3 2xl:px-4 2xl:py-3.5">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.customerAccountBalance}</span>
                         {hasDebt && (<div className="inline-flex flex-col">
                             <span className="font-mono font-bold text-rose-700 text-sm">
                               {cust.balanceOwed.toLocaleString()} AFN · {(cust.balanceOwedUsd || 0).toLocaleString()} USD
@@ -495,8 +500,9 @@ export const CustomersPage = () => {
                       </td>
 
                       {/* Transaction Histories Toggle / Count */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5 2xl:text-center">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.transactionHistory}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 2xl:justify-center">
                           <button type="button" onClick={() => toggleExpand(cust.id)} className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${isExpanded
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
@@ -508,8 +514,9 @@ export const CustomersPage = () => {
                       </td>
 
                       {/* Action Buttons */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="min-w-0 px-3 py-3 sm:col-span-2 lg:col-span-3 2xl:table-cell 2xl:px-4 2xl:py-3.5 2xl:text-center">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.financialActions}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 2xl:justify-center">
                           <button type="button" onClick={() => openCustomerEdit(cust)} className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer" title={t.editCustomer}><Pencil className="w-4 h-4"/></button>
                           <button type="button" onClick={() => openRawSettlement(cust)} className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer" title={t.settleWithRawMaterial}><Wheat className="w-4 h-4"/></button>
                           <button type="button" onClick={() => openAccountEntry(cust)} className="inline-flex items-center gap-1 rounded-xl bg-violet-600 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-xs transition-colors hover:bg-violet-700" title={t.addAccountEntry}><HandCoins className="h-3.5 w-3.5"/><span>{t.addAccountEntry}</span></button>
@@ -529,8 +536,8 @@ export const CustomersPage = () => {
                     </tr>
 
                     {/* Inline Expandable Transaction Histories Row */}
-                    {isExpanded && (<tr className="bg-slate-50/90 border-b border-slate-200">
-                        <td colSpan={7} className="min-w-0 p-2 sm:p-4">
+                    {isExpanded && (<tr className="block min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 2xl:table-row 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
+                        <td colSpan={7} className="block min-w-0 p-2 sm:p-4 2xl:table-cell">
                           <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
                             <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-100/70 p-3 sm:flex-row sm:items-center sm:justify-between">
                               <div className="flex min-w-0 items-center gap-2">
@@ -639,8 +646,8 @@ export const CustomersPage = () => {
                   </React.Fragment>);
         })}
 
-              {filteredCustomers.length === 0 && (<tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+              {filteredCustomers.length === 0 && (<tr className="block 2xl:table-row">
+                  <td colSpan={7} className="block py-12 text-center text-slate-500 2xl:table-cell">
                     <Users className="w-10 h-10 text-slate-300 mx-auto mb-2"/>
                     <p className="text-sm font-medium">{t.noCustomerFound}</p>
                   </td>
