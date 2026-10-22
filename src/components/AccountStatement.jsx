@@ -1,40 +1,9 @@
 import React from 'react';
 import { sortTransactionsNewestFirst } from '../lib/transactionSort';
+import { findRelatedSale, getTransactionEntryDetails } from '../lib/transactionDetails';
 
 const amount = value => Number(value || 0);
-const idTime = value => Number(String(value || '').match(/(\d{10,})$/)?.[1] || 0);
 const money = (value, currency) => `${amount(value).toLocaleString()} ${currency || 'AFN'}`;
-
-const findRelatedSale = (transaction, party, role, sales) => {
-    if (transaction.sourceSaleId) {
-        const linkedSale = (sales || []).find(sale => sale.id === transaction.sourceSaleId);
-        if (linkedSale) return linkedSale;
-    }
-    const candidates = (sales || []).filter(sale => {
-        const belongsToParty = role === 'customer'
-            ? sale.customerId === party.id
-            : sale.supplierId === party.id;
-        return belongsToParty
-            && sale.date === transaction.date
-            && (sale.currency || 'AFN') === (transaction.currency || 'AFN')
-            && Math.abs(amount(sale.totalAmount) - amount(transaction.amount)) < 0.01;
-    });
-    if (!candidates.length) return null;
-    return candidates.sort((first, second) => Math.abs(idTime(first.id) - idTime(transaction.id)) - Math.abs(idTime(second.id) - idTime(transaction.id)))[0];
-};
-
-const cleanNotes = (transaction, relatedSale, t) => {
-    if (transaction.type === 'payment') return transaction.description || '';
-    if (transaction.type === 'cash_given' || transaction.type === 'transport_fee') return transaction.description || '';
-    const transactionNotes = String(transaction.description || '').trim();
-    const looksGenerated = /^(فروش|خرید|restock|supplier debt settlement|customer debt settlement)/i.test(transactionNotes)
-        || [t.supplierGoodsSettlement, t.customerRawSettlement].filter(Boolean).some(prefix => transactionNotes.startsWith(prefix));
-    if (transactionNotes && !looksGenerated) return transactionNotes;
-    const notes = String(relatedSale?.notes || '').trim();
-    const defaultSettlementNotes = [t.supplierGoodsSettlement, t.customerRawSettlement].filter(Boolean);
-    if (!notes || defaultSettlementNotes.includes(notes) || /supplier debt settlement|customer debt settlement/i.test(notes)) return '';
-    return notes;
-};
 
 const getStatementRow = (transaction, party, role, sales, t) => {
     const relatedSale = (transaction.type === 'sale' || transaction.type === 'goods_settlement')
@@ -54,7 +23,7 @@ const getStatementRow = (transaction, party, role, sales, t) => {
         unitQuantity,
         pricePerUnit,
         billNumber: transaction.billNumber || relatedSale?.billNumber || '',
-        notes: cleanNotes(transaction, relatedSale, t),
+        notes: getTransactionEntryDetails(transaction, party, role, sales, t),
     };
 };
 

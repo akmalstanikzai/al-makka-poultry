@@ -6,6 +6,7 @@ import { TransactionHistoryEditor, TransactionVoidDialog } from '../components/T
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { getTransactionActivityTime, sortTransactionsNewestFirst } from '../lib/transactionSort';
 import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
+import { getTransactionEntryDetails } from '../lib/transactionDetails';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
 const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' && (transaction.status || 'active') === 'active' ? Math.max(latest, getTransactionActivityTime(transaction)) : latest, 0);
 export const SuppliersPage = () => {
@@ -45,6 +46,16 @@ export const SuppliersPage = () => {
     const supplierTransactionDescription = transaction => transaction.type === 'purchase' && transaction.itemName
         ? `${t.supplierPurchaseTx}: ${transaction.itemName}`
         : getLocalizedTxDesc(transaction.description);
+    const supplierTransactionDetails = (transaction, supplier) =>
+        getTransactionEntryDetails(transaction, supplier, 'supplier', db.sales, t);
+    const renderSupplierTransactionText = (transaction, supplier) => {
+        const description = supplierTransactionDescription(transaction);
+        const details = supplierTransactionDetails(transaction, supplier);
+        return <>
+          {(!details || details !== description) && description}
+          {details && <div className="mt-1 rounded-md bg-slate-50 px-2 py-1 text-[10px] leading-4 text-slate-600"><span className="font-bold text-slate-700">{t.historyDescription}: </span>{details}</div>}
+        </>;
+    };
     const toggleExpand = (supplierId) => {
         setExpandedSupplierIds(prev => ({
             ...prev,
@@ -444,7 +455,7 @@ export const SuppliersPage = () => {
                                         </td>
                                         <td className="py-2.5 px-3 text-slate-700 font-medium">
                                           {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
-                                          {supplierTransactionDescription(tr)}
+                                          {renderSupplierTransactionText(tr, sup)}
                                           {((tr.status || 'active') !== 'active' || tr.reversalOf) && <div className="mt-1"><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{tr.reversalOf ? t.replacementEntry : (tr.status === 'voided' ? t.voided : t.corrected)}</span>{tr.correctionReason && <span className="ms-2 text-[10px] text-slate-500">{tr.correctionReason}</span>}</div>}
                                         </td>
                                         <td className="py-2.5 px-3 font-mono text-slate-700">
