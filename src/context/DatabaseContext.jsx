@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { translations, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
-import { addCustomerAccountEntryInSupabase, clearAllDataFromSupabase, correctAccountTransactionInSupabase, correctCustomerAccountEntryInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
+import { addCustomerAccountEntryInSupabase, billNumberExistsInSupabase, clearAllDataFromSupabase, correctAccountTransactionInSupabase, correctCustomerAccountEntryInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
 import { canonicalSupplierNames, normalizePartyName } from '../lib/partyRoles';
+import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
     rawMaterials: [],
@@ -795,8 +796,12 @@ export const DatabaseProvider = ({ children }) => {
         const product = db.processedStock.find(item => item.id === settlement.productId);
         const unitQuantity = Number(settlement.unitQuantity);
         const salePricePerUnit = Number(settlement.salePricePerUnit);
+        const billNumber = cleanBillNumber(settlement.billNumber);
         const quantityKg = convertToKg(settlement.unitType, unitQuantity);
         if (!supplier || !product) return { success: false, error: t.invalidSupplierOrProduct };
+        if (!billNumber) return { success: false, error: t.billNumberRequired };
+        if (billNumberExists(db.sales, billNumber)) return { success: false, error: t.duplicateBillNumber };
+        if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
         if (!Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(salePricePerUnit) || salePricePerUnit <= 0) return { success: false, error: t.quantityPriceMustBePositive };
         if (product.stockKg < quantityKg) return { success: false, error: `${t.insufficientStockOfItem} ${product.stockKg.toLocaleString()} ${t.kilo}. ${t.requestedAmount} ${quantityKg.toLocaleString()} ${t.kilo}.` };
 
@@ -815,6 +820,7 @@ export const DatabaseProvider = ({ children }) => {
         const totalCostOfGoodsUsd = costRatePerKgUsd * quantityKg;
         const sale = {
             id: `sale-${timestamp}`,
+            billNumber,
             date: today,
             customerId: '',
             customerName: supplier.name,
@@ -883,7 +889,10 @@ export const DatabaseProvider = ({ children }) => {
             state.sales.some(item => item.id === sale.id)
             && state.suppliers.some(item => item.id === supplier.id
                 && item.transactions?.some(transaction => transaction.id === `st-${timestamp}`)));
-        if (!saved) return { success: false, error: t.supplierGoodsSettlementSaveFailed };
+        if (!saved) {
+            if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
+            return { success: false, error: t.supplierGoodsSettlementSaveFailed };
+        }
         return { success: true, offsetAmount, customerDebt: Math.max(0, totalAmount - offsetAmount) };
     };
     // DELETE SUPPLIER
@@ -1030,6 +1039,10 @@ export const DatabaseProvider = ({ children }) => {
     };
     // 3. RECORD SALE (DEDUCT PROCESSED STOCK, AUTO-UPDATE CUSTOMER, ADD CASH)
     const recordSale = async (saleData) => {
+        const billNumber = cleanBillNumber(saleData.billNumber);
+        if (!billNumber) return { success: false, error: t.billNumberRequired };
+        if (billNumberExists(db.sales, billNumber)) return { success: false, error: t.duplicateBillNumber };
+        if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
         const quantityKg = convertToKg(saleData.unitType, saleData.unitQuantity);
         const requestedCustomerKey = normalizePartyName(saleData.customerName);
         const matchesSupplier = requestedCustomerKey && (
@@ -1072,6 +1085,7 @@ export const DatabaseProvider = ({ children }) => {
         const customerTransactionId = `ct-${operationTimestamp}`;
         const newSale = {
             id: saleId,
+            billNumber,
             date: today,
             customerId: saleData.customerId || '',
             customerName: saleData.customerName.trim(),
@@ -1190,8 +1204,10 @@ export const DatabaseProvider = ({ children }) => {
             state.sales.some(sale => sale.id === saleId)
             && state.customers.some(customer => customer.id === newSale.customerId
                 && customer.transactions?.some(transaction => transaction.id === customerTransactionId)));
-        if (!saved)
+        if (!saved) {
+            if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
             return { success: false, error: 'The sale was not saved to the database.' };
+        }
         return { success: true };
     };
     // RECEIVE RAW MATERIAL FROM A CUSTOMER AS A NON-CASH DEBT SETTLEMENT.

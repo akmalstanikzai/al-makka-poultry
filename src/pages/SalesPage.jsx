@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
+import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
 import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 export const SalesPage = () => {
     const { db, t, recordSale } = useDatabase();
@@ -20,6 +21,7 @@ export const SalesPage = () => {
     const [currency, setCurrency] = useState('AFN');
     const [paidAmount, setPaidAmount] = useState('');
     const [notes, setNotes] = useState('');
+    const [billNumber, setBillNumber] = useState('');
     const [saveStatus, setSaveStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const saleSaveLock = useRef(false);
@@ -39,6 +41,7 @@ export const SalesPage = () => {
     const totalInvoiceAmount = qtyNumber * priceNumber;
     const paidNumber = paidAmount === '' ? 0 : Math.max(0, Number(paidAmount) || 0);
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
+    const isDuplicateBillNumber = billNumberExists(db.sales, billNumber);
     // Handle selecting existing customer
     const handleCustomerNameChange = (name) => {
         setCustomerName(name);
@@ -58,6 +61,7 @@ export const SalesPage = () => {
         setSalePricePerUnit('');
         setPaidAmount('');
         setNotes('');
+        setBillNumber('');
         setSaveStatus(null);
         setIsModalOpen(true);
     };
@@ -66,6 +70,14 @@ export const SalesPage = () => {
         if (saleSaveLock.current) return;
         setSaveStatus(null);
         const productName = selectedProduct ? selectedProduct.name : '';
+        if (!cleanBillNumber(billNumber)) {
+            setSaveStatus({ type: 'error', text: t.billNumberRequired });
+            return;
+        }
+        if (isDuplicateBillNumber) {
+            setSaveStatus({ type: 'error', text: t.duplicateBillNumber });
+            return;
+        }
         if (!productName) {
             setSaveStatus({ type: 'error', text: t.pleaseEnterFormulaName || 'Please specify feed name' });
             return;
@@ -97,6 +109,7 @@ export const SalesPage = () => {
         setIsSaving(true);
         try {
             const result = await recordSale({
+                billNumber: cleanBillNumber(billNumber),
                 productName,
                 productId,
                 customerId: customerId || undefined,
@@ -122,7 +135,8 @@ export const SalesPage = () => {
     const filteredSales = db.sales.filter(s => {
         const matchesSearch = !term || (s.customerName.toLowerCase().includes(term) ||
             (s.customerPhone && s.customerPhone.toLowerCase().includes(term)) ||
-            s.id.toLowerCase().includes(term));
+            s.id.toLowerCase().includes(term) ||
+            (s.billNumber && s.billNumber.toLowerCase().includes(term)));
         let matchesPayment = true;
         if (selectedPaymentFilter === 'paid')
             matchesPayment = s.remainingAmount === 0;
@@ -254,7 +268,7 @@ export const SalesPage = () => {
             const isPaidInFull = sale.remainingAmount === 0;
             return (<tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3.5 px-4 font-mono font-bold text-amber-700">
-                      #{sale.id.slice(-6).toUpperCase()}
+                      #{sale.billNumber || sale.id.slice(-6).toUpperCase()}
                       <span className="block text-[10px] text-slate-400 font-normal">{sale.date}</span>
                     </td>
                     <td className="py-3.5 px-4">
@@ -320,6 +334,11 @@ export const SalesPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">{t.invoiceNumber} *</label>
+                <input type="text" required value={billNumber} onChange={event=>{setBillNumber(event.target.value);setSaveStatus(null);}} placeholder={t.billNumberPlaceholder} className={`w-full rounded-xl border bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 shadow-2xs focus:outline-none ${isDuplicateBillNumber?'border-rose-500 focus:border-rose-600':'border-slate-300 focus:border-amber-600'}`}/>
+                {isDuplicateBillNumber&&<p className="mt-1 text-xs font-semibold text-rose-700" role="alert">{t.duplicateBillNumber}</p>}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">{t.productName} *</label>
@@ -420,7 +439,7 @@ export const SalesPage = () => {
                 <span className="font-bold text-base text-slate-900">{t.officialInvoicePreview}</span>
               </div>
               <div className="flex items-center gap-2">
-                <ReceiptActions elementId="sales-receipt" filename={`sales-invoice-${selectedInvoice.id}`} title={`${t.officialSaleInvoiceBadge} ${selectedInvoice.id}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
+                <ReceiptActions elementId="sales-receipt" filename={`sales-invoice-${selectedInvoice.id}`} title={`${t.officialSaleInvoiceBadge} ${selectedInvoice.billNumber || selectedInvoice.id}`} printLabel={t.printInvoice} downloadLabel="PDF"/>
                 <button type="button" onClick={() => setSelectedInvoice(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
                   <X className="w-5 h-5"/>
                 </button>
@@ -446,7 +465,7 @@ export const SalesPage = () => {
               <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200 print:bg-stone-50 print:border-stone-300">
                 <div>
                   <span className="text-slate-500 block">{t.invoiceNumber}:</span>
-                  <strong className="font-mono text-amber-800 text-sm">#{selectedInvoice.id.slice(-6).toUpperCase()}</strong>
+                  <strong className="font-mono text-amber-800 text-sm">#{selectedInvoice.billNumber || selectedInvoice.id.slice(-6).toUpperCase()}</strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block">{t.issueDate}:</span>

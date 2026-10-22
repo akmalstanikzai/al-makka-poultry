@@ -292,6 +292,7 @@ export async function loadStateFromSupabase() {
         }));
         const sales = (salesRes.data || []).filter(s => (s.status || 'active') === 'active').map(s => ({
             id: s.id,
+            billNumber: s.bill_number || '',
             date: s.date,
             customerId: s.customer_id || '',
             supplierId: s.supplier_id || '',
@@ -593,6 +594,7 @@ export async function writeStateToSupabase(state) {
         if (state.sales.length > 0) {
             const saleRows = state.sales.map(s => ({
                 id: s.id,
+                bill_number: s.billNumber || null,
                 date: s.date,
                 product_id: s.productId || null,
                 product_name: s.productName,
@@ -762,6 +764,18 @@ export async function correctCustomerAccountEntryInSupabase({ customerId, transa
     catch (err) {
         console.error('Supabase customer account correction failed:', err);
         return { success: false, error: err.message || String(err) };
+    }
+}
+export async function billNumberExistsInSupabase(billNumber) {
+    if (!supabase) return null;
+    try {
+        const { data, error } = await supabase.rpc('bill_number_exists', { p_bill_number: billNumber });
+        if (error) throw error;
+        return Boolean(data);
+    }
+    catch (err) {
+        console.error('Supabase bill-number check failed:', err);
+        return null;
     }
 }
 export async function deleteRawMaterialFromSupabase(id) {

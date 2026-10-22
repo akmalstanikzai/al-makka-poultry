@@ -5,17 +5,14 @@ import { ReceiptActions } from '../components/ReceiptActions';
 import { TransactionHistoryEditor, TransactionVoidDialog } from '../components/TransactionHistoryEditor';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { isCanonicalSupplierName } from '../lib/partyRoles';
+import { getTransactionActivityTime, sortTransactionsNewestFirst } from '../lib/transactionSort';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil, HandCoins, Truck } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 const localDateValue = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
-const transactionTime = transaction => {
-    const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
-    return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
-};
-const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' && (transaction.status || 'active') === 'active' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
+const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' && (transaction.status || 'active') === 'active' ? Math.max(latest, getTransactionActivityTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
     const { db, t, lang, deleteCustomer, updateCustomer, updateCustomerTransaction, voidCustomerTransaction, receiveCustomerPayment, addCustomerAccountEntry, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -533,7 +530,7 @@ export const CustomersPage = () => {
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
-                                    {cust.transactions.map((tr) => (<tr key={tr.id} className={`hover:bg-slate-50/50 ${(tr.status || 'active') !== 'active' ? 'bg-slate-50 opacity-70' : ''}`}>
+                                    {sortTransactionsNewestFirst(cust.transactions).map((tr) => (<tr key={tr.id} className={`hover:bg-slate-50/50 ${(tr.status || 'active') !== 'active' ? 'bg-slate-50 opacity-70' : ''}`}>
                                         <td className="py-2.5 px-3 font-mono text-slate-600">{tr.date}</td>
                                         <td className="py-2.5 px-3">
                                           {tr.type === 'sale' ? (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">

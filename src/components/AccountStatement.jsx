@@ -1,4 +1,5 @@
 import React from 'react';
+import { sortTransactionsNewestFirst } from '../lib/transactionSort';
 
 const amount = value => Number(value || 0);
 const idTime = value => Number(String(value || '').match(/(\d{10,})$/)?.[1] || 0);
@@ -52,6 +53,7 @@ const getStatementRow = (transaction, party, role, sales, t) => {
         unitType,
         unitQuantity,
         pricePerUnit,
+        billNumber: transaction.billNumber || relatedSale?.billNumber || '',
         notes: cleanNotes(transaction, relatedSale, t),
     };
 };
@@ -80,7 +82,7 @@ const MoneyPair = ({ afn, usd, tone = 'text-slate-900' }) => (
 
 export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit = false }) => {
     const isCustomer = role === 'customer';
-    const rows = (party.transactions || [])
+    const rows = sortTransactionsNewestFirst(party.transactions)
         .filter(transaction => audit || (transaction.status || 'active') === 'active')
         .map(transaction => getStatementRow(transaction, party, role, sales, t));
     const activeRows = rows.filter(transaction => (transaction.status || 'active') === 'active');
@@ -129,6 +131,7 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit =
               <td dir="ltr" className="p-2 font-mono whitespace-nowrap">{row.date}</td>
               <td className="p-2 min-w-28">
                 <strong className="block text-slate-900">{row.itemName}</strong>
+                {row.billNumber && <span className="mt-0.5 block font-mono text-[9px] text-slate-500">{t.invoiceNumber}: #{row.billNumber}</span>}
                 {row.notes && <span className="statement-note mt-1 block text-[9px] leading-4 text-slate-600">{row.notes}</span>}
               </td>
               <td className="p-2 font-mono whitespace-nowrap">{unitText(row, t)}</td>

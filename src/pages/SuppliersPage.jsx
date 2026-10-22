@@ -4,12 +4,10 @@ import { AccountStatement } from '../components/AccountStatement';
 import { ReceiptActions } from '../components/ReceiptActions';
 import { TransactionHistoryEditor, TransactionVoidDialog } from '../components/TransactionHistoryEditor';
 import { normalizeDecimalInput } from '../lib/numberInput';
+import { getTransactionActivityTime, sortTransactionsNewestFirst } from '../lib/transactionSort';
+import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
-const transactionTime = transaction => {
-    const timestamp = String(transaction?.id || '').match(/(\d{10,})$/)?.[1];
-    return timestamp ? Number(timestamp) : (Date.parse(transaction?.date || '') || 0);
-};
-const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' && (transaction.status || 'active') === 'active' ? Math.max(latest, transactionTime(transaction)) : latest, 0);
+const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' && (transaction.status || 'active') === 'active' ? Math.max(latest, getTransactionActivityTime(transaction)) : latest, 0);
 export const SuppliersPage = () => {
     const { db, t, lang, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, updateSupplierTransaction, voidSupplierTransaction, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -34,6 +32,7 @@ export const SuppliersPage = () => {
     const [goodsPrice, setGoodsPrice] = useState('');
     const [goodsCurrency, setGoodsCurrency] = useState('AFN');
     const [goodsNotes, setGoodsNotes] = useState('');
+    const [goodsBillNumber, setGoodsBillNumber] = useState('');
     const [goodsError, setGoodsError] = useState('');
     const [isSavingGoods, setIsSavingGoods] = useState(false);
     const goodsSaveLock = useRef(false);
@@ -113,6 +112,7 @@ export const SuppliersPage = () => {
         setGoodsPrice('');
         setGoodsCurrency((supplier.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
         setGoodsNotes('');
+        setGoodsBillNumber('');
         setGoodsError('');
     };
     const goodsProduct = db.processedStock.find(product => product.id === goodsProductId);
@@ -120,17 +120,21 @@ export const SuppliersPage = () => {
     const goodsPriceNumber = Number(goodsPrice) || 0;
     const goodsWeightKg = goodsUnit === 'ton' ? goodsQuantityNumber * 1000 : goodsUnit === 'bag' ? goodsQuantityNumber * 50 : goodsQuantityNumber;
     const goodsTotal = goodsQuantityNumber * goodsPriceNumber;
+    const isDuplicateGoodsBillNumber = billNumberExists(db.sales, goodsBillNumber);
     const supplierDebtForGoods = goodsSupplier ? Number(goodsCurrency === 'USD' ? goodsSupplier.balanceOwedUsd : goodsSupplier.balanceOwed) || 0 : 0;
     const goodsDebtOffset = Math.min(goodsTotal, supplierDebtForGoods);
     const goodsCustomerDebt = Math.max(0, goodsTotal - goodsDebtOffset);
     const handleGoodsSettlement = async event => {
         event.preventDefault();
         if (!goodsSupplier || goodsSaveLock.current) return;
+        if (!cleanBillNumber(goodsBillNumber)) { setGoodsError(t.billNumberRequired); return; }
+        if (isDuplicateGoodsBillNumber) { setGoodsError(t.duplicateBillNumber); return; }
         goodsSaveLock.current = true;
         setGoodsError('');
         setIsSavingGoods(true);
         try {
             const result = await settleSupplierWithProcessedStock({
+                billNumber: cleanBillNumber(goodsBillNumber),
                 supplierId: goodsSupplier.id,
                 productId: goodsProductId,
                 unitType: goodsUnit,
@@ -427,7 +431,7 @@ export const SuppliersPage = () => {
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
-                                    {sup.transactions.map((tr) => (<tr key={tr.id} className={`hover:bg-slate-50/50 ${(tr.status || 'active') !== 'active' ? 'bg-slate-50 opacity-70' : ''}`}>
+                                    {sortTransactionsNewestFirst(sup.transactions).map((tr) => (<tr key={tr.id} className={`hover:bg-slate-50/50 ${(tr.status || 'active') !== 'active' ? 'bg-slate-50 opacity-70' : ''}`}>
                                         <td className="py-2.5 px-3 font-mono text-slate-600">{tr.date}</td>
                                         <td className="py-2.5 px-3">
                                           {tr.type === 'purchase' ? (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
@@ -533,7 +537,10 @@ export const SuppliersPage = () => {
           <div className="flex items-start justify-between gap-3 mb-3"><div><h3 className="font-bold flex items-center gap-2"><Package className="w-5 h-5 text-emerald-600"/>{t.settleWithProcessedGoods}</h3><p className="text-xs text-slate-500 mt-1">{goodsSupplier.name} · {t.remainingDebt}: {(goodsSupplier.balanceOwed || 0).toLocaleString()} AFN · {(goodsSupplier.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setGoodsSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">{t.goodsSettlementNotice}</p>
           <form onSubmit={handleGoodsSettlement} className="space-y-3">
-            <div><EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{getLocalizedName(product.name)} — {product.stockKg.toLocaleString()} {t.kilo}</option>)}</select></EditField></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{getLocalizedName(product.name)} — {product.stockKg.toLocaleString()} {t.kilo}</option>)}</select></EditField>
+              <EditField label={`${t.invoiceNumber} *`}><input required type="text" value={goodsBillNumber} onChange={event=>{setGoodsBillNumber(event.target.value);setGoodsError('');}} placeholder={t.billNumberPlaceholder} className={`${controlClass} font-mono ${isDuplicateGoodsBillNumber?'border-rose-500 focus:border-rose-600':''}`}/>{isDuplicateGoodsBillNumber&&<span className="mt-1 block text-xs font-semibold text-rose-700" role="alert">{t.duplicateBillNumber}</span>}</EditField>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>{setGoodsUnit(event.target.value);setGoodsPrice('');}} className={controlClass}><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></EditField>
               <EditField label={t.quantity}><input required type="number" min="0.001" step="any" value={goodsQuantity} onChange={event=>setGoodsQuantity(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
