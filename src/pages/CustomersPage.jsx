@@ -7,6 +7,7 @@ import { normalizeDecimalInput } from '../lib/numberInput';
 import { isCanonicalSupplierName } from '../lib/partyRoles';
 import { getTransactionActivityTime, sortTransactionsNewestFirst } from '../lib/transactionSort';
 import { getTransactionEntryDetails } from '../lib/transactionDetails';
+import { getSaleLineItems, saleUnitLabel } from '../lib/saleLineItems';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil, HandCoins, Truck } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 const localDateValue = () => {
@@ -60,8 +61,8 @@ export const CustomersPage = () => {
     // Never show a confirmed supplier as a customer while a server-side role
     // cleanup is pending or an older browser still has stale data.
     const customers = db.customers.filter(customer => !isCanonicalSupplierName(customer.name));
-    const customerTransactionDescription = transaction => transaction.type === 'raw_goods_settlement' && transaction.itemName
-        ? `${t.customerRawSettlement}: ${transaction.itemName}`
+    const customerTransactionDescription = transaction => ['sale', 'raw_goods_settlement'].includes(transaction.type)
+        ? ''
         : getLocalizedTxDesc(transaction.description);
     const customerTransactionDetails = (transaction, customer) =>
         getTransactionEntryDetails(transaction, customer, 'customer', db.sales, t);
@@ -72,6 +73,19 @@ export const CustomersPage = () => {
           {(!details || details !== description) && description}
           {details && <div className="mt-1 rounded-md bg-slate-50 px-2 py-1 text-[10px] leading-4 text-slate-600"><span className="font-bold text-slate-700">{t.historyDescription}: </span>{details}</div>}
         </>;
+    };
+    const renderSaleItems = transaction => {
+        if (transaction.type !== 'sale') return transaction.itemName && <div className="font-bold text-slate-900">{transaction.itemName}</div>;
+        const relatedSale = db.sales.find(sale => sale.id === transaction.sourceSaleId);
+        const items = getSaleLineItems(transaction.lineItems?.length ? transaction : relatedSale || transaction);
+        const transactionBillNumber = transaction.billNumber || relatedSale?.billNumber;
+        return <div className="space-y-1.5">
+          {items.map((item, index) => <div key={`${transaction.id}-item-${index}`} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
+            <strong className="block text-slate-900">{item.productName}</strong>
+            <span className="block font-mono text-[10px] text-slate-600">{item.unitQuantity.toLocaleString()} {saleUnitLabel(item.unitType, t)} × {item.salePricePerUnit.toLocaleString()} {transaction.currency || 'AFN'} = {item.totalAmount.toLocaleString()} {transaction.currency || 'AFN'}</span>
+          </div>)}
+          {transactionBillNumber && <span className="block font-mono text-[10px] text-blue-700">{t.invoiceNumber}: #{transactionBillNumber}</span>}
+        </div>;
     };
     const toggleExpand = (customerId) => {
         setExpandedCustomerIds(prev => ({
@@ -248,10 +262,16 @@ export const CustomersPage = () => {
     const debtorCount = customers.filter(c => (c.balanceOwed || 0) > 0 || (c.balanceOwedUsd || 0) > 0).length;
     const customerCreditCount = customers.filter(c => (c.creditBalance || 0) > 0 || (c.creditBalanceUsd || 0) > 0).length;
     const settledCustomerCount = customers.filter(c => (c.balanceOwed || 0) <= 0 && (c.balanceOwedUsd || 0) <= 0 && (c.creditBalance || 0) <= 0 && (c.creditBalanceUsd || 0) <= 0).length;
+    const normalizedSearch = searchTerm.trim().toLowerCase();
     const filteredCustomers = customers.filter(c => {
-        const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (c.phone && c.phone.includes(searchTerm)) ||
-            (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()));
+        const hasMatchingBill = normalizedSearch && (
+            (c.transactions || []).some(transaction => String(transaction.billNumber || '').toLowerCase().includes(normalizedSearch))
+            || db.sales.some(sale => String(sale.billNumber || '').toLowerCase().includes(normalizedSearch)
+                && (sale.customerId === c.id || (!sale.customerId && sale.customerName?.trim().toLowerCase() === c.name.trim().toLowerCase())))
+        );
+        const matchesSearch = !normalizedSearch || c.name.toLowerCase().includes(normalizedSearch) ||
+            (c.phone && c.phone.includes(normalizedSearch)) ||
+            (c.address && c.address.toLowerCase().includes(normalizedSearch)) || hasMatchingBill;
         if (!matchesSearch)
             return false;
         if (statusFilter === 'debtors') {
@@ -285,7 +305,7 @@ export const CustomersPage = () => {
           <div className="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none text-slate-400">
             <Search className="w-4 h-4"/>
           </div>
-          <input type="text" placeholder={t.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full ps-10 pe-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+          <input type="text" placeholder={t.searchByNamePhoneBill || t.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full ps-10 pe-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-600 shadow-2xs"/>
           {searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute inset-y-0 end-0 pe-3 flex items-center text-slate-400 hover:text-slate-700 cursor-pointer">
               <X className="w-4 h-4"/>
             </button>)}
@@ -525,8 +545,8 @@ export const CustomersPage = () => {
                               </button>
                             </div>
 
-                            {cust.transactions && cust.transactions.length > 0 ? (<div className="overflow-x-auto">
-                                <table className="w-full text-xs text-start">
+                            {cust.transactions && cust.transactions.length > 0 ? (<div className="overflow-x-auto overscroll-x-contain touch-pan-x">
+                                <table className="w-full min-w-[1120px] table-auto text-xs text-start">
                                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-[10px]">
                                     <tr>
                                       <th className="py-2 px-3 text-start">{t.dateCol}</th>
@@ -552,8 +572,8 @@ export const CustomersPage = () => {
                                               {getLocalizedTxType(tr.type)}
                                             </span>)}
                                         </td>
-                                        <td className="py-2.5 px-3 text-slate-700 font-medium">
-                                          {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
+                                        <td className="min-w-[280px] max-w-[380px] whitespace-normal break-words py-2.5 px-3 text-slate-700 font-medium">
+                                          {renderSaleItems(tr)}
                                           {renderCustomerTransactionText(tr, cust)}
                                           {((tr.status || 'active') !== 'active' || tr.reversalOf) && <div className="mt-1"><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{tr.reversalOf ? t.replacementEntry : (tr.status === 'voided' ? t.voided : t.corrected)}</span>{tr.correctionReason && <span className="ms-2 text-[10px] text-slate-500">{tr.correctionReason}</span>}</div>}
                                         </td>

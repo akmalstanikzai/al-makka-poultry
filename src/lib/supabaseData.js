@@ -170,6 +170,8 @@ export async function loadStateFromSupabase() {
                 rawMaterialId: tx.raw_material_id || undefined,
                 productId: tx.product_id || undefined,
                 sourceSaleId: tx.source_sale_id || undefined,
+                billNumber: tx.bill_number || '',
+                lineItems: Array.isArray(tx.line_items) ? tx.line_items : [],
                 itemName: tx.item_name || undefined,
                 quantityKg: tx.quantity_kg == null ? undefined : Number(tx.quantity_kg),
                 unitPrice: tx.unit_price == null ? undefined : Number(tx.unit_price),
@@ -236,6 +238,8 @@ export async function loadStateFromSupabase() {
                 rawMaterialId: tx.raw_material_id || undefined,
                 productId: tx.product_id || undefined,
                 sourceSaleId: tx.source_sale_id || undefined,
+                billNumber: tx.bill_number || '',
+                lineItems: Array.isArray(tx.line_items) ? tx.line_items : [],
                 itemName: tx.item_name || undefined,
                 quantityKg: tx.quantity_kg == null ? undefined : Number(tx.quantity_kg),
                 unitPrice: tx.unit_price == null ? undefined : Number(tx.unit_price),
@@ -315,6 +319,7 @@ export async function loadStateFromSupabase() {
             remainingAmount: Number(s.remaining_amount) || 0,
             notes: s.notes || undefined,
             currency: s.currency || 'AFN',
+            items: Array.isArray(s.items) ? s.items : [],
         }));
         // Customer totals may already include payments from an older app
         // version that failed before updating the sales table. Reconstruct the
@@ -450,6 +455,8 @@ export async function writeStateToSupabase(state) {
                 raw_material_id: t.rawMaterialId || null,
                 product_id: t.productId || null,
                 source_sale_id: t.sourceSaleId || null,
+                bill_number: t.billNumber || null,
+                line_items: Array.isArray(t.lineItems) ? t.lineItems : [],
                 item_name: t.itemName || null,
                 quantity_kg: t.quantityKg ?? null,
                 unit_price: t.unitPrice ?? null,
@@ -522,6 +529,8 @@ export async function writeStateToSupabase(state) {
                 raw_material_id: t.rawMaterialId || null,
                 product_id: t.productId || null,
                 source_sale_id: t.sourceSaleId || null,
+                bill_number: t.billNumber || null,
+                line_items: Array.isArray(t.lineItems) ? t.lineItems : [],
                 item_name: t.itemName || null,
                 quantity_kg: t.quantityKg ?? null,
                 unit_price: t.unitPrice ?? null,
@@ -595,6 +604,7 @@ export async function writeStateToSupabase(state) {
             const saleRows = state.sales.map(s => ({
                 id: s.id,
                 bill_number: s.billNumber || null,
+                items: Array.isArray(s.items) ? s.items : [],
                 date: s.date,
                 product_id: s.productId || null,
                 product_name: s.productName,

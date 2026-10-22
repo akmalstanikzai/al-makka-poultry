@@ -2,7 +2,17 @@ import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
-import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { getSaleLineItems, saleUnitLabel } from '../lib/saleLineItems';
+import { TrendingUp, Plus, Search, Printer, Receipt, Eye, EyeOff, X, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+
+const newSaleItem = productId => ({
+    key: `line-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    productId: productId || '',
+    unitType: 'bag',
+    unitQuantity: '',
+    salePricePerUnit: '',
+});
+
 export const SalesPage = () => {
     const { db, t, recordSale } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
@@ -11,13 +21,10 @@ export const SalesPage = () => {
     const [showCostRate, setShowCostRate] = useState(true);
     const [selectedInvoice, setSelectedInvoice] = useState(null);
     // Form State
-    const [productId, setProductId] = useState(db.processedStock[0]?.id || '');
+    const [saleItems, setSaleItems] = useState(() => [newSaleItem(db.processedStock[0]?.id)]);
     const [customerId, setCustomerId] = useState('');
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
-    const [unitType, setUnitType] = useState('bag');
-    const [unitQuantity, setUnitQuantity] = useState('');
-    const [salePricePerUnit, setSalePricePerUnit] = useState('');
     const [currency, setCurrency] = useState('AFN');
     const [paidAmount, setPaidAmount] = useState('');
     const [notes, setNotes] = useState('');
@@ -25,8 +32,6 @@ export const SalesPage = () => {
     const [saveStatus, setSaveStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const saleSaveLock = useRef(false);
-    // Selected Product details
-    const selectedProduct = db.processedStock.find(p => p.id === productId);
     // Quantity in kg calculation
     const getKg = (unit, qty) => {
         if (unit === 'bag')
@@ -35,10 +40,22 @@ export const SalesPage = () => {
             return qty * 1000;
         return qty;
     };
-    const qtyNumber = Number(unitQuantity) || 0;
-    const priceNumber = Number(salePricePerUnit) || 0;
-    const totalQuantityKg = getKg(unitType, qtyNumber);
-    const totalInvoiceAmount = qtyNumber * priceNumber;
+    const calculatedItems = saleItems.map(item => {
+        const product = db.processedStock.find(stock => stock.id === item.productId);
+        const unitQuantity = Number(item.unitQuantity) || 0;
+        const salePricePerUnit = Number(item.salePricePerUnit) || 0;
+        return {
+            ...item,
+            product,
+            productName: product?.name || '',
+            unitQuantity,
+            salePricePerUnit,
+            quantityKg: getKg(item.unitType, unitQuantity),
+            totalAmount: unitQuantity * salePricePerUnit,
+        };
+    });
+    const totalQuantityKg = calculatedItems.reduce((sum, item) => sum + item.quantityKg, 0);
+    const totalInvoiceAmount = calculatedItems.reduce((sum, item) => sum + item.totalAmount, 0);
     const paidNumber = paidAmount === '' ? 0 : Math.max(0, Number(paidAmount) || 0);
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
     const isDuplicateBillNumber = billNumberExists(db.sales, billNumber);
@@ -52,24 +69,32 @@ export const SalesPage = () => {
             setCustomerPhone(existing.phone || '');
     };
     const handleOpenNewSale = () => {
-        setProductId(db.processedStock[0]?.id || '');
+        setSaleItems([newSaleItem(db.processedStock[0]?.id)]);
         setCustomerId('');
         setCustomerName('');
         setCustomerPhone('');
-        setUnitType('bag');
-        setUnitQuantity('');
-        setSalePricePerUnit('');
         setPaidAmount('');
         setNotes('');
         setBillNumber('');
         setSaveStatus(null);
         setIsModalOpen(true);
     };
+    const updateSaleItem = (key, updates) => {
+        setSaleItems(items => items.map(item => item.key === key ? { ...item, ...updates } : item));
+        setSaveStatus(null);
+    };
+    const addSaleItem = () => {
+        setSaleItems(items => [...items, newSaleItem(db.processedStock[0]?.id)]);
+        setSaveStatus(null);
+    };
+    const removeSaleItem = key => {
+        setSaleItems(items => items.length > 1 ? items.filter(item => item.key !== key) : items);
+        setSaveStatus(null);
+    };
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (saleSaveLock.current) return;
         setSaveStatus(null);
-        const productName = selectedProduct ? selectedProduct.name : '';
         if (!cleanBillNumber(billNumber)) {
             setSaveStatus({ type: 'error', text: t.billNumberRequired });
             return;
@@ -78,8 +103,8 @@ export const SalesPage = () => {
             setSaveStatus({ type: 'error', text: t.duplicateBillNumber });
             return;
         }
-        if (!productName) {
-            setSaveStatus({ type: 'error', text: t.pleaseEnterFormulaName || 'Please specify feed name' });
+        if (!calculatedItems.length || calculatedItems.some(item => !item.product || item.unitQuantity <= 0 || item.salePricePerUnit <= 0)) {
+            setSaveStatus({ type: 'error', text: t.saleItemsRequired || 'Select a product and enter a positive quantity and unit price for every item.' });
             return;
         }
         if (!customerName.trim()) {
@@ -90,18 +115,18 @@ export const SalesPage = () => {
             setSaveStatus({ type: 'error', text: t.phoneMustBe10Digits });
             return;
         }
-        if (qtyNumber <= 0 || priceNumber <= 0) {
-            setSaveStatus({ type: 'error', text: t.totalWeightMustBePositive || 'Quantity and price must be greater than zero' });
-            return;
-        }
         if (paidNumber > totalInvoiceAmount) {
             setSaveStatus({ type: 'error', text: t.paidAmountExceedsTotal });
             return;
         }
-        // Check stock if product exists in processed stock
-        if (selectedProduct) {
-            if (selectedProduct.stockKg < totalQuantityKg) {
-                setSaveStatus({ type: 'error', text: `${t.insufficientStockOfItem} "${selectedProduct.name}"! ${t.currentStockLabel}: ${selectedProduct.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${totalQuantityKg.toLocaleString()} ${t.kilo}.` });
+        const requestedByProduct = calculatedItems.reduce((totals, item) => {
+            totals.set(item.product.id, (totals.get(item.product.id) || 0) + item.quantityKg);
+            return totals;
+        }, new Map());
+        for (const [requestedProductId, requestedKg] of requestedByProduct) {
+            const product = db.processedStock.find(item => item.id === requestedProductId);
+            if (!product || product.stockKg < requestedKg) {
+                setSaveStatus({ type: 'error', text: `${t.insufficientStockOfItem} "${product?.name || ''}"! ${t.currentStockLabel}: ${Number(product?.stockKg || 0).toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${requestedKg.toLocaleString()} ${t.kilo}.` });
                 return;
             }
         }
@@ -110,14 +135,16 @@ export const SalesPage = () => {
         try {
             const result = await recordSale({
                 billNumber: cleanBillNumber(billNumber),
-                productName,
-                productId,
+                items: calculatedItems.map(item => ({
+                    productId: item.product.id,
+                    productName: item.product.name,
+                    unitType: item.unitType,
+                    unitQuantity: item.unitQuantity,
+                    salePricePerUnit: item.salePricePerUnit,
+                })),
                 customerId: customerId || undefined,
                 customerName: customerName.trim(),
                 customerPhone: customerPhone.trim() || undefined,
-                unitType,
-                unitQuantity: qtyNumber,
-                salePricePerUnit: priceNumber,
                 currency,
                 paidAmount: paidNumber,
                 notes: notes.trim() || undefined,
@@ -266,6 +293,7 @@ export const SalesPage = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredSales.map((sale) => {
             const isPaidInFull = sale.remainingAmount === 0;
+            const itemLines = getSaleLineItems(sale);
             return (<tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3.5 px-4 font-mono font-bold text-amber-700">
                       #{sale.billNumber || sale.id.slice(-6).toUpperCase()}
@@ -276,11 +304,11 @@ export const SalesPage = () => {
                       {sale.customerPhone && (<div className="text-[11px] text-slate-500 font-mono" dir="ltr">{sale.customerPhone}</div>)}
                     </td>
                     <td className="py-3.5 px-4 font-medium text-slate-800">
-                      {sale.productName}
+                      <div className="space-y-1">{itemLines.map((item, index) => <div key={`${sale.id}-name-${index}`} className="font-bold text-slate-900">{item.productName}</div>)}</div>
                     </td>
                     <td className="py-3.5 px-4 font-mono">
-                      <strong>{sale.unitQuantity}</strong> {t[sale.unitType] || sale.unitType}
-                      <span className="block text-[10px] text-slate-500">({sale.quantityKg.toLocaleString()} {t.kilo})</span>
+                      <div className="space-y-1">{itemLines.map((item, index) => <div key={`${sale.id}-qty-${index}`}><strong>{item.unitQuantity.toLocaleString()}</strong> {saleUnitLabel(item.unitType, t)}</div>)}</div>
+                      <span className="block text-[10px] text-slate-500">{sale.quantityKg.toLocaleString()} {t.kilo}</span>
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
                       {sale.totalAmount.toLocaleString()} {sale.currency || 'AFN'}
@@ -317,7 +345,7 @@ export const SalesPage = () => {
 
       {/* Record New Sale Modal */}
       {isModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative max-h-[92vh] overflow-y-auto text-slate-900">
+          <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 sm:p-6 relative max-h-[92vh] overflow-y-auto overscroll-contain text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-100 text-amber-700">
@@ -339,18 +367,9 @@ export const SalesPage = () => {
                 <input type="text" required value={billNumber} onChange={event=>{setBillNumber(event.target.value);setSaveStatus(null);}} placeholder={t.billNumberPlaceholder} className={`w-full rounded-xl border bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 shadow-2xs focus:outline-none ${isDuplicateBillNumber?'border-rose-500 focus:border-rose-600':'border-slate-300 focus:border-amber-600'}`}/>
                 {isDuplicateBillNumber&&<p className="mt-1 text-xs font-semibold text-rose-700" role="alert">{t.duplicateBillNumber}</p>}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.productName} *</label>
-                <select required value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-600 shadow-2xs font-medium cursor-pointer">
-                  {!db.processedStock.length && <option value="">{t.noProcessedMaterials}</option>}
-                  {db.processedStock.map(p => (<option key={p.id} value={p.id}>{p.name} — {p.stockKg.toLocaleString()} {t.kilo} ({(p.stockKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})</option>))}
-                </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.currency} *</label>
-                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold"><option value="AFN">AFN</option><option value="USD">USD</option></select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.currency} *</label>
+                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold"><option value="AFN">AFN</option><option value="USD">USD</option></select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -372,29 +391,34 @@ export const SalesPage = () => {
 
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.saleUnit}</label>
-                  <select value={unitType} onChange={(e) => { setUnitType(e.target.value); setUnitQuantity(''); setSalePricePerUnit(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold"><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select>
+              <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h4 className="text-sm font-bold text-slate-900">{t.saleItems}</h4><p className="text-[10px] text-slate-500">{t.saleItemsHelp}</p></div>
+                  <button type="button" onClick={addSaleItem} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-200"><Plus className="h-3.5 w-3.5"/>{t.addAnotherItem}</button>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity} *</label>
-                  <input type="number" min="0.001" step="any" required value={unitQuantity} onChange={(e) => setUnitQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">{t.unitSellingPrice} — {t[unitType] || unitType} ({currency}) *</label>
-                  <input type="number" min="0.01" step="any" required value={salePricePerUnit} onChange={(e) => setSalePricePerUnit(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-600"/>
-                </div>
-              </div>
+                {saleItems.map((item, index) => {
+                  const calculatedItem = calculatedItems[index];
+                  return <div key={item.key} className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+                    <div className="mb-2 flex items-center justify-between"><strong className="text-xs text-slate-700">{t.productName} {index + 1}</strong>{saleItems.length > 1 && <button type="button" onClick={()=>removeSaleItem(item.key)} title={t.removeItem} aria-label={t.removeItem} className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4"/></button>}</div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="sm:col-span-2"><span className="mb-1 block text-xs font-semibold text-slate-700">{t.productName} *</span><select required value={item.productId} onChange={event=>updateSaleItem(item.key,{productId:event.target.value})} className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-900 focus:border-amber-600 focus:outline-none"><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+                      <label><span className="mb-1 block text-xs font-semibold text-slate-700">{t.saleUnit}</span><select value={item.unitType} onChange={event=>updateSaleItem(item.key,{unitType:event.target.value,unitQuantity:'',salePricePerUnit:''})} className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold"><option value="bag">{t.statementBag || t.bag}</option><option value="kg">{t.statementKilo || t.kilo}</option><option value="ton">{t.statementTon || t.ton}</option></select></label>
+                      <label><span className="mb-1 block text-xs font-semibold text-slate-700">{t.quantity} *</span><input type="number" min="0.001" step="any" required value={item.unitQuantity} onChange={event=>updateSaleItem(item.key,{unitQuantity:event.target.value})} className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-mono focus:border-amber-600 focus:outline-none"/></label>
+                      <label className="sm:col-span-2"><span className="mb-1 block text-xs font-semibold text-slate-700">{t.unitSellingPrice} — {saleUnitLabel(item.unitType, t)} ({currency}) *</span><input type="number" min="0.01" step="any" required value={item.salePricePerUnit} onChange={event=>updateSaleItem(item.key,{salePricePerUnit:event.target.value})} className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-mono focus:border-amber-600 focus:outline-none"/></label>
+                    </div>
+                    <div className="mt-2 flex flex-wrap justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] text-slate-600"><span>{t.totalSaleWeight}: <strong className="font-mono text-slate-900">{calculatedItem.quantityKg.toLocaleString()} {t.kilo}</strong></span><span>{t.lineTotal}: <strong className="font-mono text-amber-800">{calculatedItem.totalAmount.toLocaleString()} {currency}</strong></span></div>
+                  </div>;
+                })}
+              </section>
 
               <div className="p-4 bg-amber-50/70 rounded-xl border-2 border-amber-300 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalSaleWeight}</span>
-                  <strong className="font-mono text-slate-900">{totalQuantityKg.toLocaleString()} {t.kilo} ({qtyNumber} {t[unitType] || unitType})</strong>
+                  <strong className="font-mono text-slate-900">{totalQuantityKg.toLocaleString()} {t.kilo}</strong>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">{t.totalInvoiceAmount}</span>
-                  <span className="text-end"><strong className="font-mono text-amber-800 text-sm block">{totalInvoiceAmount.toLocaleString()} {currency}</strong><span className="text-[10px] text-slate-500">{qtyNumber.toLocaleString()} {t[unitType] || unitType} × {priceNumber.toLocaleString()} {currency}</span></span>
+                  <span className="text-end"><strong className="font-mono text-amber-800 text-sm block">{totalInvoiceAmount.toLocaleString()} {currency}</strong><span className="text-[10px] text-slate-500">{saleItems.length.toLocaleString()} {t.itemsCountLabel}</span></span>
                 </div>
               </div>
 
@@ -493,12 +517,12 @@ export const SalesPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 print:divide-stone-300">
-                    <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900">{selectedInvoice.productName}</td>
-                      <td className="py-2.5 px-3 font-mono">{selectedInvoice.unitQuantity} {t[selectedInvoice.unitType] || selectedInvoice.unitType} ({selectedInvoice.quantityKg.toLocaleString()} {t.kilo})</td>
-                      <td className="py-2.5 px-3 font-mono">{selectedInvoice.salePricePerUnit.toLocaleString()} {selectedInvoice.currency || 'AFN'}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-end">{selectedInvoice.totalAmount.toLocaleString()}</td>
-                    </tr>
+                    {getSaleLineItems(selectedInvoice).map((item, index) => <tr key={`${selectedInvoice.id}-invoice-item-${index}`}>
+                      <td className="py-2.5 px-3 font-semibold text-slate-900">{item.productName}</td>
+                      <td className="py-2.5 px-3 font-mono">{item.unitQuantity.toLocaleString()} {saleUnitLabel(item.unitType, t)}</td>
+                      <td className="py-2.5 px-3 font-mono">{item.salePricePerUnit.toLocaleString()} {selectedInvoice.currency || 'AFN'}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-end">{item.totalAmount.toLocaleString()}</td>
+                    </tr>)}
                   </tbody>
                 </table>
               </div>

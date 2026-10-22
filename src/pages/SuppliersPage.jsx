@@ -7,10 +7,11 @@ import { normalizeDecimalInput } from '../lib/numberInput';
 import { getTransactionActivityTime, sortTransactionsNewestFirst } from '../lib/transactionSort';
 import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
 import { getTransactionEntryDetails } from '../lib/transactionDetails';
+import { getSaleLineItems, saleUnitLabel } from '../lib/saleLineItems';
 import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, CreditCard, Package, ArrowUpRight, ChevronDown, ChevronUp, CheckCircle, Pencil } from 'lucide-react';
 const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' && (transaction.status || 'active') === 'active' ? Math.max(latest, getTransactionActivityTime(transaction)) : latest, 0);
 export const SuppliersPage = () => {
-    const { db, t, lang, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, updateSupplierTransaction, voidSupplierTransaction, getLocalizedName, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const { db, t, lang, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, updateSupplierTransaction, voidSupplierTransaction, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);
     const [statementMode, setStatementMode] = useState('current');
@@ -43,8 +44,8 @@ export const SuppliersPage = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     // Expanded row IDs for inline transaction histories
     const [expandedSupplierIds, setExpandedSupplierIds] = useState({});
-    const supplierTransactionDescription = transaction => transaction.type === 'purchase' && transaction.itemName
-        ? `${t.supplierPurchaseTx}: ${transaction.itemName}`
+    const supplierTransactionDescription = transaction => ['purchase', 'goods_settlement'].includes(transaction.type)
+        ? ''
         : getLocalizedTxDesc(transaction.description);
     const supplierTransactionDetails = (transaction, supplier) =>
         getTransactionEntryDetails(transaction, supplier, 'supplier', db.sales, t);
@@ -55,6 +56,19 @@ export const SuppliersPage = () => {
           {(!details || details !== description) && description}
           {details && <div className="mt-1 rounded-md bg-slate-50 px-2 py-1 text-[10px] leading-4 text-slate-600"><span className="font-bold text-slate-700">{t.historyDescription}: </span>{details}</div>}
         </>;
+    };
+    const renderGoodsItems = transaction => {
+        if (transaction.type !== 'goods_settlement') return transaction.itemName && <div className="font-bold text-slate-900">{transaction.itemName}</div>;
+        const relatedSale = db.sales.find(sale => sale.id === transaction.sourceSaleId);
+        const items = getSaleLineItems(transaction.lineItems?.length ? transaction : relatedSale || transaction);
+        const transactionBillNumber = transaction.billNumber || relatedSale?.billNumber;
+        return <div className="space-y-1.5">
+          {items.map((item, index) => <div key={`${transaction.id}-item-${index}`} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
+            <strong className="block text-slate-900">{item.productName}</strong>
+            <span className="block font-mono text-[10px] text-slate-600">{item.unitQuantity.toLocaleString()} {saleUnitLabel(item.unitType, t)} × {item.salePricePerUnit.toLocaleString()} {transaction.currency || 'AFN'} = {item.totalAmount.toLocaleString()} {transaction.currency || 'AFN'}</span>
+          </div>)}
+          {transactionBillNumber && <span className="block font-mono text-[10px] text-amber-700">{t.invoiceNumber}: #{transactionBillNumber}</span>}
+        </div>;
     };
     const toggleExpand = (supplierId) => {
         setExpandedSupplierIds(prev => ({
@@ -169,10 +183,16 @@ export const SuppliersPage = () => {
     const totalSettledAll = { AFN: totalCashPaidAll.AFN + totalGoodsSettledAll.AFN, USD: totalCashPaidAll.USD + totalGoodsSettledAll.USD };
     const totalOwedAll = { AFN: db.suppliers.reduce((a,s)=>a+(s.balanceOwed||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.balanceOwedUsd||0),0) };
     const creditorCount = db.suppliers.filter(s => (s.balanceOwed || 0) > 0 || (s.balanceOwedUsd || 0) > 0).length;
+    const normalizedSearch = searchTerm.trim().toLowerCase();
     const filteredSuppliers = db.suppliers.filter(s => {
-        const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (s.phone && s.phone.includes(searchTerm)) ||
-            (s.address && s.address.toLowerCase().includes(searchTerm.toLowerCase()));
+        const hasMatchingBill = normalizedSearch && (
+            (s.transactions || []).some(transaction => String(transaction.billNumber || '').toLowerCase().includes(normalizedSearch))
+            || db.sales.some(sale => String(sale.billNumber || '').toLowerCase().includes(normalizedSearch)
+                && (sale.supplierId === s.id || (!sale.supplierId && sale.customerName?.trim().toLowerCase() === s.name.trim().toLowerCase())))
+        );
+        const matchesSearch = !normalizedSearch || s.name.toLowerCase().includes(normalizedSearch) ||
+            (s.phone && s.phone.includes(normalizedSearch)) ||
+            (s.address && s.address.toLowerCase().includes(normalizedSearch)) || hasMatchingBill;
         if (!matchesSearch)
             return false;
         if (statusFilter === 'creditors') {
@@ -203,7 +223,7 @@ export const SuppliersPage = () => {
           <div className="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none text-slate-400">
             <Search className="w-4 h-4"/>
           </div>
-          <input type="text" placeholder={t.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full ps-10 pe-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+          <input type="text" placeholder={t.searchByNamePhoneBill || t.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full ps-10 pe-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-600 shadow-2xs"/>
           {searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute inset-y-0 end-0 pe-3 flex items-center text-slate-400 hover:text-slate-700 cursor-pointer">
               <X className="w-4 h-4"/>
             </button>)}
@@ -426,8 +446,8 @@ export const SuppliersPage = () => {
                               </button>
                             </div>
 
-                            {sup.transactions && sup.transactions.length > 0 ? (<div className="overflow-x-auto">
-                                <table className="w-full text-xs text-start">
+                            {sup.transactions && sup.transactions.length > 0 ? (<div className="overflow-x-auto overscroll-x-contain touch-pan-x">
+                                <table className="w-full min-w-[1120px] table-auto text-xs text-start">
                                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-[10px]">
                                     <tr>
                                       <th className="py-2 px-3 text-start">{t.dateCol}</th>
@@ -453,8 +473,8 @@ export const SuppliersPage = () => {
                                               {getLocalizedTxType(tr.type)}
                                             </span>)}
                                         </td>
-                                        <td className="py-2.5 px-3 text-slate-700 font-medium">
-                                          {tr.itemName && <div className="font-bold text-slate-900">{tr.itemName}</div>}
+                                        <td className="min-w-[280px] max-w-[380px] whitespace-normal break-words py-2.5 px-3 text-slate-700 font-medium">
+                                          {renderGoodsItems(tr)}
                                           {renderSupplierTransactionText(tr, sup)}
                                           {((tr.status || 'active') !== 'active' || tr.reversalOf) && <div className="mt-1"><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{tr.reversalOf ? t.replacementEntry : (tr.status === 'voided' ? t.voided : t.corrected)}</span>{tr.correctionReason && <span className="ms-2 text-[10px] text-slate-500">{tr.correctionReason}</span>}</div>}
                                         </td>
@@ -549,11 +569,11 @@ export const SuppliersPage = () => {
           <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">{t.goodsSettlementNotice}</p>
           <form onSubmit={handleGoodsSettlement} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{getLocalizedName(product.name)} — {product.stockKg.toLocaleString()} {t.kilo}</option>)}</select></EditField>
+              <EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></EditField>
               <EditField label={`${t.invoiceNumber} *`}><input required type="text" value={goodsBillNumber} onChange={event=>{setGoodsBillNumber(event.target.value);setGoodsError('');}} placeholder={t.billNumberPlaceholder} className={`${controlClass} font-mono ${isDuplicateGoodsBillNumber?'border-rose-500 focus:border-rose-600':''}`}/>{isDuplicateGoodsBillNumber&&<span className="mt-1 block text-xs font-semibold text-rose-700" role="alert">{t.duplicateBillNumber}</span>}</EditField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>{setGoodsUnit(event.target.value);setGoodsPrice('');}} className={controlClass}><option value="bag">{t.unitBag50kg}</option><option value="kg">{t.unitKg}</option><option value="ton">{t.unitTon1000kg}</option></select></EditField>
+              <EditField label={t.saleUnit}><select value={goodsUnit} onChange={event=>{setGoodsUnit(event.target.value);setGoodsPrice('');}} className={controlClass}><option value="bag">{t.statementBag || t.bag}</option><option value="kg">{t.statementKilo || t.kilo}</option><option value="ton">{t.statementTon || t.ton}</option></select></EditField>
               <EditField label={t.quantity}><input required type="number" min="0.001" step="any" value={goodsQuantity} onChange={event=>setGoodsQuantity(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
               <EditField label={`${t.salePrice} — ${t[goodsUnit] || goodsUnit} (${goodsCurrency})`}><input required type="number" min="0.001" step="any" value={goodsPrice} onChange={event=>setGoodsPrice(event.target.value)} onWheel={event=>event.currentTarget.blur()} inputMode="decimal" className={controlClass}/></EditField>
             </div>

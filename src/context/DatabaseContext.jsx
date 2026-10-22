@@ -818,6 +818,15 @@ export const DatabaseProvider = ({ children }) => {
         const costRatePerKgUsd = Number(product.averageCostPerKgUsd) || 0;
         const totalCostOfGoods = costRatePerKg * quantityKg;
         const totalCostOfGoodsUsd = costRatePerKgUsd * quantityKg;
+        const lineItem = {
+            productId: product.id,
+            productName: product.name,
+            unitType: settlement.unitType,
+            unitQuantity,
+            quantityKg,
+            salePricePerUnit,
+            totalAmount,
+        };
         const sale = {
             id: `sale-${timestamp}`,
             billNumber,
@@ -845,6 +854,7 @@ export const DatabaseProvider = ({ children }) => {
             paymentMethod: 'supplier_balance_offset',
             supplierId: supplier.id,
             supplierOffsetAmount: offsetAmount,
+            items: [lineItem],
         };
         const nextState = (() => {
             const updatedProcessedStock = db.processedStock.map(item => item.id === product.id ? { ...item, stockKg: Math.max(0, item.stockKg - quantityKg), lastUpdated: today } : item);
@@ -856,6 +866,7 @@ export const DatabaseProvider = ({ children }) => {
             const newSupplierBalance = newSupplierPosition.debt;
             const supplierTransaction = {
                 id: `st-${timestamp}`,
+                billNumber,
                 itemName: product.name,
                 quantityKg,
                 unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
@@ -864,7 +875,7 @@ export const DatabaseProvider = ({ children }) => {
                 unitPricePerUnit: salePricePerUnit,
                 date: today,
                 type: 'goods_settlement',
-                description: `${t.supplierGoodsSettlement}: ${product.name} (${unitQuantity.toLocaleString()} ${t[settlement.unitType] || settlement.unitType})`,
+                description: settlement.notes?.trim() || '',
                 amount: totalAmount,
                 paidAmount: offsetAmount,
                 cashAmount: 0,
@@ -874,6 +885,7 @@ export const DatabaseProvider = ({ children }) => {
                 currency,
                 productId: product.id,
                 sourceSaleId: sale.id,
+                lineItems: [lineItem],
                 customerDebt: newSupplierPosition.receivable,
             };
             const updatedSuppliers = db.suppliers.map(item => item.id === supplier.id ? {
@@ -1043,7 +1055,6 @@ export const DatabaseProvider = ({ children }) => {
         if (!billNumber) return { success: false, error: t.billNumberRequired };
         if (billNumberExists(db.sales, billNumber)) return { success: false, error: t.duplicateBillNumber };
         if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
-        const quantityKg = convertToKg(saleData.unitType, saleData.unitQuantity);
         const requestedCustomerKey = normalizePartyName(saleData.customerName);
         const matchesSupplier = requestedCustomerKey && (
             canonicalSupplierNames.has(requestedCustomerKey)
@@ -1052,19 +1063,61 @@ export const DatabaseProvider = ({ children }) => {
         if (matchesSupplier) {
             return { success: false, error: t.supplierMustUseGoodsSettlement };
         }
-        // Check processed stock
-        let product = saleData.productId ? db.processedStock.find(p => p.id === saleData.productId) : undefined;
-        if (!product) {
-            product = db.processedStock.find(p => p.name.toLowerCase() === saleData.productName.trim().toLowerCase());
+
+        const requestedItems = Array.isArray(saleData.items) && saleData.items.length
+            ? saleData.items
+            : [{
+                productId: saleData.productId,
+                productName: saleData.productName,
+                unitType: saleData.unitType,
+                unitQuantity: saleData.unitQuantity,
+                salePricePerUnit: saleData.salePricePerUnit,
+            }];
+        const normalizedItems = [];
+        for (const requestedItem of requestedItems) {
+            let product = requestedItem.productId
+                ? db.processedStock.find(item => item.id === requestedItem.productId)
+                : undefined;
+            if (!product && requestedItem.productName) {
+                product = db.processedStock.find(item => item.name.toLowerCase() === String(requestedItem.productName).trim().toLowerCase());
+            }
+            const unitQuantity = Number(requestedItem.unitQuantity);
+            const salePricePerUnit = Number(requestedItem.salePricePerUnit);
+            const unitType = requestedItem.unitType || 'bag';
+            if (!product || !Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(salePricePerUnit) || salePricePerUnit <= 0) {
+                return { success: false, error: t.saleItemsRequired || t.quantityPriceMustBePositive };
+            }
+            const quantityKg = convertToKg(unitType, unitQuantity);
+            normalizedItems.push({
+                productId: product.id,
+                productName: product.name,
+                unitType,
+                unitQuantity,
+                quantityKg,
+                salePricePerUnit,
+                totalAmount: unitQuantity * salePricePerUnit,
+                costRatePerKg: Number(product.averageCostPerKg) || 0,
+                costRatePerKgUsd: Number(product.averageCostPerKgUsd) || 0,
+            });
         }
-        if (product && product.stockKg < quantityKg) {
-            return {
-                success: false,
-                error: `موجودی دانه پروسس شده کافی نیست! موجودی فعلی: ${product.stockKg.toLocaleString()} کیلو، مقدار فروش: ${quantityKg.toLocaleString()} کیلو.`
-            };
+
+        const requestedStockByProduct = normalizedItems.reduce((usage, item) => {
+            usage.set(item.productId, (usage.get(item.productId) || 0) + item.quantityKg);
+            return usage;
+        }, new Map());
+        for (const [productId, requestedKg] of requestedStockByProduct) {
+            const product = db.processedStock.find(item => item.id === productId);
+            if (!product || product.stockKg < requestedKg) {
+                return {
+                    success: false,
+                    error: `${t.insufficientStockOfItem} "${product?.name || ''}"! ${t.currentStockLabel}: ${Number(product?.stockKg || 0).toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${requestedKg.toLocaleString()} ${t.kilo}.`
+                };
+            }
         }
+
         const currency = currencyCode(saleData.currency);
-        const totalAmount = saleData.unitQuantity * saleData.salePricePerUnit;
+        const quantityKg = normalizedItems.reduce((sum, item) => sum + item.quantityKg, 0);
+        const totalAmount = normalizedItems.reduce((sum, item) => sum + item.totalAmount, 0);
         const paidAmount = Math.min(Math.max(0, Number(saleData.paidAmount) || 0), totalAmount);
         if (saleData.customerPhone?.trim() && !/^\d{10}$/.test(saleData.customerPhone.trim())) {
             return { success: false, error: t.phoneMustBe10Digits };
@@ -1073,16 +1126,17 @@ export const DatabaseProvider = ({ children }) => {
             return { success: false, error: t.paidAmountExceedsTotal };
         }
         const remainingAmount = Math.max(0, totalAmount - paidAmount);
-        const costRatePerKg = product ? (product.averageCostPerKg || 0) : 0;
-        const costRatePerKgUsd = product ? (product.averageCostPerKgUsd || 0) : 0;
-        const totalCostOfGoods = costRatePerKg * quantityKg;
-        const totalCostOfGoodsUsd = costRatePerKgUsd * quantityKg;
+        const totalCostOfGoods = normalizedItems.reduce((sum, item) => sum + (item.costRatePerKg * item.quantityKg), 0);
+        const totalCostOfGoodsUsd = normalizedItems.reduce((sum, item) => sum + (item.costRatePerKgUsd * item.quantityKg), 0);
+        const costRatePerKg = quantityKg > 0 ? totalCostOfGoods / quantityKg : 0;
         const profit = (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods;
         const profitUsd = (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd;
         const today = new Date().toISOString().split('T')[0];
         const operationTimestamp = Date.now();
         const saleId = `sale-${operationTimestamp}`;
         const customerTransactionId = `ct-${operationTimestamp}`;
+        const firstItem = normalizedItems[0];
+        const storedItems = normalizedItems.map(({ costRatePerKg: _costRatePerKg, costRatePerKgUsd: _costRatePerKgUsd, ...item }) => item);
         const newSale = {
             id: saleId,
             billNumber,
@@ -1090,12 +1144,12 @@ export const DatabaseProvider = ({ children }) => {
             customerId: saleData.customerId || '',
             customerName: saleData.customerName.trim(),
             customerPhone: saleData.customerPhone?.trim(),
-            productId: product?.id || saleData.productId || '',
-            productName: saleData.productName.trim(),
-            unitType: saleData.unitType,
-            unitQuantity: saleData.unitQuantity,
+            productId: firstItem.productId,
+            productName: firstItem.productName,
+            unitType: firstItem.unitType,
+            unitQuantity: firstItem.unitQuantity,
             quantityKg,
-            salePricePerUnit: saleData.salePricePerUnit,
+            salePricePerUnit: firstItem.salePricePerUnit,
             totalAmount,
             costRatePerKg,
             totalCostOfGoods,
@@ -1107,24 +1161,17 @@ export const DatabaseProvider = ({ children }) => {
             remainingAmount,
             notes: saleData.notes?.trim(),
             currency,
+            items: storedItems,
         };
         const nextState = (() => {
             const prev = db;
-            // 1. Deduct processed stock
-            let updatedProcessedStock = prev.processedStock;
-            if (product) {
-                updatedProcessedStock = prev.processedStock.map(p => {
-                    if (p.id === product.id) {
-                        const updated = {
-                            ...p,
-                            stockKg: Math.max(0, p.stockKg - quantityKg),
-                            lastUpdated: today,
-                        };
-                        return updated;
-                    }
-                    return p;
-                });
-            }
+            // 1. Deduct every product line from processed stock once.
+            const updatedProcessedStock = prev.processedStock.map(product => {
+                const usedKg = requestedStockByProduct.get(product.id) || 0;
+                return usedKg > 0
+                    ? { ...product, stockKg: Math.max(0, product.stockKg - usedKg), lastUpdated: today }
+                    : product;
+            });
             // 2. Auto register/update customer
             let updatedCustomers = [...prev.customers];
             let assignedCustId = saleData.customerId;
@@ -1134,17 +1181,19 @@ export const DatabaseProvider = ({ children }) => {
                 (saleData.customerPhone?.trim() && c.phone === saleData.customerPhone.trim()));
             const customerTransaction = {
                 id: customerTransactionId,
-                itemName: saleData.productName,
-                productId: product?.id || saleData.productId || '',
+                billNumber,
+                itemName: firstItem.productName,
+                productId: firstItem.productId,
                 sourceSaleId: saleId,
+                lineItems: storedItems,
                 quantityKg,
                 unitPrice: quantityKg > 0 ? totalAmount / quantityKg : 0,
-                unitType: saleData.unitType,
-                unitQuantity: Number(saleData.unitQuantity),
-                unitPricePerUnit: Number(saleData.salePricePerUnit),
+                unitType: firstItem.unitType,
+                unitQuantity: firstItem.unitQuantity,
+                unitPricePerUnit: firstItem.salePricePerUnit,
                 date: today,
                 type: 'sale',
-                description: `فروش ${saleData.productName} (${saleData.unitQuantity} ${t[saleData.unitType] || saleData.unitType})`,
+                description: saleData.notes?.trim() || '',
                 amount: totalAmount,
                 paidAmount,
                 cashAmount: paidAmount,

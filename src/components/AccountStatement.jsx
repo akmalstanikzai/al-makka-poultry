@@ -1,6 +1,7 @@
 import React from 'react';
 import { sortTransactionsNewestFirst } from '../lib/transactionSort';
 import { findRelatedSale, getTransactionEntryDetails } from '../lib/transactionDetails';
+import { getSaleLineItems, saleUnitLabel } from '../lib/saleLineItems';
 
 const amount = value => Number(value || 0);
 const money = (value, currency) => `${amount(value).toLocaleString()} ${currency || 'AFN'}`;
@@ -16,6 +17,9 @@ const getStatementRow = (transaction, party, role, sales, t) => {
         || (transaction.type === 'payment' ? t.statementCashPayment
             : transaction.type === 'cash_given' ? t.cashGivenToCustomer
                 : transaction.type === 'transport_fee' ? t.transportFeeEntry : '-');
+    const lineItems = ['sale', 'goods_settlement'].includes(transaction.type)
+        ? getSaleLineItems(transaction.lineItems?.length ? transaction : relatedSale || transaction)
+        : [];
     return {
         ...transaction,
         itemName,
@@ -24,6 +28,7 @@ const getStatementRow = (transaction, party, role, sales, t) => {
         pricePerUnit,
         billNumber: transaction.billNumber || relatedSale?.billNumber || '',
         notes: getTransactionEntryDetails(transaction, party, role, sales, t),
+        lineItems,
     };
 };
 
@@ -36,7 +41,11 @@ const unitText = (row, t) => {
 const quantityTotals = (rows, t, role) => {
     const primaryTransactionType = role === 'customer' ? 'sale' : 'purchase';
     const totals = rows.reduce((result, row) => {
-        if (row.type === primaryTransactionType && row.unitType && row.unitQuantity != null) result[row.unitType] = (result[row.unitType] || 0) + amount(row.unitQuantity);
+        if (row.type !== primaryTransactionType) return result;
+        if (row.lineItems?.length) {
+            row.lineItems.forEach(item => { result[item.unitType] = (result[item.unitType] || 0) + amount(item.unitQuantity); });
+        }
+        else if (row.unitType && row.unitQuantity != null) result[row.unitType] = (result[row.unitType] || 0) + amount(row.unitQuantity);
         return result;
     }, {});
     return ['bag', 'kg', 'ton']
@@ -98,14 +107,14 @@ export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit =
               return <tr key={row.id} className={`statement-row border-t border-slate-200 odd:bg-white even:bg-slate-50 align-top ${inactive ? 'text-slate-500 line-through opacity-70' : ''}`}>
               <td className="p-2 font-mono text-slate-500">{rows.length - index}</td>
               <td dir="ltr" className="p-2 font-mono whitespace-nowrap">{row.date}</td>
-              <td className="p-2 min-w-28">
-                <strong className="block text-slate-900">{row.itemName}</strong>
+              <td className="p-2 min-w-36">
+                {row.lineItems?.length ? row.lineItems.map((item, itemIndex) => <strong key={`${row.id}-product-${itemIndex}`} className="block min-h-5 text-slate-900">{item.productName}</strong>) : <strong className="block text-slate-900">{row.itemName}</strong>}
                 {row.billNumber && <span className="mt-0.5 block font-mono text-[9px] text-slate-500">{t.invoiceNumber}: #{row.billNumber}</span>}
                 {row.notes && <span className="statement-note mt-1 block text-[9px] leading-4 text-slate-600">{row.notes}</span>}
               </td>
-              <td className="p-2 font-mono whitespace-nowrap">{unitText(row, t)}</td>
-              <td dir="ltr" className="p-2 font-mono whitespace-nowrap">{row.pricePerUnit == null ? '-' : money(row.pricePerUnit, row.currency)}</td>
-              <td dir="ltr" className="p-2 font-mono font-bold whitespace-nowrap">{row.type === 'payment' ? '-' : money(row.amount, row.currency)}</td>
+              <td className="p-2 font-mono whitespace-nowrap">{row.lineItems?.length ? row.lineItems.map((item, itemIndex) => <span key={`${row.id}-quantity-${itemIndex}`} className="block min-h-5">{item.unitQuantity.toLocaleString()} {saleUnitLabel(item.unitType, t)}</span>) : unitText(row, t)}</td>
+              <td dir="ltr" className="p-2 font-mono whitespace-nowrap">{row.lineItems?.length ? row.lineItems.map((item, itemIndex) => <span key={`${row.id}-price-${itemIndex}`} className="block min-h-5">{money(item.salePricePerUnit, row.currency)}</span>) : row.pricePerUnit == null ? '-' : money(row.pricePerUnit, row.currency)}</td>
+              <td dir="ltr" className="p-2 font-mono font-bold whitespace-nowrap">{row.type === 'payment' ? '-' : row.lineItems?.length ? <>{row.lineItems.map((item, itemIndex) => <span key={`${row.id}-total-${itemIndex}`} className="block min-h-5">{money(item.totalAmount, row.currency)}</span>)}{row.lineItems.length > 1 && <span className="mt-1 block border-t border-slate-300 pt-1">{money(row.amount, row.currency)}</span>}</> : money(row.amount, row.currency)}</td>
               <td dir="ltr" className="p-2 font-mono text-emerald-700 font-bold whitespace-nowrap">{row.type === 'cash_given' || row.type === 'transport_fee' ? '-' : money(row.paidAmount, row.currency)}</td>
               <td dir="ltr" className="p-2 font-mono text-rose-700 font-bold whitespace-nowrap">{money(row.accountBalanceAfter ?? row.remainingAmount, row.currency)}</td>
               {audit && <td className="p-2 min-w-24 no-underline">
