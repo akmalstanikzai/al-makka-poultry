@@ -530,12 +530,12 @@ export const CustomersPage = () => {
 
                     {/* Inline Expandable Transaction Histories Row */}
                     {isExpanded && (<tr className="bg-slate-50/90 border-b border-slate-200">
-                        <td colSpan={7} className="p-4">
-                          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-                            <div className="p-3 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                        <td colSpan={7} className="min-w-0 p-2 sm:p-4">
+                          <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                            <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-100/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="flex min-w-0 items-center gap-2">
                                 <History className="w-4 h-4 text-blue-600"/>
-                                <span className="font-bold text-xs text-slate-800">
+                                <span className="min-w-0 break-words font-bold text-xs text-slate-800">
                                   {t.detailedTransactionRecordFor} {cust.name}
                                 </span>
                               </div>
@@ -545,7 +545,35 @@ export const CustomersPage = () => {
                               </button>
                             </div>
 
-                            {cust.transactions && cust.transactions.length > 0 ? (<div className="overflow-x-auto overscroll-x-contain touch-pan-x">
+                            {cust.transactions && cust.transactions.length > 0 ? (<>
+                              <div className="grid gap-3 p-3 2xl:hidden">
+                                {sortTransactionsNewestFirst(cust.transactions).map((tr) => (<article key={tr.id} className={`min-w-0 rounded-xl border border-slate-200 p-3 ${(tr.status || 'active') !== 'active' ? 'bg-slate-50 opacity-70' : 'bg-white'}`}>
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                      <span className="font-mono text-xs text-slate-600">{tr.date}</span>
+                                      {tr.type === 'sale' ? (<span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"><Receipt className="h-3 w-3"/>{getLocalizedTxType(tr.type)}</span>) : ['cash_given', 'transport_fee'].includes(tr.type) ? (<span className="inline-flex items-center gap-1 rounded bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700"><HandCoins className="h-3 w-3"/>{getLocalizedTxType(tr.type)}</span>) : (<span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><ArrowDownLeft className="h-3 w-3"/>{getLocalizedTxType(tr.type)}</span>)}
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1 print:hidden">
+                                      <button type="button" disabled={(tr.status || 'active') !== 'active'} onClick={() => setEditingHistoryEntry({ partyId: cust.id, partyName: cust.name, transaction: tr })} className="rounded-lg bg-blue-50 p-2 text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40" title={t.editHistoryEntry} aria-label={t.editHistoryEntry}><Pencil className="h-4 w-4"/></button>
+                                      <button type="button" disabled={(tr.status || 'active') !== 'active'} onClick={() => setDeletingHistoryEntry({ partyId: cust.id, partyName: cust.name, transaction: tr })} className="rounded-lg bg-rose-50 p-2 text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40" title={t.voidHistoryEntry} aria-label={t.voidHistoryEntry}><Trash2 className="h-4 w-4"/></button>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 min-w-0 break-words rounded-lg bg-slate-50 p-2 text-xs font-medium text-slate-700">
+                                    <span className="mb-1 block text-[10px] font-semibold text-slate-500">{t.descOrGoods}</span>
+                                    {renderSaleItems(tr)}
+                                    {renderCustomerTransactionText(tr, cust)}
+                                    {((tr.status || 'active') !== 'active' || tr.reversalOf) && <div className="mt-1"><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{tr.reversalOf ? t.replacementEntry : (tr.status === 'voided' ? t.voided : t.corrected)}</span>{tr.correctionReason && <span className="ms-2 text-[10px] text-slate-500">{tr.correctionReason}</span>}</div>}
+                                  </div>
+                                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-5">
+                                    <div className="min-w-0 rounded-lg border border-slate-100 p-2"><dt className="text-[10px] text-slate-500">{t.quantity}</dt><dd className="mt-1 break-words font-mono text-slate-700">{tr.quantityKg != null ? `${Number(tr.quantityKg).toLocaleString()} kg` : '-'}</dd></div>
+                                    <div className="min-w-0 rounded-lg border border-slate-100 p-2"><dt className="text-[10px] text-slate-500">{t.unitPriceKilo}</dt><dd className="mt-1 break-words font-mono text-slate-700">{tr.unitPrice != null ? `${Number(tr.unitPrice).toLocaleString()} ${tr.currency || 'AFN'}` : '-'}</dd></div>
+                                    <div className="min-w-0 rounded-lg border border-slate-100 p-2"><dt className="text-[10px] text-slate-500">{t.invoiceAmount}</dt><dd className="mt-1 break-words font-mono font-bold text-slate-900">{tr.amount ? `${tr.amount.toLocaleString()} ${tr.currency || 'AFN'}` : '-'}</dd></div>
+                                    <div className="min-w-0 rounded-lg border border-slate-100 p-2"><dt className="text-[10px] text-slate-500">{t.paymentOrDebtReduction}</dt><dd className="mt-1 break-words font-mono font-bold text-emerald-700">{['cash_given', 'transport_fee'].includes(tr.type) ? '-' : `${Number(tr.paidAmount || 0).toLocaleString()} ${tr.currency || 'AFN'}`}</dd></div>
+                                    <div className="col-span-2 min-w-0 rounded-lg border border-slate-100 p-2 sm:col-span-1"><dt className="text-[10px] text-slate-500">{t.remainingDebtBalance}</dt><dd className="mt-1 break-words font-mono font-bold text-rose-700">{Number(tr.accountBalanceAfter ?? tr.remainingAmount ?? 0).toLocaleString()} {tr.currency || 'AFN'}</dd></div>
+                                  </dl>
+                                </article>))}
+                              </div>
+                              <div className="hidden overflow-x-auto overscroll-x-contain touch-pan-x 2xl:block">
                                 <table className="w-full min-w-[1120px] table-auto text-xs text-start">
                                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-[10px]">
                                     <tr>
@@ -601,7 +629,8 @@ export const CustomersPage = () => {
                                       </tr>))}
                                   </tbody>
                                 </table>
-                              </div>) : (<div className="p-6 text-center text-slate-400 text-xs">
+                              </div>
+                            </>) : (<div className="p-6 text-center text-slate-400 text-xs">
                                 {t.noTxRecorded}
                               </div>)}
                           </div>
