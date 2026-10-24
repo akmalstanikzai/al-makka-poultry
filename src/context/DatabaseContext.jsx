@@ -983,7 +983,7 @@ export const DatabaseProvider = ({ children }) => {
         void deleteSupplierFromSupabase(supplierId);
     };
     // 2. PRODUCE A BATCH. A formula is saved only through saveFormulaTemplate.
-    const createFormulaAndProduce = async (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0, savedFormulaId = null, batchExpenseCurrency = 'AFN', processingDate) => {
+    const createFormulaAndProduce = async (name, ingredients, description, operatorName, produceBatchImmediately = true, batchExpenses = 0, savedFormulaId = null, batchExpenseCurrency = 'AFN', processingDate, outputStockId = '') => {
         const materialUsage = new Map();
         for (const ingredient of ingredients) {
             const weight = Number(ingredient.weightKg) || 0;
@@ -997,6 +997,15 @@ export const DatabaseProvider = ({ children }) => {
         const recordDate = normalizeRecordDate(processingDate);
         const operationTimestamp = Date.now();
         const linkedFormulaId = savedFormulaId && db.formulas.some(formula => formula.id === savedFormulaId) ? savedFormulaId : null;
+        const linkedFormula = linkedFormulaId ? db.formulas.find(formula => formula.id === linkedFormulaId) : null;
+        const createNewOutputStock = outputStockId === '__new__';
+        const requestedOutputStockId = createNewOutputStock ? '' : String(outputStockId || linkedFormula?.outputStockId || '').trim();
+        const requestedOutputStock = requestedOutputStockId
+            ? db.processedStock.find(stock => stock.id === requestedOutputStockId)
+            : null;
+        if (requestedOutputStockId && !requestedOutputStock) {
+            return { success: false, error: 'The selected processed-stock destination no longer exists. Please select it again.' };
+        }
         let totalWeight = 0;
         const costs = { AFN: 0, USD: 0 };
         ingredients.forEach(ing => {
@@ -1010,36 +1019,47 @@ export const DatabaseProvider = ({ children }) => {
         costs[expenseCurrency] += Number(batchExpenses) || 0;
         const costPerKg = totalWeight > 0 ? costs.AFN / totalWeight : 0;
         const costPerKgUsd = totalWeight > 0 ? costs.USD / totalWeight : 0;
-        const newBatch = {
-            id: `batch-${operationTimestamp}`, formulaId: linkedFormulaId, formulaName: name, date: recordDate,
-            totalWeightKg: totalWeight, costPerKg, costPerKgUsd, totalCost: costs.AFN, totalCostUsd: costs.USD,
-            operatorName: operatorName || 'مسئول تولید',
-            notes: description || `پروسس خودکار: ${name} (${totalWeight.toLocaleString()} کیلو)`,
-        };
         const updatedRaw = db.rawMaterials.map(rm => {
             const usedWeight = materialUsage.get(rm.id) || 0;
             return usedWeight > 0 ? { ...rm, stockKg: Math.max(0, rm.stockKg - usedWeight) } : rm;
         });
         const normalizedProductName = normalizeStockName(name);
-        const existingProcessedIndex = db.processedStock.findIndex(ps => normalizeStockName(ps.name) === normalizedProductName);
+        const existingProcessedIndex = createNewOutputStock
+            ? -1
+            : requestedOutputStock
+            ? db.processedStock.findIndex(stock => stock.id === requestedOutputStock.id)
+            : db.processedStock.findIndex(stock => normalizeStockName(stock.name) === normalizedProductName);
         let updatedProcessedStock;
+        let destinationStockId;
         if (existingProcessedIndex >= 0) {
             const existing = db.processedStock[existingProcessedIndex];
+            destinationStockId = existing.id;
             const newTotalKg = existing.stockKg + totalWeight;
             const avgAfn = newTotalKg > 0 ? ((existing.stockKg * (existing.averageCostPerKg || 0)) + costs.AFN) / newTotalKg : costPerKg;
             const avgUsd = newTotalKg > 0 ? ((existing.stockKg * (existing.averageCostPerKgUsd || 0)) + costs.USD) / newTotalKg : costPerKgUsd;
             updatedProcessedStock = [...db.processedStock];
             updatedProcessedStock[existingProcessedIndex] = { ...existing, stockKg: newTotalKg, averageCostPerKg: avgAfn, averageCostPerKgUsd: avgUsd, lastUpdated: recordDate };
         } else {
-            updatedProcessedStock = [{ id: `ps-${operationTimestamp}`, name: name.trim(), formulaId: linkedFormulaId, stockKg: totalWeight, averageCostPerKg: costPerKg, averageCostPerKgUsd: costPerKgUsd, lastUpdated: recordDate }, ...db.processedStock];
+            destinationStockId = `ps-${operationTimestamp}`;
+            updatedProcessedStock = [{ id: destinationStockId, name: name.trim(), formulaId: linkedFormulaId, stockKg: totalWeight, averageCostPerKg: costPerKg, averageCostPerKgUsd: costPerKgUsd, lastUpdated: recordDate }, ...db.processedStock];
         }
+        const newBatch = {
+            id: `batch-${operationTimestamp}`, formulaId: linkedFormulaId, processedStockId: destinationStockId, formulaName: name, date: recordDate,
+            totalWeightKg: totalWeight, costPerKg, costPerKgUsd, totalCost: costs.AFN, totalCostUsd: costs.USD,
+            operatorName: operatorName || 'مسئول تولید',
+            notes: description || `پروسس خودکار: ${name} (${totalWeight.toLocaleString()} کیلو)`,
+        };
+        const updatedFormulas = linkedFormulaId
+            ? db.formulas.map(formula => formula.id === linkedFormulaId ? { ...formula, outputStockId: destinationStockId } : formula)
+            : db.formulas;
         const expense = Number(batchExpenses) > 0 ? { id: `exp-${operationTimestamp}`, date: recordDate, category: 'electricity', description: `مصارف تولید بچ: ${name}`, amount: Number(batchExpenses), currency: expenseCurrency, paidBy: operatorName || 'مسئول فابریکه' } : null;
-        const nextState = { ...db, rawMaterials: updatedRaw, processedStock: updatedProcessedStock, formulas: db.formulas, productionBatches: produceBatchImmediately ? [newBatch, ...db.productionBatches] : db.productionBatches, expenses: expense ? [expense, ...db.expenses] : db.expenses, ...(expense ? cashPatch(db, -expense.amount, expense.currency) : {}) };
-        const expectedProduct = updatedProcessedStock.find(item => normalizeStockName(item.name) === normalizedProductName);
+        const nextState = { ...db, rawMaterials: updatedRaw, processedStock: updatedProcessedStock, formulas: updatedFormulas, productionBatches: produceBatchImmediately ? [newBatch, ...db.productionBatches] : db.productionBatches, expenses: expense ? [expense, ...db.expenses] : db.expenses, ...(expense ? cashPatch(db, -expense.amount, expense.currency) : {}) };
+        const expectedProduct = updatedProcessedStock.find(item => item.id === destinationStockId);
         const saved = await commitConfirmedState(nextState, state =>
             state.productionBatches.some(batch => batch.id === newBatch.id)
             && state.processedStock.some(item => item.id === expectedProduct?.id
                 && Math.abs(item.stockKg - expectedProduct.stockKg) < 0.001)
+            && (!linkedFormulaId || state.formulas.some(formula => formula.id === linkedFormulaId && formula.outputStockId === destinationStockId))
             && updatedRaw.filter(item => materialUsage.has(item.id)).every(expected =>
                 state.rawMaterials.some(item => item.id === expected.id
                     && Math.abs(item.stockKg - expected.stockKg) < 0.001)));
@@ -1047,7 +1067,7 @@ export const DatabaseProvider = ({ children }) => {
         return { success: true };
     };
     // SAVE OR UPDATE A REUSABLE FORMULA WITHOUT PRODUCING A BATCH
-    const saveFormulaTemplate = async (name, ingredients, description, formulaId) => {
+    const saveFormulaTemplate = async (name, ingredients, description, formulaId, outputStockId) => {
         if (!name.trim())
             return { success: false, error: t.pleaseEnterFormulaName };
         let totalWeight = 0;
@@ -1077,6 +1097,12 @@ export const DatabaseProvider = ({ children }) => {
             return { success: false, error: t.totalWeightMustBePositive };
         const id = formulaId || `form-${Date.now()}`;
         const existing = db.formulas.find(formula => formula.id === id);
+        const resolvedOutputStockId = outputStockId === undefined
+            ? (existing?.outputStockId || '')
+            : outputStockId === '__new__' ? '' : String(outputStockId || '');
+        if (resolvedOutputStockId && !db.processedStock.some(stock => stock.id === resolvedOutputStockId)) {
+            return { success: false, error: 'The selected processed-stock destination was not found.' };
+        }
         const formula = {
             id,
             name: name.trim(),
@@ -1088,6 +1114,7 @@ export const DatabaseProvider = ({ children }) => {
             costPerKg: totalCosts.AFN / totalWeight,
             costPerKgUsd: totalCosts.USD / totalWeight,
             createdDate: existing?.createdDate || new Date().toISOString().split('T')[0],
+            outputStockId: resolvedOutputStockId,
         };
         const nextState = {
             ...db,

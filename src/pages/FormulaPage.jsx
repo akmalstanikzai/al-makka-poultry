@@ -20,7 +20,15 @@ const getTodayDate = () => {
 };
 export const FormulaPage = () => {
     const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula } = useDatabase();
+    const batchLabels = lang === 'fa' ? {
+        savedFormula: 'انتخاب فرمول ذخیره‌شده', newFormula: 'فرمول جدید / دستی', outputStock: 'موجودی پروسس‌شده مقصد', selectOutput: 'موجودی مقصد را انتخاب کنید', createNew: 'ایجاد موجودی جدید با نام فرمول', outputHelp: 'محصول این بچ دقیقاً به موجودی انتخاب‌شده افزوده می‌شود و این انتخاب برای فرمول ذخیره می‌گردد.', outputRequired: 'موجودی پروسس‌شده مقصد را انتخاب کنید.', linkedStock: 'موجودی مرتبط', batchDestination: 'موجودی دریافت‌کننده'
+    } : lang === 'ps' ? {
+        savedFormula: 'خوندي شوی فورمول وټاکئ', newFormula: 'نوی / لاسي فورمول', outputStock: 'د پروسس شوو توکو هدف موجودي', selectOutput: 'هدف موجودي وټاکئ', createNew: 'د فورمول په نوم نوې موجودي جوړه کړئ', outputHelp: 'د دې بچ محصول به ټاکل شوې موجودۍ ته ورزیات شي او دا ټاکنه به د فورمول لپاره خوندي شي.', outputRequired: 'د پروسس شوو توکو هدف موجودي وټاکئ.', linkedStock: 'تړلې موجودي', batchDestination: 'ترلاسه کوونکې موجودي'
+    } : {
+        savedFormula: 'Select saved formula', newFormula: 'New / custom formula', outputStock: 'Processed-stock destination', selectOutput: 'Select destination stock', createNew: 'Create new stock using formula name', outputHelp: 'This batch will be added to the exact selected stock record, and the selection will be remembered for this formula.', outputRequired: 'Select the processed-stock destination.', linkedStock: 'Linked stock', batchDestination: 'Receiving stock'
+    };
     const [loadedFormulaId, setLoadedFormulaId] = useState(null);
+    const [outputStockId, setOutputStockId] = useState('');
     const [formulaName, setFormulaName] = useState('');
     const [description, setDescription] = useState('');
     const [operatorName, setOperatorName] = useState('');
@@ -146,6 +154,9 @@ export const FormulaPage = () => {
         setLoadedFormulaId(formula.id);
         setFormulaName(formula.name);
         setDescription(formula.description || '');
+        const rememberedStock = db.processedStock.find(stock => stock.id === formula.outputStockId);
+        const sameNameStocks = db.processedStock.filter(stock => stock.name.normalize('NFKC').trim().toLocaleLowerCase() === formula.name.normalize('NFKC').trim().toLocaleLowerCase());
+        setOutputStockId(rememberedStock?.id || (sameNameStocks.length === 1 ? sameNameStocks[0].id : ''));
         setIngredients((formula.ingredients || []).map(ingredient =>
             createIngredientRow(ingredient.rawMaterialId, ingredient.weightKg)));
         setProductionQuantity('');
@@ -159,7 +170,7 @@ export const FormulaPage = () => {
         setMessage(null);
         setIsSavingFormula(true);
         try {
-            const result = await saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined);
+            const result = await saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined, outputStockId);
             if (result.success) {
                 setLoadedFormulaId(result.formulaId);
                 setMessage({
@@ -198,6 +209,10 @@ export const FormulaPage = () => {
             setProcessStatus({ type: 'error', text: t.processingDateRequired });
             return;
         }
+        if (!outputStockId) {
+            setProcessStatus({ type: 'error', text: batchLabels.outputRequired });
+            return;
+        }
         // Check combined usage so duplicate lines cannot bypass stock validation.
         const checkedMaterialIds = new Set();
         for (const ing of scaledIngredients) {
@@ -220,7 +235,7 @@ export const FormulaPage = () => {
         }
         setIsProducing(true);
         try {
-            const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency, processingDate);
+            const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency, processingDate, outputStockId);
             if (result.success) {
                 setProcessStatus({
                     type: 'success',
@@ -234,6 +249,7 @@ export const FormulaPage = () => {
                 setProductionQuantity('');
                 setProcessingDate(getTodayDate());
                 setLoadedFormulaId(null);
+                setOutputStockId('');
             }
             else {
                 setProcessStatus({
@@ -356,6 +372,28 @@ export const FormulaPage = () => {
             <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
               <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center">1</span>
               <span>{t.formulaDetailsStep}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+              <div>
+                <label className="block text-xs font-bold text-amber-950 mb-1">{batchLabels.savedFormula}</label>
+                <select value={loadedFormulaId || ''} onChange={(event) => {
+                    const formula = db.formulas.find(item => item.id === event.target.value);
+                    if (formula) handleLoadFormula(formula);
+                    else { setLoadedFormulaId(null); setOutputStockId(''); }
+                }} className="w-full min-w-0 bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-amber-600">
+                  <option value="">{batchLabels.newFormula}</option>
+                  {db.formulas.map(formula => <option key={formula.id} value={formula.id}>{formula.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-amber-950 mb-1">{batchLabels.outputStock} *</label>
+                <select required value={outputStockId} onChange={(event) => setOutputStockId(event.target.value)} className="w-full min-w-0 bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-amber-600">
+                  <option value="">{batchLabels.selectOutput}</option>
+                  {db.processedStock.map(stock => <option key={stock.id} value={stock.id}>{stock.name} — {Number(stock.stockKg || 0).toLocaleString()} {t.kilo} — ID {String(stock.id).slice(-6)}</option>)}
+                  <option value="__new__">＋ {batchLabels.createNew}</option>
+                </select>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-amber-800">{batchLabels.outputHelp}</p>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               <div>
@@ -775,6 +813,7 @@ export const FormulaPage = () => {
                 const formulaBags = Math.round((formulaWeightKg / 50) * 100) / 100;
                 const costTon = { AFN: (f.costPerKg || 0) * 1000, USD: (f.costPerKgUsd || 0) * 1000 };
                 const costBag = { AFN: (f.costPerKg || 0) * 50, USD: (f.costPerKgUsd || 0) * 50 };
+                const linkedStock = db.processedStock.find(stock => stock.id === f.outputStockId);
                 return (<div key={f.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col justify-between">
                   <div>
                     <div className="flex items-start justify-between gap-2">
@@ -809,6 +848,10 @@ export const FormulaPage = () => {
                           {(f.totalBatchCost || 0).toLocaleString()} AFN · {(f.totalBatchCostUsd || 0).toLocaleString()} USD
                         </span>
                       </div>
+                      <div className="flex justify-between gap-3 text-slate-600">
+                        <span>{batchLabels.linkedStock}:</span>
+                        <span className={`font-bold text-end ${linkedStock ? 'text-amber-800' : 'text-slate-400'}`}>{linkedStock?.name || '—'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -836,12 +879,14 @@ export const FormulaPage = () => {
             const batchWeightKg = Number(b.totalWeightKg) || 0;
             const batchTons = batchWeightKg / 1000;
             const batchBags = Math.round((batchWeightKg / 50) * 100) / 100;
+            const receivingStock = db.processedStock.find(stock => stock.id === b.processedStockId);
             return (<div key={b.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div>
                   <h4 className="font-bold text-slate-900">{b.formulaName}</h4>
                   <span className="text-[11px] text-slate-500">
                     {t.date}: {b.date} {b.operatorName ? `• ${t.operatorNameLabel}: ${b.operatorName}` : ''}
                   </span>
+                  {receivingStock && <span className="mt-1 block text-[11px] font-semibold text-amber-700">{batchLabels.batchDestination}: {receivingStock.name}</span>}
                 </div>
                 <div className="text-end">
                   <span className="font-bold font-mono text-slate-900 text-sm block">

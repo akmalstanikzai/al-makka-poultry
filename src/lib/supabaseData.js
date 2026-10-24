@@ -435,11 +435,13 @@ export async function loadStateFromSupabase() {
                 costPerKg: totalWeight > 0 ? totalCost / totalWeight : 0,
                 costPerKgUsd: totalWeight > 0 ? totalCostUsd / totalWeight : 0,
                 createdDate: f.date_created || '',
+                outputStockId: f.output_stock_id || '',
             };
         });
         const productionBatches = (batchRes.data || []).map(b => ({
             id: b.id,
             formulaId: b.formula_id || '',
+            processedStockId: b.processed_stock_id || '',
             formulaName: b.formula_name || '',
             date: b.date,
             totalWeightKg: Number(b.total_weight_kg) || 0,
@@ -701,6 +703,7 @@ export async function writeStateToSupabase(state) {
                 description: f.description || null,
                 ingredients: f.ingredients,
                 date_created: f.createdDate,
+                output_stock_id: f.outputStockId || null,
             }));
             await checked(supabase.from('formulas').upsert(formRows), 'formulas seed');
         }
@@ -709,6 +712,7 @@ export async function writeStateToSupabase(state) {
             const batchRows = state.productionBatches.map(b => ({
                 id: b.id,
                 formula_id: b.formulaId || null,
+                processed_stock_id: b.processedStockId || null,
                 formula_name: b.formulaName,
                 date: b.date,
                 total_weight_kg: b.totalWeightKg,
