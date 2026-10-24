@@ -1,4 +1,5 @@
 export { CustomersPage } from './CustomersPage';
+export { CounterSalesPage } from './CounterSalesPage';
 export { DashboardPage } from './DashboardPage';
 export { ExpensesPage } from './ExpensesPage';
 export { FormulaPage } from './FormulaPage';

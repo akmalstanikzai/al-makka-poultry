@@ -58,7 +58,7 @@ export const SalesPage = () => {
     const totalInvoiceAmount = calculatedItems.reduce((sum, item) => sum + item.totalAmount, 0);
     const paidNumber = paidAmount === '' ? 0 : Math.max(0, Number(paidAmount) || 0);
     const remainingDebt = Math.max(0, totalInvoiceAmount - paidNumber);
-    const isDuplicateBillNumber = billNumberExists(db.sales, billNumber);
+    const isDuplicateBillNumber = billNumberExists([...(db.sales || []), ...(db.counterSales || [])], billNumber);
     // Handle selecting existing customer
     const handleCustomerNameChange = (name) => {
         setCustomerName(name);

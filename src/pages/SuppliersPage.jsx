@@ -145,7 +145,7 @@ export const SuppliersPage = () => {
     const goodsPriceNumber = Number(goodsPrice) || 0;
     const goodsWeightKg = goodsUnit === 'ton' ? goodsQuantityNumber * 1000 : goodsUnit === 'bag' ? goodsQuantityNumber * 50 : goodsQuantityNumber;
     const goodsTotal = goodsQuantityNumber * goodsPriceNumber;
-    const isDuplicateGoodsBillNumber = billNumberExists(db.sales, goodsBillNumber);
+    const isDuplicateGoodsBillNumber = billNumberExists([...(db.sales || []), ...(db.counterSales || [])], goodsBillNumber);
     const supplierDebtForGoods = goodsSupplier ? Number(goodsCurrency === 'USD' ? goodsSupplier.balanceOwedUsd : goodsSupplier.balanceOwed) || 0 : 0;
     const goodsDebtOffset = Math.min(goodsTotal, supplierDebtForGoods);
     const goodsCustomerDebt = Math.max(0, goodsTotal - goodsDebtOffset);

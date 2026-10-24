@@ -7,6 +7,7 @@ import { DatabaseProvider, useDatabase } from './context/DatabaseContext';
 import { Sidebar, TopBar } from './components';
 import {
     CustomersPage,
+    CounterSalesPage,
     DashboardPage,
     ExpensesPage,
     FormulaPage,
@@ -59,6 +60,8 @@ const AppContent = () => {
                 return <FormulaPage />;
             case 'sales':
                 return <SalesPage />;
+            case 'counter-sales':
+                return <CounterSalesPage />;
             case 'suppliers':
                 return <SuppliersPage />;
             case 'customers':

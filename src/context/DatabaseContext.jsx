@@ -14,6 +14,8 @@ const emptyFactoryData = {
     formulas: [],
     productionBatches: [],
     sales: [],
+    counterCustomers: [],
+    counterSales: [],
     expenses: [],
     cashInHand: 0,
     cashInHandUsd: 0,
@@ -124,6 +126,58 @@ const reconcileCustomerSales = (sales, customer, currency) => {
     });
 };
 const cashPatch = (state, amount, currency) => currencyCode(currency) === 'USD' ? { cashInHandUsd: (state.cashInHandUsd || 0) + amount } : { cashInHand: (state.cashInHand || 0) + amount };
+const reconcileCounterSales = (sales, customer, currency) => {
+    let available = currency === 'USD' ? Number(customer.totalPaidUsd) || 0 : Number(customer.totalPaid) || 0;
+    const matching = [...sales]
+        .filter(sale => (sale.status || 'active') === 'active' && sale.counterCustomerId === customer.id && currencyCode(sale.currency) === currency)
+        .sort((first, second) => `${first.date}-${first.createdAt || first.id}`.localeCompare(`${second.date}-${second.createdAt || second.id}`));
+    const allocations = new Map();
+    matching.forEach(sale => {
+        const paid = Math.min(available, Number(sale.totalAmount) || 0);
+        allocations.set(sale.id, paid);
+        available = Math.max(0, available - paid);
+    });
+    return sales.map(sale => allocations.has(sale.id) ? {
+        ...sale,
+        paidAmount: allocations.get(sale.id),
+        remainingAmount: Math.max(0, (Number(sale.totalAmount) || 0) - allocations.get(sale.id)),
+    } : sale);
+};
+const restoreCounterSaleInventory = (state, items, recordDate) => {
+    const rawMaterials = [...state.rawMaterials];
+    const processedStock = [...state.processedStock];
+    (items || []).forEach(item => {
+        const quantityKg = Number(item.quantityKg) || 0;
+        if (quantityKg <= 0) return;
+        if (item.stockType === 'raw') {
+            const index = rawMaterials.findIndex(stock => stock.id === item.stockId);
+            if (index < 0) return;
+            const stock = rawMaterials[index];
+            const oldKg = Number(stock.stockKg) || 0;
+            const newKg = oldKg + quantityKg;
+            rawMaterials[index] = {
+                ...stock,
+                stockKg: newKg,
+                averageCostPerKg: newKg > 0 ? ((oldKg * rawAverageCostPerKg(stock, 'AFN')) + (quantityKg * (Number(item.costRatePerKg) || 0))) / newKg : 0,
+                averageCostPerKgUsd: newKg > 0 ? ((oldKg * rawAverageCostPerKg(stock, 'USD')) + (quantityKg * (Number(item.costRatePerKgUsd) || 0))) / newKg : 0,
+            };
+        } else {
+            const index = processedStock.findIndex(stock => stock.id === item.stockId);
+            if (index < 0) return;
+            const stock = processedStock[index];
+            const oldKg = Number(stock.stockKg) || 0;
+            const newKg = oldKg + quantityKg;
+            processedStock[index] = {
+                ...stock,
+                stockKg: newKg,
+                averageCostPerKg: newKg > 0 ? ((oldKg * (Number(stock.averageCostPerKg) || 0)) + (quantityKg * (Number(item.costRatePerKg) || 0))) / newKg : 0,
+                averageCostPerKgUsd: newKg > 0 ? ((oldKg * (Number(stock.averageCostPerKgUsd) || 0)) + (quantityKg * (Number(item.costRatePerKgUsd) || 0))) / newKg : 0,
+                lastUpdated: recordDate || stock.lastUpdated,
+            };
+        }
+    });
+    return { rawMaterials, processedStock };
+};
 export const DatabaseProvider = ({ children }) => {
     const [lang, setLangState] = useState(() => {
         const saved = localStorage.getItem(LANG_STORAGE_KEY);
@@ -807,7 +861,7 @@ export const DatabaseProvider = ({ children }) => {
         const quantityKg = convertToKg(settlement.unitType, unitQuantity);
         if (!supplier || !product) return { success: false, error: t.invalidSupplierOrProduct };
         if (!billNumber) return { success: false, error: t.billNumberRequired };
-        if (billNumberExists(db.sales, billNumber)) return { success: false, error: t.duplicateBillNumber };
+        if (billNumberExists([...(db.sales || []), ...(db.counterSales || [])], billNumber)) return { success: false, error: t.duplicateBillNumber };
         if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
         if (!Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(salePricePerUnit) || salePricePerUnit <= 0) return { success: false, error: t.quantityPriceMustBePositive };
         if (product.stockKg < quantityKg) return { success: false, error: `${t.insufficientStockOfItem} ${product.stockKg.toLocaleString()} ${t.kilo}. ${t.requestedAmount} ${quantityKg.toLocaleString()} ${t.kilo}.` };
@@ -1065,7 +1119,7 @@ export const DatabaseProvider = ({ children }) => {
     const recordSale = async (saleData) => {
         const billNumber = cleanBillNumber(saleData.billNumber);
         if (!billNumber) return { success: false, error: t.billNumberRequired };
-        if (billNumberExists(db.sales, billNumber)) return { success: false, error: t.duplicateBillNumber };
+        if (billNumberExists([...(db.sales || []), ...(db.counterSales || [])], billNumber)) return { success: false, error: t.duplicateBillNumber };
         if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
         const requestedCustomerKey = normalizePartyName(saleData.customerName);
         const matchesSupplier = requestedCustomerKey && (
@@ -1270,6 +1324,425 @@ export const DatabaseProvider = ({ children }) => {
             return { success: false, error: 'The sale was not saved to the database.' };
         }
         return { success: true };
+    };
+    // COUNTER SALE: one bill may mix raw and processed stock. Counter customers
+    // use an independent ledger and are never copied to customers or suppliers.
+    const recordCounterSale = async saleData => {
+        const billNumber = cleanBillNumber(saleData.billNumber);
+        if (!billNumber) return { success: false, error: t.billNumberRequired };
+        if (billNumberExists([...(db.sales || []), ...(db.counterSales || [])], billNumber)) return { success: false, error: t.duplicateBillNumber };
+        if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
+        const customerName = String(saleData.customerName || '').trim();
+        const customerPhone = String(saleData.customerPhone || '').trim();
+        if (!customerName) return { success: false, error: t.customerNameRequired || 'Customer name is required.' };
+        if (customerPhone && !/^\d{10}$/.test(customerPhone)) return { success: false, error: t.phoneMustBe10Digits };
+
+        const requestedItems = Array.isArray(saleData.items) ? saleData.items : [];
+        const normalizedItems = [];
+        for (const requested of requestedItems) {
+            const stockType = requested.stockType === 'raw' ? 'raw' : 'processed';
+            const source = stockType === 'raw' ? db.rawMaterials : db.processedStock;
+            const stock = source.find(item => item.id === requested.stockId);
+            const unitType = ['kg', 'bag', 'ton'].includes(requested.unitType) ? requested.unitType : 'kg';
+            const unitQuantity = Number(requested.unitQuantity);
+            const salePricePerUnit = Number(requested.salePricePerUnit);
+            if (!stock || !Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(salePricePerUnit) || salePricePerUnit <= 0) {
+                return { success: false, error: t.saleItemsRequired || 'Select valid stock, quantity, and price for every line.' };
+            }
+            const quantityKg = convertToKg(unitType, unitQuantity);
+            normalizedItems.push({
+                stockType,
+                stockId: stock.id,
+                stockName: stock.name,
+                unitType,
+                unitQuantity,
+                quantityKg,
+                salePricePerUnit,
+                totalAmount: unitQuantity * salePricePerUnit,
+                costRatePerKg: stockType === 'raw' ? rawAverageCostPerKg(stock, 'AFN') : Number(stock.averageCostPerKg) || 0,
+                costRatePerKgUsd: stockType === 'raw' ? rawAverageCostPerKg(stock, 'USD') : Number(stock.averageCostPerKgUsd) || 0,
+            });
+        }
+        if (!normalizedItems.length) return { success: false, error: t.saleItemsRequired || 'Add at least one stock item.' };
+
+        const usage = normalizedItems.reduce((map, item) => {
+            const key = `${item.stockType}:${item.stockId}`;
+            map.set(key, (map.get(key) || 0) + item.quantityKg);
+            return map;
+        }, new Map());
+        for (const [key, requestedKg] of usage) {
+            const [stockType, stockId] = key.split(':');
+            const stock = (stockType === 'raw' ? db.rawMaterials : db.processedStock).find(item => item.id === stockId);
+            if (!stock || Number(stock.stockKg) < requestedKg) {
+                return { success: false, error: `${t.insufficientStockOfItem} "${stock?.name || ''}". ${t.currentStockLabel}: ${Number(stock?.stockKg || 0).toLocaleString()} ${t.kilo}.` };
+            }
+        }
+
+        const currency = currencyCode(saleData.currency);
+        const totalAmount = normalizedItems.reduce((sum, item) => sum + item.totalAmount, 0);
+        const paidAmount = saleData.paidAmount === '' || saleData.paidAmount == null ? 0 : Number(saleData.paidAmount);
+        if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > totalAmount) return { success: false, error: t.paidAmountExceedsTotal };
+        const remainingAmount = totalAmount - paidAmount;
+        const quantityKg = normalizedItems.reduce((sum, item) => sum + item.quantityKg, 0);
+        const totalCostOfGoods = normalizedItems.reduce((sum, item) => sum + item.costRatePerKg * item.quantityKg, 0);
+        const totalCostOfGoodsUsd = normalizedItems.reduce((sum, item) => sum + item.costRatePerKgUsd * item.quantityKg, 0);
+        const timestamp = Date.now();
+        const suffix = Math.random().toString(36).slice(2, 7);
+        const saleId = `counter-sale-${timestamp}-${suffix}`;
+        const transactionId = `counter-tx-${timestamp}-${suffix}`;
+        const today = normalizeRecordDate(saleData.date);
+        const storedItems = normalizedItems.map(item => ({ ...item }));
+
+        let updatedCounterCustomers = [...(db.counterCustomers || [])];
+        let customerIndex = updatedCounterCustomers.findIndex(customer =>
+            (saleData.counterCustomerId && customer.id === saleData.counterCustomerId)
+            || normalizePartyName(customer.name) === normalizePartyName(customerName)
+            || (customerPhone && customer.phone === customerPhone));
+        let counterCustomerId;
+        const purchaseField = currencyField('totalPurchasedAmount', currency);
+        const paidField = currencyField('totalPaid', currency);
+        const balanceField = currencyField('balanceOwed', currency);
+        if (customerIndex < 0) {
+            counterCustomerId = `counter-customer-${timestamp}-${suffix}`;
+            updatedCounterCustomers.unshift({
+                id: counterCustomerId,
+                name: customerName,
+                phone: customerPhone,
+                totalPurchasedAmount: currency === 'AFN' ? totalAmount : 0,
+                totalPurchasedAmountUsd: currency === 'USD' ? totalAmount : 0,
+                totalPaid: currency === 'AFN' ? paidAmount : 0,
+                totalPaidUsd: currency === 'USD' ? paidAmount : 0,
+                balanceOwed: currency === 'AFN' ? remainingAmount : 0,
+                balanceOwedUsd: currency === 'USD' ? remainingAmount : 0,
+                transactions: [],
+                createdAt: today,
+            });
+            customerIndex = 0;
+        } else {
+            counterCustomerId = updatedCounterCustomers[customerIndex].id;
+            const current = updatedCounterCustomers[customerIndex];
+            const purchases = (Number(current[purchaseField]) || 0) + totalAmount;
+            const paid = (Number(current[paidField]) || 0) + paidAmount;
+            updatedCounterCustomers[customerIndex] = {
+                ...current,
+                name: customerName,
+                phone: customerPhone || current.phone,
+                [purchaseField]: purchases,
+                [paidField]: paid,
+                [balanceField]: Math.max(0, purchases - paid),
+            };
+        }
+        const customerAfterSale = updatedCounterCustomers[customerIndex];
+        const customerBalanceAfter = Number(customerAfterSale[balanceField]) || 0;
+        const transaction = {
+            id: transactionId,
+            sourceSaleId: saleId,
+            billNumber,
+            date: today,
+            type: 'sale',
+            items: storedItems,
+            description: String(saleData.notes || '').trim(),
+            amount: totalAmount,
+            paidAmount,
+            cashAmount: paidAmount,
+            remainingAmount: customerBalanceAfter,
+            currency,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+        };
+        updatedCounterCustomers[customerIndex] = {
+            ...customerAfterSale,
+            transactions: [transaction, ...(customerAfterSale.transactions || [])],
+        };
+        const sale = {
+            id: saleId,
+            billNumber,
+            counterCustomerId,
+            customerName,
+            customerPhone,
+            date: today,
+            items: storedItems,
+            quantityKg,
+            totalAmount,
+            paidAmount,
+            cashAmount: paidAmount,
+            remainingAmount,
+            totalCostOfGoods,
+            totalCostOfGoodsUsd,
+            profit: (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods,
+            profitUsd: (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd,
+            currency,
+            notes: String(saleData.notes || '').trim(),
+            status: 'active',
+            auditTrail: [],
+            createdAt: new Date().toISOString(),
+        };
+        const nextState = {
+            ...db,
+            rawMaterials: db.rawMaterials.map(item => {
+                const used = usage.get(`raw:${item.id}`) || 0;
+                return used > 0 ? { ...item, stockKg: Math.max(0, Number(item.stockKg) - used) } : item;
+            }),
+            processedStock: db.processedStock.map(item => {
+                const used = usage.get(`processed:${item.id}`) || 0;
+                return used > 0 ? { ...item, stockKg: Math.max(0, Number(item.stockKg) - used), lastUpdated: today } : item;
+            }),
+            counterCustomers: updatedCounterCustomers,
+            counterSales: [sale, ...(db.counterSales || [])],
+            ...cashPatch(db, paidAmount, currency),
+        };
+        const saved = await commitConfirmedState(nextState, state =>
+            state.counterSales?.some(item => item.id === saleId)
+            && state.counterCustomers?.some(customer => customer.id === counterCustomerId
+                && customer.transactions?.some(item => item.id === transactionId)));
+        if (!saved) {
+            if (await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
+            return { success: false, error: t.counterSaleSaveFailed || 'The counter sale was not saved.' };
+        }
+        return { success: true, saleId, counterCustomerId };
+    };
+
+    const receiveCounterCustomerPayment = async ({ counterCustomerId, amount, currency: requestedCurrency, notes }) => {
+        const customer = (db.counterCustomers || []).find(item => item.id === counterCustomerId);
+        const currency = currencyCode(requestedCurrency);
+        const payment = Number(amount);
+        const balanceField = currencyField('balanceOwed', currency);
+        const paidField = currencyField('totalPaid', currency);
+        const currentBalance = Number(customer?.[balanceField]) || 0;
+        if (!customer) return { success: false, error: t.counterCustomerNotFound || 'Counter customer was not found.' };
+        if (!Number.isFinite(payment) || payment <= 0) return { success: false, error: t.paymentMustBePositive || 'Payment must be greater than zero.' };
+        if (payment > currentBalance) return { success: false, error: t.paymentExceedsDebt || 'Payment cannot be greater than the remaining debt.' };
+        const timestamp = Date.now();
+        const transactionId = `counter-payment-${timestamp}-${Math.random().toString(36).slice(2, 7)}`;
+        const remaining = currentBalance - payment;
+        const updatedCustomer = {
+            ...customer,
+            [paidField]: (Number(customer[paidField]) || 0) + payment,
+            [balanceField]: remaining,
+            transactions: [{
+                id: transactionId,
+                date: getLocalRecordDate(),
+                type: 'payment',
+                description: String(notes || '').trim(),
+                amount: payment,
+                paidAmount: payment,
+                cashAmount: payment,
+                remainingAmount: remaining,
+                currency,
+                items: [],
+                status: 'active',
+                createdAt: new Date().toISOString(),
+            }, ...(customer.transactions || [])],
+        };
+        const updatedSales = reconcileCounterSales(db.counterSales || [], updatedCustomer, currency);
+        const nextState = {
+            ...db,
+            counterCustomers: (db.counterCustomers || []).map(item => item.id === customer.id ? updatedCustomer : item),
+            counterSales: updatedSales,
+            ...cashPatch(db, payment, currency),
+        };
+        const saved = await commitConfirmedState(nextState, state => state.counterCustomers?.some(item =>
+            item.id === customer.id && item.transactions?.some(transaction => transaction.id === transactionId)));
+        return saved ? { success: true } : { success: false, error: t.counterPaymentSaveFailed || 'The payment was not saved.' };
+    };
+
+    const updateCounterSale = async (saleId, saleData, reason) => {
+        const original = (db.counterSales || []).find(sale => sale.id === saleId && (sale.status || 'active') === 'active');
+        const correctionReason = String(reason || '').trim();
+        if (!original) return { success: false, error: 'The active counter sale was not found.' };
+        if (!correctionReason) return { success: false, error: t.correctionReasonRequired || 'An edit reason is required.' };
+        const billNumber = cleanBillNumber(saleData.billNumber);
+        if (!billNumber) return { success: false, error: t.billNumberRequired };
+        const allBills = [...(db.sales || []), ...(db.counterSales || [])];
+        if (billNumberExists(allBills, billNumber, saleId)) return { success: false, error: t.duplicateBillNumber };
+        if (billNumber.toLocaleLowerCase() !== String(original.billNumber).toLocaleLowerCase()
+            && await billNumberExistsInSupabase(billNumber)) return { success: false, error: t.duplicateBillNumber };
+        const customerName = String(saleData.customerName || '').trim();
+        const customerPhone = String(saleData.customerPhone || '').trim();
+        if (!customerName) return { success: false, error: t.customerNameRequired || 'Customer name is required.' };
+        if (customerPhone && !/^\d{10}$/.test(customerPhone)) return { success: false, error: t.phoneMustBe10Digits };
+
+        const restored = restoreCounterSaleInventory(db, original.items, original.date);
+        const baseState = { ...db, ...restored };
+        const normalizedItems = [];
+        for (const requested of Array.isArray(saleData.items) ? saleData.items : []) {
+            const stockType = requested.stockType === 'raw' ? 'raw' : 'processed';
+            const source = stockType === 'raw' ? baseState.rawMaterials : baseState.processedStock;
+            const stock = source.find(item => item.id === requested.stockId);
+            const unitType = ['kg','bag','ton'].includes(requested.unitType) ? requested.unitType : 'kg';
+            const unitQuantity = Number(requested.unitQuantity);
+            const salePricePerUnit = Number(requested.salePricePerUnit);
+            if (!stock || !Number.isFinite(unitQuantity) || unitQuantity <= 0 || !Number.isFinite(salePricePerUnit) || salePricePerUnit <= 0) {
+                return { success: false, error: t.saleItemsRequired || 'Enter valid stock, quantity, and price for every line.' };
+            }
+            const quantityKg = convertToKg(unitType, unitQuantity);
+            normalizedItems.push({
+                stockType, stockId: stock.id, stockName: stock.name, unitType, unitQuantity, quantityKg,
+                salePricePerUnit, totalAmount: unitQuantity * salePricePerUnit,
+                costRatePerKg: stockType === 'raw' ? rawAverageCostPerKg(stock, 'AFN') : Number(stock.averageCostPerKg) || 0,
+                costRatePerKgUsd: stockType === 'raw' ? rawAverageCostPerKg(stock, 'USD') : Number(stock.averageCostPerKgUsd) || 0,
+            });
+        }
+        if (!normalizedItems.length) return { success: false, error: t.saleItemsRequired || 'Add at least one item.' };
+        const usage = normalizedItems.reduce((map, item) => { const key = `${item.stockType}:${item.stockId}`; map.set(key, (map.get(key) || 0) + item.quantityKg); return map; }, new Map());
+        for (const [key, requestedKg] of usage) {
+            const [stockType, stockId] = key.split(':');
+            const stock = (stockType === 'raw' ? baseState.rawMaterials : baseState.processedStock).find(item => item.id === stockId);
+            if (!stock || Number(stock.stockKg) < requestedKg) return { success: false, error: `${t.insufficientStockOfItem} "${stock?.name || ''}".` };
+        }
+        const currency = currencyCode(saleData.currency);
+        const totalAmount = normalizedItems.reduce((sum, item) => sum + item.totalAmount, 0);
+        const paidAmount = saleData.paidAmount === '' || saleData.paidAmount == null ? 0 : Number(saleData.paidAmount);
+        if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > totalAmount) return { success: false, error: t.paidAmountExceedsTotal };
+        const quantityKg = normalizedItems.reduce((sum, item) => sum + item.quantityKg, 0);
+        const totalCostOfGoods = normalizedItems.reduce((sum, item) => sum + item.costRatePerKg * item.quantityKg, 0);
+        const totalCostOfGoodsUsd = normalizedItems.reduce((sum, item) => sum + item.costRatePerKgUsd * item.quantityKg, 0);
+        const editTimestamp = new Date().toISOString();
+        const recordDate = normalizeRecordDate(saleData.date);
+        const { auditTrail: _oldAudit, ...originalSnapshot } = original;
+        const replacement = {
+            ...original,
+            billNumber,
+            customerName,
+            customerPhone,
+            date: recordDate,
+            items: normalizedItems,
+            quantityKg,
+            totalAmount,
+            paidAmount,
+            cashAmount: paidAmount,
+            remainingAmount: Math.max(0, totalAmount - paidAmount),
+            totalCostOfGoods,
+            totalCostOfGoodsUsd,
+            profit: (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods,
+            profitUsd: (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd,
+            currency,
+            notes: String(saleData.notes || '').trim(),
+            auditTrail: [...(original.auditTrail || []), { action: 'edit', at: editTimestamp, reason: correctionReason, before: originalSnapshot }],
+        };
+
+        let customers = (db.counterCustomers || []).map(customer => ({ ...customer, transactions: [...(customer.transactions || [])] }));
+        const oldCustomerIndex = customers.findIndex(customer => customer.id === original.counterCustomerId);
+        if (oldCustomerIndex < 0) return { success: false, error: 'The original counter customer was not found.' };
+        const oldCurrency = currencyCode(original.currency);
+        const oldPurchaseField = currencyField('totalPurchasedAmount', oldCurrency);
+        const oldPaidField = currencyField('totalPaid', oldCurrency);
+        customers[oldCustomerIndex] = {
+            ...customers[oldCustomerIndex],
+            [oldPurchaseField]: Math.max(0, (Number(customers[oldCustomerIndex][oldPurchaseField]) || 0) - Number(original.totalAmount || 0)),
+            [oldPaidField]: Math.max(0, (Number(customers[oldCustomerIndex][oldPaidField]) || 0) - Number(original.cashAmount || 0)),
+            transactions: customers[oldCustomerIndex].transactions.map(transaction => transaction.sourceSaleId === original.id ? { ...transaction, status: 'voided' } : transaction),
+        };
+        let newCustomerIndex = customers.findIndex(customer =>
+            (saleData.counterCustomerId && customer.id === saleData.counterCustomerId)
+            || normalizePartyName(customer.name) === normalizePartyName(customerName)
+            || (customerPhone && customer.phone === customerPhone));
+        if (newCustomerIndex < 0) {
+            customers.unshift({ id: `counter-customer-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name: customerName, phone: customerPhone, totalPurchasedAmount: 0, totalPurchasedAmountUsd: 0, totalPaid: 0, totalPaidUsd: 0, balanceOwed: 0, balanceOwedUsd: 0, transactions: [], createdAt: recordDate });
+            newCustomerIndex = 0;
+        }
+        const newCustomer = customers[newCustomerIndex];
+        replacement.counterCustomerId = newCustomer.id;
+        const purchaseField = currencyField('totalPurchasedAmount', currency);
+        const paidField = currencyField('totalPaid', currency);
+        const updatedPurchases = (Number(newCustomer[purchaseField]) || 0) + totalAmount;
+        const updatedPaid = (Number(newCustomer[paidField]) || 0) + paidAmount;
+        const replacementTransaction = {
+            id: `counter-tx-edit-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+            sourceSaleId: original.id,
+            billNumber,
+            date: recordDate,
+            type: 'sale',
+            items: normalizedItems,
+            description: String(saleData.notes || '').trim(),
+            amount: totalAmount,
+            paidAmount,
+            cashAmount: paidAmount,
+            remainingAmount: Math.max(0, updatedPurchases - updatedPaid),
+            currency,
+            status: 'active',
+            createdAt: editTimestamp,
+        };
+        customers[newCustomerIndex] = { ...newCustomer, name: customerName, phone: customerPhone || newCustomer.phone, [purchaseField]: updatedPurchases, [paidField]: updatedPaid, transactions: [replacementTransaction, ...(newCustomer.transactions || [])] };
+
+        const affectedIds = new Set([original.counterCustomerId, replacement.counterCustomerId]);
+        const refund = { AFN: 0, USD: 0 };
+        customers = customers.map(customer => {
+            if (!affectedIds.has(customer.id)) return customer;
+            let next = { ...customer };
+            ['AFN','USD'].forEach(code => {
+                const purchasesKey = currencyField('totalPurchasedAmount', code);
+                const paidKey = currencyField('totalPaid', code);
+                const balanceKey = currencyField('balanceOwed', code);
+                const purchases = Number(next[purchasesKey]) || 0;
+                let paidValue = Number(next[paidKey]) || 0;
+                if (paidValue > purchases) { refund[code] += paidValue - purchases; paidValue = purchases; }
+                next = { ...next, [paidKey]: paidValue, [balanceKey]: Math.max(0, purchases - paidValue) };
+            });
+            return next;
+        });
+        if (refund.AFN > 0 || refund.USD > 0) {
+            const index = customers.findIndex(customer => customer.id === original.counterCustomerId);
+            if (index >= 0) customers[index] = { ...customers[index], transactions: [{ id: `counter-adjustment-${Date.now()}`, date: recordDate, type: 'adjustment', description: `Automatic cash reversal: ${correctionReason}`, amount: refund.AFN || refund.USD, paidAmount: refund.AFN || refund.USD, cashAmount: refund.AFN || refund.USD, remainingAmount: 0, currency: refund.AFN > 0 ? 'AFN' : 'USD', status: 'active', items: [], createdAt: editTimestamp }, ...customers[index].transactions] };
+        }
+        let sales = (db.counterSales || []).map(sale => sale.id === original.id ? replacement : sale);
+        customers.filter(customer => affectedIds.has(customer.id)).forEach(customer => { sales = reconcileCounterSales(sales, customer, 'AFN'); sales = reconcileCounterSales(sales, customer, 'USD'); });
+        const updatedReplacement = sales.find(sale => sale.id === original.id);
+        const nextState = {
+            ...db,
+            rawMaterials: baseState.rawMaterials.map(item => { const used = usage.get(`raw:${item.id}`) || 0; return used > 0 ? { ...item, stockKg: Number(item.stockKg) - used } : item; }),
+            processedStock: baseState.processedStock.map(item => { const used = usage.get(`processed:${item.id}`) || 0; return used > 0 ? { ...item, stockKg: Number(item.stockKg) - used, lastUpdated: recordDate } : item; }),
+            counterCustomers: customers,
+            counterSales: sales,
+            cashInHand: Number(db.cashInHand || 0) - (oldCurrency === 'AFN' ? Number(original.cashAmount) || 0 : 0) + (currency === 'AFN' ? paidAmount : 0) - refund.AFN,
+            cashInHandUsd: Number(db.cashInHandUsd || 0) - (oldCurrency === 'USD' ? Number(original.cashAmount) || 0 : 0) + (currency === 'USD' ? paidAmount : 0) - refund.USD,
+        };
+        const saved = await commitConfirmedState(nextState, state => state.counterSales?.some(sale => sale.id === original.id && sale.billNumber === billNumber && sale.auditTrail?.length === updatedReplacement.auditTrail.length));
+        return saved ? { success: true } : { success: false, error: t.historyChangeSaveFailed || 'The edited sale was not saved.' };
+    };
+
+    const voidCounterSale = async (saleId, reason) => {
+        const sale = (db.counterSales || []).find(item => item.id === saleId && (item.status || 'active') === 'active');
+        const voidReason = String(reason || '').trim();
+        if (!sale) return { success: false, error: 'The active counter sale was not found.' };
+        if (!voidReason) return { success: false, error: t.correctionReasonRequired || 'A void reason is required.' };
+        const restored = restoreCounterSaleInventory(db, sale.items, sale.date);
+        const customerIndex = (db.counterCustomers || []).findIndex(customer => customer.id === sale.counterCustomerId);
+        if (customerIndex < 0) return { success: false, error: 'The counter customer was not found.' };
+        let customers = (db.counterCustomers || []).map(customer => ({ ...customer, transactions: [...(customer.transactions || [])] }));
+        const customer = customers[customerIndex];
+        const currency = currencyCode(sale.currency);
+        const purchaseField = currencyField('totalPurchasedAmount', currency);
+        const paidField = currencyField('totalPaid', currency);
+        const purchases = Math.max(0, (Number(customer[purchaseField]) || 0) - Number(sale.totalAmount || 0));
+        let totalPaid = Math.max(0, (Number(customer[paidField]) || 0) - Number(sale.cashAmount || 0));
+        const excessRefund = Math.max(0, totalPaid - purchases);
+        totalPaid -= excessRefund;
+        const balanceField = currencyField('balanceOwed', currency);
+        const timestamp = new Date().toISOString();
+        customers[customerIndex] = {
+            ...customer,
+            [purchaseField]: purchases,
+            [paidField]: totalPaid,
+            [balanceField]: Math.max(0, purchases - totalPaid),
+            transactions: [
+                ...(excessRefund > 0 ? [{ id: `counter-adjustment-${Date.now()}`, date: getLocalRecordDate(), type: 'adjustment', description: `Automatic cash reversal: ${voidReason}`, amount: excessRefund, paidAmount: excessRefund, cashAmount: excessRefund, remainingAmount: Math.max(0, purchases - totalPaid), currency, status: 'active', items: [], createdAt: timestamp }] : []),
+                ...customer.transactions.map(transaction => transaction.sourceSaleId === sale.id ? { ...transaction, status: 'voided' } : transaction),
+            ],
+        };
+        const { auditTrail: _audit, ...saleSnapshot } = sale;
+        let sales = (db.counterSales || []).map(item => item.id === sale.id ? { ...item, status: 'voided', auditTrail: [...(item.auditTrail || []), { action: 'void', at: timestamp, reason: voidReason, before: saleSnapshot }] } : item);
+        sales = reconcileCounterSales(sales, customers[customerIndex], currency);
+        const cashReversal = (Number(sale.cashAmount) || 0) + excessRefund;
+        const nextState = {
+            ...db,
+            ...restored,
+            counterCustomers: customers,
+            counterSales: sales,
+            ...cashPatch(db, -cashReversal, currency),
+        };
+        const saved = await commitConfirmedState(nextState, state => state.counterSales?.some(item => item.id === sale.id && item.status === 'voided'));
+        return saved ? { success: true } : { success: false, error: t.historyChangeSaveFailed || 'The sale could not be voided.' };
     };
     // RECEIVE RAW MATERIAL FROM A CUSTOMER AS A NON-CASH DEBT SETTLEMENT.
     // The customer remains on the customer ledger; any value above their debt
@@ -1580,6 +2053,10 @@ export const DatabaseProvider = ({ children }) => {
             saveFormulaTemplate,
             deleteFormula,
             recordSale,
+            recordCounterSale,
+            receiveCounterCustomerPayment,
+            updateCounterSale,
+            voidCounterSale,
             receiveCustomerPayment,
             addCustomerAccountEntry,
             settleCustomerWithRawMaterial,

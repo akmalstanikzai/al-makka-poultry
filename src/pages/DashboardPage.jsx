@@ -34,11 +34,18 @@ export const DashboardPage = ({ setActiveTab }) => {
     // 3. Money we owe to suppliers
     const totalOwedToSuppliers = { AFN: db.suppliers.reduce((a,s)=>a+(s.balanceOwed||0),0), USD: db.suppliers.reduce((a,s)=>a+(s.balanceOwedUsd||0),0) };
     // 4. Money payable by customers
-    const totalReceivableFromCustomers = { AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0), USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) };
+    const totalReceivableFromCustomers = {
+        AFN: db.customers.reduce((a,c)=>a+(c.balanceOwed||0),0) + (db.counterCustomers || []).reduce((a,c)=>a+(c.balanceOwed||0),0),
+        USD: db.customers.reduce((a,c)=>a+(c.balanceOwedUsd||0),0) + (db.counterCustomers || []).reduce((a,c)=>a+(c.balanceOwedUsd||0),0),
+    };
     // 5. Total processed material sold
-    const totalSalesAmount = db.sales.reduce((a,s)=>{a[s.currency === 'USD' ? 'USD' : 'AFN']+=s.totalAmount||0;return a;},{AFN:0,USD:0});
-    const totalSalesKg = db.sales.reduce((acc, s) => acc + (s.quantityKg || 0), 0);
-    const totalGrossProfit = db.sales.reduce((a,s)=>{a.AFN += s.profit || 0; a.USD += s.profitUsd || 0; return a;},{AFN:0,USD:0});
+    const allSales = [...db.sales, ...(db.counterSales || []).filter(sale => (sale.status || 'active') === 'active')];
+    const totalSalesAmount = allSales.reduce((a,s)=>{a[s.currency === 'USD' ? 'USD' : 'AFN']+=s.totalAmount||0;return a;},{AFN:0,USD:0});
+    const totalSalesKg = db.sales.reduce((acc, sale) => acc + (sale.quantityKg || 0), 0)
+        + (db.counterSales || []).filter(sale => (sale.status || 'active') === 'active').reduce((acc, sale) => acc + (sale.items || [])
+            .filter(item => item.stockType === 'processed')
+            .reduce((sum, item) => sum + (Number(item.quantityKg) || 0), 0), 0);
+    const totalGrossProfit = allSales.reduce((a,s)=>{a.AFN += s.profit || 0; a.USD += s.profitUsd || 0; return a;},{AFN:0,USD:0});
     // 6. Money in Hand
     const moneyInHand = { AFN: db.cashInHand || 0, USD: db.cashInHandUsd || 0 };
     // 7. Total expenses
@@ -55,7 +62,7 @@ export const DashboardPage = ({ setActiveTab }) => {
         return d.toISOString().split('T')[0];
     });
     const trendData = last7Days.map(date => {
-        const dayTotals = db.sales.filter(sale => sale.date === date).reduce((totals, sale) => {
+        const dayTotals = allSales.filter(sale => sale.date === date).reduce((totals, sale) => {
             const isUsd = sale.currency === 'USD';
             totals[isUsd ? 'salesUsd' : 'salesAfn'] += Number(sale.totalAmount) || 0;
             totals[isUsd ? 'profitUsd' : 'profitAfn'] += Number(isUsd ? sale.profitUsd : sale.profit) || 0;

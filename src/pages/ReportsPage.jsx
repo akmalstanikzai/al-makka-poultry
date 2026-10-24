@@ -25,7 +25,7 @@ export const ReportsPage = () => {
     };
     const startDate = getStartDate();
     // Filter items in period
-    const filteredSales = db.sales.filter(s => period === 'all' || (s.date >= startDate && s.date <= todayStr));
+    const filteredSales = [...db.sales, ...(db.counterSales || []).filter(sale => (sale.status || 'active') === 'active')].filter(s => period === 'all' || (s.date >= startDate && s.date <= todayStr));
     const filteredBatches = db.productionBatches.filter(b => period === 'all' || (b.date >= startDate && b.date <= todayStr));
     const filteredExpenses = db.expenses.filter(e => period === 'all' || (e.date >= startDate && e.date <= todayStr));
     // Financial aggregates

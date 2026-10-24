@@ -104,7 +104,7 @@ export async function loadStateFromSupabase() {
     if (!supabase)
         return null;
     try {
-        const [rawRes, supRes, supTxRes, custRes, custTxRes, procRes, salesRes, expRes, formRes, batchRes] = await Promise.all([
+        const [rawRes, supRes, supTxRes, custRes, custTxRes, procRes, salesRes, expRes, formRes, batchRes, counterCustRes, counterTxRes, counterSalesRes] = await Promise.all([
             supabase.from('raw_materials').select('*'),
             supabase.from('suppliers').select('*'),
             supabase.from('supplier_transactions').select('*'),
@@ -115,6 +115,9 @@ export async function loadStateFromSupabase() {
             supabase.from('expenses').select('*').order('date', { ascending: false }),
             supabase.from('formulas').select('*'),
             supabase.from('production_batches').select('*').order('date', { ascending: false }),
+            supabase.from('counter_customers').select('*'),
+            supabase.from('counter_customer_transactions').select('*').order('created_at', { ascending: false }),
+            supabase.from('counter_sales').select('*').order('created_at', { ascending: false }),
         ]);
         const queryResults = [
             rawRes,
@@ -127,6 +130,9 @@ export async function loadStateFromSupabase() {
             expRes,
             formRes,
             batchRes,
+            counterCustRes,
+            counterTxRes,
+            counterSalesRes,
         ];
         const failedQuery = queryResults.find(result => result.error);
         if (failedQuery?.error) {
@@ -328,6 +334,60 @@ export async function loadStateFromSupabase() {
             currency: s.currency || 'AFN',
             items: Array.isArray(s.items) ? s.items : [],
         }));
+        const counterTransactions = counterTxRes.data || [];
+        const counterCustomers = (counterCustRes.data || []).map(customer => ({
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone || '',
+            totalPurchasedAmount: Number(customer.total_purchased_amount) || 0,
+            totalPurchasedAmountUsd: Number(customer.total_purchased_amount_usd) || 0,
+            totalPaid: Number(customer.total_paid) || 0,
+            totalPaidUsd: Number(customer.total_paid_usd) || 0,
+            balanceOwed: Number(customer.balance_owed) || 0,
+            balanceOwedUsd: Number(customer.balance_owed_usd) || 0,
+            createdAt: customer.created_at || '',
+            transactions: counterTransactions
+                .filter(transaction => transaction.counter_customer_id === customer.id)
+                .map(transaction => ({
+                    id: transaction.id,
+                    sourceSaleId: transaction.source_sale_id || undefined,
+                    billNumber: transaction.bill_number || '',
+                    date: transaction.date,
+                    type: transaction.type,
+                    items: Array.isArray(transaction.items) ? transaction.items : [],
+                    description: transaction.description || '',
+                    amount: Number(transaction.amount) || 0,
+                    paidAmount: Number(transaction.paid_amount) || 0,
+                    cashAmount: Number(transaction.cash_amount) || 0,
+                    remainingAmount: Number(transaction.remaining_amount) || 0,
+                    currency: transaction.currency || 'AFN',
+                    status: transaction.status || 'active',
+                    createdAt: transaction.created_at || '',
+                })),
+        }));
+        const counterSales = (counterSalesRes.data || []).map(sale => ({
+            id: sale.id,
+            billNumber: sale.bill_number,
+            counterCustomerId: sale.counter_customer_id,
+            customerName: sale.customer_name,
+            customerPhone: sale.customer_phone || '',
+            date: sale.date,
+            items: Array.isArray(sale.items) ? sale.items : [],
+            quantityKg: Number(sale.total_quantity_kg) || 0,
+            totalAmount: Number(sale.total_amount) || 0,
+            paidAmount: Number(sale.paid_amount) || 0,
+            cashAmount: Number(sale.cash_amount) || 0,
+            remainingAmount: Number(sale.remaining_amount) || 0,
+            totalCostOfGoods: Number(sale.total_cost_of_goods) || 0,
+            totalCostOfGoodsUsd: Number(sale.total_cost_of_goods_usd) || 0,
+            profit: Number(sale.profit) || 0,
+            profitUsd: Number(sale.profit_usd) || 0,
+            currency: sale.currency || 'AFN',
+            notes: sale.notes || '',
+            status: sale.status || 'active',
+            auditTrail: Array.isArray(sale.audit_trail) ? sale.audit_trail : [],
+            createdAt: sale.created_at || '',
+        }));
         // Customer totals may already include payments from an older app
         // version that failed before updating the sales table. Reconstruct the
         // invoice paid/remaining values oldest-first so both pages agree.
@@ -362,8 +422,8 @@ export async function loadStateFromSupabase() {
         const formulas = (formRes.data || []).map(f => {
             const ings = Array.isArray(f.ingredients) ? f.ingredients : [];
             const totalWeight = ings.reduce((acc, ing) => acc + (Number(ing.weightKg) || 0), 0);
-            const totalCost = ings.filter(ing => (ing.currency || 'AFN') === 'AFN').reduce((acc, ing) => acc + (Number(ing.totalCost) || 0), 0);
-            const totalCostUsd = ings.filter(ing => ing.currency === 'USD').reduce((acc, ing) => acc + (Number(ing.totalCost) || 0), 0);
+            const totalCost = ings.reduce((acc, ing) => acc + (Number(ing.totalCost) || 0), 0);
+            const totalCostUsd = ings.reduce((acc, ing) => acc + (Number(ing.totalCostUsd) || 0), 0);
             return {
                 id: f.id,
                 name: f.name,
@@ -400,6 +460,8 @@ export async function loadStateFromSupabase() {
             formulas,
             productionBatches,
             sales,
+            counterCustomers,
+            counterSales,
             expenses,
         ].some(items => items.length > 0);
         return {
@@ -413,6 +475,8 @@ export async function loadStateFromSupabase() {
                 formulas,
                 productionBatches,
                 sales,
+                counterCustomers,
+                counterSales,
                 expenses,
                 // Old installations did not persist cash separately.  Keep a
                 // sensible value until the included factory_state migration runs.
@@ -565,7 +629,71 @@ export async function writeStateToSupabase(state) {
                 await checked(supabase.from('customer_transactions').upsert(custTxRows), 'customer_transactions seed');
             }
         }
-        // 4. Formulas (processed stock and batches may reference formulas)
+        // 4. Counter customers, their mixed-stock sales, and cash payments are
+        // intentionally isolated from the ordinary customer/supplier ledgers.
+        if ((state.counterCustomers || []).length > 0) {
+            const counterCustomerRows = state.counterCustomers.map(customer => ({
+                id: customer.id,
+                name: customer.name,
+                phone: customer.phone || null,
+                total_purchased_amount: customer.totalPurchasedAmount || 0,
+                total_purchased_amount_usd: customer.totalPurchasedAmountUsd || 0,
+                total_paid: customer.totalPaid || 0,
+                total_paid_usd: customer.totalPaidUsd || 0,
+                balance_owed: customer.balanceOwed || 0,
+                balance_owed_usd: customer.balanceOwedUsd || 0,
+                created_at: customer.createdAt || new Date().toISOString().split('T')[0],
+                updated_at: new Date().toISOString(),
+            }));
+            await checked(supabase.from('counter_customers').upsert(counterCustomerRows), 'counter_customers seed');
+        }
+        if ((state.counterSales || []).length > 0) {
+            const counterSaleRows = state.counterSales.map(sale => ({
+                id: sale.id,
+                bill_number: sale.billNumber,
+                counter_customer_id: sale.counterCustomerId,
+                customer_name: sale.customerName,
+                customer_phone: sale.customerPhone || null,
+                date: sale.date,
+                items: Array.isArray(sale.items) ? sale.items : [],
+                total_quantity_kg: sale.quantityKg || 0,
+                total_amount: sale.totalAmount || 0,
+                paid_amount: sale.paidAmount || 0,
+                cash_amount: sale.cashAmount || 0,
+                remaining_amount: sale.remainingAmount || 0,
+                total_cost_of_goods: sale.totalCostOfGoods || 0,
+                total_cost_of_goods_usd: sale.totalCostOfGoodsUsd || 0,
+                profit: sale.profit || 0,
+                profit_usd: sale.profitUsd || 0,
+                currency: sale.currency || 'AFN',
+                notes: sale.notes || null,
+                status: sale.status || 'active',
+                audit_trail: Array.isArray(sale.auditTrail) ? sale.auditTrail : [],
+            }));
+            await checked(supabase.from('counter_sales').upsert(counterSaleRows), 'counter_sales seed');
+        }
+        const counterTransactionRows = (state.counterCustomers || []).flatMap(customer =>
+            (customer.transactions || []).map(transaction => ({
+                id: transaction.id,
+                counter_customer_id: customer.id,
+                source_sale_id: transaction.sourceSaleId || null,
+                bill_number: transaction.billNumber || null,
+                date: transaction.date,
+                type: transaction.type,
+                items: Array.isArray(transaction.items) ? transaction.items : [],
+                description: transaction.description || null,
+                amount: transaction.amount || 0,
+                paid_amount: transaction.paidAmount || 0,
+                cash_amount: transaction.cashAmount || 0,
+                remaining_amount: transaction.remainingAmount || 0,
+                currency: transaction.currency || 'AFN',
+                status: transaction.status || 'active',
+                created_at: transaction.createdAt || new Date().toISOString(),
+            })));
+        if (counterTransactionRows.length > 0) {
+            await checked(supabase.from('counter_customer_transactions').upsert(counterTransactionRows), 'counter_customer_transactions seed');
+        }
+        // 5. Formulas (processed stock and batches may reference formulas)
         if (state.formulas.length > 0) {
             const formRows = state.formulas.map(f => ({
                 id: f.id,
@@ -674,6 +802,8 @@ export async function persistStateChanges(previousState, nextState) {
         processedStock: changed(previousState.processedStock, nextState.processedStock),
         suppliers: changed(previousState.suppliers, nextState.suppliers),
         customers: changed(previousState.customers, nextState.customers),
+        counterCustomers: changed(previousState.counterCustomers || [], nextState.counterCustomers || []),
+        counterSales: changed(previousState.counterSales || [], nextState.counterSales || []),
         formulas: changed(previousState.formulas, nextState.formulas),
         productionBatches: changed(previousState.productionBatches, nextState.productionBatches),
         sales: changed(previousState.sales, nextState.sales),
@@ -686,6 +816,7 @@ export async function clearAllDataFromSupabase() {
         return false;
     return queueWrite(async () => {
         const tables = [
+            'counter_customer_transactions', 'counter_sales', 'counter_customers',
             'customer_transactions', 'supplier_transactions', 'sales',
             'production_batches', 'processed_stock', 'raw_materials',
             'expenses', 'formulas', 'customers', 'suppliers',

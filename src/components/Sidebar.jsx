@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { LayoutDashboard, Warehouse, Boxes, FlaskConical, ShoppingCart, Truck, Users, Receipt, BarChart3, LogOut, Wheat, ChevronLeft, ChevronRight, ShieldCheck, X } from 'lucide-react';
+import { LayoutDashboard, Warehouse, Boxes, FlaskConical, ShoppingCart, ShoppingBasket, Truck, Users, Receipt, BarChart3, LogOut, Wheat, ChevronLeft, ChevronRight, ShieldCheck, X } from 'lucide-react';
 export const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollapsed, }) => {
     const { lang, t, user, logout, lowStockMaterials } = useDatabase();
     const isRtl = lang === 'fa' || lang === 'ps';
@@ -33,6 +33,11 @@ export const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen
             id: 'sales',
             label: t.navSales,
             icon: ShoppingCart,
+        },
+        {
+            id: 'counter-sales',
+            label: t.navCounterSales,
+            icon: ShoppingBasket,
         },
         {
             id: 'suppliers',
