@@ -2,6 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { normalizeDecimalInput } from '../lib/numberInput';
 import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen, Search, Check } from 'lucide-react';
+
+let ingredientRowSequence = 0;
+const createIngredientRow = (rawMaterialId = '', weightKg = '') => ({
+    rowId: `ingredient-row-${Date.now()}-${++ingredientRowSequence}`,
+    rawMaterialId,
+    weightKg,
+});
+
 const getTodayDate = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -10,7 +18,7 @@ const getTodayDate = () => {
     return `${year}-${month}-${day}`;
 };
 export const FormulaPage = () => {
-    const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula, getLocalizedName } = useDatabase();
+    const { db, t, lang, saveFormulaTemplate, createFormulaAndProduce, deleteFormula } = useDatabase();
     const [loadedFormulaId, setLoadedFormulaId] = useState(null);
     const [formulaName, setFormulaName] = useState('');
     const [description, setDescription] = useState('');
@@ -22,13 +30,14 @@ export const FormulaPage = () => {
     const [productionQuantity, setProductionQuantity] = useState('');
     // Ingredients list in formulation
     const [ingredients, setIngredients] = useState([
-        { rawMaterialId: db.rawMaterials[0]?.id || '', weightKg: 500 },
-        { rawMaterialId: db.rawMaterials[1]?.id || '', weightKg: 300 },
-        { rawMaterialId: db.rawMaterials[2]?.id || '', weightKg: 150 },
-        { rawMaterialId: db.rawMaterials[3]?.id || '', weightKg: 50 },
+        createIngredientRow(db.rawMaterials[0]?.id || '', 500),
+        createIngredientRow(db.rawMaterials[1]?.id || '', 300),
+        createIngredientRow(db.rawMaterials[2]?.id || '', 150),
+        createIngredientRow(db.rawMaterials[3]?.id || '', 50),
     ]);
     const [message, setMessage] = useState(null);
     const [processStatus, setProcessStatus] = useState(null);
+    const [isSavingFormula, setIsSavingFormula] = useState(false);
     const [isProducing, setIsProducing] = useState(false);
     // In-app delete formula confirmation
     const [formulaToDelete, setFormulaToDelete] = useState(null);
@@ -77,18 +86,19 @@ export const FormulaPage = () => {
         }
     };
     const handleAddIngredientRow = () => {
-        const defaultRm = db.rawMaterials[0]?.id || '';
-        setIngredients(prev => [...prev, { rawMaterialId: defaultRm, weightKg: 100 }]);
-    };
-    const handleRemoveIngredientRow = (index) => {
-        setIngredients(prev => prev.filter((_, i) => i !== index));
-    };
-    const handleUpdateIngredient = (index, field, val) => {
         setIngredients(prev => {
-            const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: val };
-            return updated;
+            const selectedIds = new Set(prev.map(ingredient => ingredient.rawMaterialId).filter(Boolean));
+            const nextUnusedMaterial = db.rawMaterials.find(material => !selectedIds.has(material.id));
+            return [...prev, createIngredientRow(nextUnusedMaterial?.id || '', 100)];
         });
+    };
+    const handleRemoveIngredientRow = (rowId) => {
+        setIngredients(prev => prev.filter(ingredient => ingredient.rowId !== rowId));
+    };
+    const handleUpdateIngredient = (rowId, field, val) => {
+        setIngredients(prev => prev.map(ingredient => ingredient.rowId === rowId
+            ? { ...ingredient, [field]: val }
+            : ingredient));
     };
     // Calculations keep AFN and USD independent.
     let totalBatchWeight = 0;
@@ -106,6 +116,12 @@ export const FormulaPage = () => {
         ...ingredient,
         weightKg: (Number(ingredient.weightKg) || 0) * productionScale,
     }));
+    const scaledRequirementByMaterial = scaledIngredients.reduce((requirements, ingredient) => {
+        if (ingredient.rawMaterialId) {
+            requirements.set(ingredient.rawMaterialId, (requirements.get(ingredient.rawMaterialId) || 0) + ingredient.weightKg);
+        }
+        return requirements;
+    }, new Map());
     const scaledRawMaterialCost = {
         AFN: totalRawMaterialCost.AFN * productionScale,
         USD: totalRawMaterialCost.USD * productionScale,
@@ -126,10 +142,8 @@ export const FormulaPage = () => {
         setLoadedFormulaId(formula.id);
         setFormulaName(formula.name);
         setDescription(formula.description || '');
-        setIngredients(formula.ingredients.map(ingredient => ({
-            rawMaterialId: ingredient.rawMaterialId,
-            weightKg: ingredient.weightKg,
-        })));
+        setIngredients((formula.ingredients || []).map(ingredient =>
+            createIngredientRow(ingredient.rawMaterialId, ingredient.weightKg)));
         setProductionQuantity('');
         setMessage({
             type: 'success',
@@ -137,17 +151,28 @@ export const FormulaPage = () => {
         });
     };
     const handleSaveFormula = async () => {
+        if (isSavingFormula) return;
         setMessage(null);
-        const result = await saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined);
-        if (result.success) {
-            setLoadedFormulaId(result.formulaId);
-            setMessage({
-                type: 'success',
-                text: lang === 'fa' ? 'فرمول در دیتابیس ذخیره شد.' : lang === 'ps' ? 'فورمول په ډیټابیس کې خوندي شو.' : 'Formula saved to the database.',
-            });
+        setIsSavingFormula(true);
+        try {
+            const result = await saveFormulaTemplate(formulaName, ingredients, description.trim() || undefined, loadedFormulaId || undefined);
+            if (result.success) {
+                setLoadedFormulaId(result.formulaId);
+                setMessage({
+                    type: 'success',
+                    text: lang === 'fa' ? 'فرمول در دیتابیس ذخیره شد.' : lang === 'ps' ? 'فورمول په ډیټابیس کې خوندي شو.' : 'Formula saved to the database.',
+                });
+            }
+            else {
+                setMessage({ type: 'error', text: result.error || 'Could not save formula.' });
+            }
         }
-        else {
-            setMessage({ type: 'error', text: result.error || 'Could not save formula.' });
+        catch (error) {
+            console.error('Formula save failed:', error);
+            setMessage({ type: 'error', text: error?.message || 'Could not save formula.' });
+        }
+        finally {
+            setIsSavingFormula(false);
         }
     };
     const handleProduce = async (e) => {
@@ -169,43 +194,59 @@ export const FormulaPage = () => {
             setProcessStatus({ type: 'error', text: t.processingDateRequired });
             return;
         }
-        // Check if we have enough raw materials in stock
+        // Check combined usage so duplicate lines cannot bypass stock validation.
+        const checkedMaterialIds = new Set();
         for (const ing of scaledIngredients) {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             if (!raw) {
                 setProcessStatus({ type: 'error', text: t.invalidRawMaterialSelected });
                 return;
             }
-            if (raw.stockKg < ing.weightKg) {
+            if (checkedMaterialIds.has(raw.id)) continue;
+            checkedMaterialIds.add(raw.id);
+            const availableStockKg = Number(raw.stockKg) || 0;
+            const requiredStockKg = scaledRequirementByMaterial.get(raw.id) || 0;
+            if (availableStockKg < requiredStockKg) {
                 setProcessStatus({
                     type: 'error',
-                    text: `${t.insufficientStockOfItem} "${getLocalizedName(raw.name)}" - ${raw.stockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${ing.weightKg.toLocaleString()} ${t.kilo}.`
+                    text: `${t.insufficientStockOfItem} "${raw.name}" - ${availableStockKg.toLocaleString()} ${t.kilo}, ${t.requestedAmount} ${requiredStockKg.toLocaleString()} ${t.kilo}.`
                 });
                 return;
             }
         }
         setIsProducing(true);
-        const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency, processingDate);
-        setIsProducing(false);
-        if (result.success) {
-            setProcessStatus({
-                type: 'success',
-                text: lang === 'fa' ? 'پروسس با موفقیت در دیتابیس ذخیره شد.' : lang === 'ps' ? 'پروسس په بریالیتوب سره ډیټابیس کې خوندي شو.' : 'Process saved to the database successfully.'
-            });
-            // Reset form
-            setFormulaName('');
-            setDescription('');
-            setOperatorName('');
-            setBatchExpenses('');
-            setProductionQuantity('');
-            setProcessingDate(getTodayDate());
-            setLoadedFormulaId(null);
+        try {
+            const result = await createFormulaAndProduce(formulaName.trim(), scaledIngredients, description.trim() || undefined, operatorName.trim() || undefined, true, batchExpenseAmount, loadedFormulaId, batchExpenseCurrency, processingDate);
+            if (result.success) {
+                setProcessStatus({
+                    type: 'success',
+                    text: lang === 'fa' ? 'پروسس با موفقیت در دیتابیس ذخیره شد.' : lang === 'ps' ? 'پروسس په بریالیتوب سره ډیټابیس کې خوندي شو.' : 'Process saved to the database successfully.'
+                });
+                // Reset form
+                setFormulaName('');
+                setDescription('');
+                setOperatorName('');
+                setBatchExpenses('');
+                setProductionQuantity('');
+                setProcessingDate(getTodayDate());
+                setLoadedFormulaId(null);
+            }
+            else {
+                setProcessStatus({
+                    type: 'error',
+                    text: result.error || (lang === 'fa' ? 'پروسس در دیتابیس ذخیره نشد.' : lang === 'ps' ? 'پروسس په ډیټابیس کې خوندي نه شو.' : 'Process was not saved to the database.'),
+                });
+            }
         }
-        else {
+        catch (error) {
+            console.error('Formula production failed:', error);
             setProcessStatus({
                 type: 'error',
-                text: result.error || (lang === 'fa' ? 'پروسس در دیتابیس ذخیره نشد.' : lang === 'ps' ? 'پروسس په ډیټابیس کې خوندي نه شو.' : 'Process was not saved to the database.'),
+                text: error?.message || (lang === 'fa' ? 'پروسس در دیتابیس ذخیره نشد.' : lang === 'ps' ? 'پروسس په ډیټابیس کې خوندي نه شو.' : 'Process was not saved to the database.'),
             });
+        }
+        finally {
+            setIsProducing(false);
         }
     };
     const handleConfirmDeleteFormula = () => {
@@ -371,16 +412,17 @@ export const FormulaPage = () => {
             const selectedRaw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             const cost = selectedRaw ? selectedRaw.unitPrice * (Number(ing.weightKg) || 0) : 0;
             const requiredForProduction = (Number(ing.weightKg) || 0) * productionScale;
-            const isInsufficient = selectedRaw && requestedProductionKg > 0 && selectedRaw.stockKg < requiredForProduction;
-            return (<div key={idx} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isInsufficient ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+            const totalRequiredForMaterial = scaledRequirementByMaterial.get(ing.rawMaterialId) || requiredForProduction;
+            const isInsufficient = selectedRaw && requestedProductionKg > 0 && (Number(selectedRaw.stockKg) || 0) < totalRequiredForMaterial;
+            const availableMaterials = db.rawMaterials.filter(material => material.id === ing.rawMaterialId
+                || !ingredients.some(otherIngredient => otherIngredient.rowId !== ing.rowId && otherIngredient.rawMaterialId === material.id));
+            return (<div key={ing.rowId} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isInsufficient ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex-1 min-w-0">
                         <label className="block text-[10px] text-slate-500 mb-1">{t.selectRawIndex} #{idx + 1}</label>
                         <RawMaterialCombobox
-                          key={`${idx}-${loadedFormulaId || 'new'}`}
-                          materials={db.rawMaterials}
+                          materials={availableMaterials}
                           value={ing.rawMaterialId}
-                          onChange={(value) => handleUpdateIngredient(idx, 'rawMaterialId', value)}
-                          getLocalizedName={getLocalizedName}
+                          onChange={(value) => handleUpdateIngredient(ing.rowId, 'rawMaterialId', value)}
                           kiloLabel={t.kilo}
                           lang={lang}
                         />
@@ -388,7 +430,7 @@ export const FormulaPage = () => {
 
                       <div className="w-full sm:w-36">
                         <label className="block text-[10px] text-slate-500 mb-1">{t.weightKgLabel}</label>
-                        <input type="number" min="0.001" step="any" value={ing.weightKg} onChange={(e) => handleUpdateIngredient(idx, 'weightKg', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
+                        <input type="number" min="0.001" step="any" value={ing.weightKg} onChange={(e) => handleUpdateIngredient(ing.rowId, 'weightKg', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-600 shadow-2xs"/>
                       </div>
 
                       <div className="w-full sm:w-32 text-end sm:pt-4">
@@ -396,11 +438,11 @@ export const FormulaPage = () => {
                         <span className="text-xs font-bold text-amber-700 font-mono">
                           {cost.toLocaleString()} {selectedRaw?.currency || 'AFN'}
                         </span>
-                        {requestedProductionKg > 0 && <span className={`block text-[10px] font-mono mt-1 ${isInsufficient ? 'text-rose-700 font-bold' : 'text-slate-500'}`}>{t.requiredForBatch}: {requiredForProduction.toLocaleString(undefined, { maximumFractionDigits: 3 })} {t.kilo}</span>}
+                        {requestedProductionKg > 0 && <span className={`block text-[10px] font-mono mt-1 ${isInsufficient ? 'text-rose-700 font-bold' : 'text-slate-500'}`}>{t.requiredForBatch}: {totalRequiredForMaterial.toLocaleString(undefined, { maximumFractionDigits: 3 })} {t.kilo}</span>}
                       </div>
 
                       <div className="sm:pt-4">
-                        <button type="button" onClick={() => handleRemoveIngredientRow(idx)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer">
+                        <button type="button" onClick={() => handleRemoveIngredientRow(ing.rowId)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer" aria-label={`${t.delete || 'Delete'} ${selectedRaw?.name || `${idx + 1}`}`} title={t.delete || 'Delete'}>
                           <Trash2 className="w-4 h-4"/>
                         </button>
                       </div>
@@ -432,9 +474,11 @@ export const FormulaPage = () => {
               </div>
               <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-start justify-end gap-2">
               <div className="flex min-w-0 flex-col items-stretch sm:items-end">
-                <button type="button" onClick={handleSaveFormula} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
+                <button type="button" onClick={handleSaveFormula} disabled={isSavingFormula} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white hover:bg-amber-50 disabled:cursor-wait disabled:opacity-60 text-amber-800 border border-amber-300 font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
                   <Bookmark className="w-4 h-4"/>
-                  <span>{loadedFormulaId
+                  <span>{isSavingFormula
+                      ? (lang === 'fa' ? 'در حال ذخیره...' : lang === 'ps' ? 'د خوندي کولو په حال کې...' : 'Saving...')
+                      : loadedFormulaId
                       ? (lang === 'fa' ? 'به‌روزرسانی فرمول' : lang === 'ps' ? 'فورمول تازه کول' : 'Update formula')
                       : (lang === 'fa' ? 'ذخیره فرمول' : lang === 'ps' ? 'فورمول خوندي کول' : 'Save formula')}</span>
                 </button>
@@ -615,15 +659,16 @@ export const FormulaPage = () => {
         {/* Processed Stock Items List */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
           {db.processedStock.map(p => {
-            const bags = Math.round((p.stockKg / 50) * 100) / 100;
-            const tons = p.stockKg / 1000;
+            const stockKg = Number(p.stockKg) || 0;
+            const bags = Math.round((stockKg / 50) * 100) / 100;
+            const tons = stockKg / 1000;
             const ratePerTon = { AFN: (p.averageCostPerKg || 0) * 1000, USD: (p.averageCostPerKgUsd || 0) * 1000 };
             const ratePerBag = { AFN: (p.averageCostPerKg || 0) * 50, USD: (p.averageCostPerKgUsd || 0) * 50 };
             return (<div key={p.id} className="p-4 rounded-xl border border-slate-200 bg-white hover:border-amber-300 transition-all shadow-2xs flex flex-col justify-between">
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="font-bold text-slate-900 text-sm">
-                      {getLocalizedName(p.name)}
+                      {p.name}
                     </h4>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                       {tons.toFixed(2)} {t.tons}
@@ -638,7 +683,7 @@ export const FormulaPage = () => {
                           {tons.toFixed(2)} <span className="text-xs font-semibold">{t.tons}</span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          {t.equivalentTonRate} {bags.toLocaleString()} {t.bags} • {p.stockKg.toLocaleString()} {t.kilo}
+                          {t.equivalentTonRate} {bags.toLocaleString()} {t.bags} • {stockKg.toLocaleString()} {t.kilo}
                         </div>
                       </div>)}
 
@@ -648,14 +693,14 @@ export const FormulaPage = () => {
                           {bags.toLocaleString()} <span className="text-xs font-semibold">{t.bags}</span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          {t.equivalentTonRate} {tons.toFixed(2)} {t.tons} • {p.stockKg.toLocaleString()} {t.kilo}
+                          {t.equivalentTonRate} {tons.toFixed(2)} {t.tons} • {stockKg.toLocaleString()} {t.kilo}
                         </div>
                       </div>)}
 
                     {stockViewUnit === 'kg' && (<div>
                         <span className="text-[10px] text-slate-500 block">{t.inKg}:</span>
                         <div className="text-2xl font-black font-mono text-slate-900">
-                          {p.stockKg.toLocaleString()} <span className="text-xs font-semibold">{t.kilos}</span>
+                          {stockKg.toLocaleString()} <span className="text-xs font-semibold">{t.kilos}</span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                           {t.equivalentTonRate} {tons.toFixed(2)} {t.tons} • {bags.toLocaleString()} {t.bags}
@@ -673,7 +718,7 @@ export const FormulaPage = () => {
                         </div>
                         <div className="p-2 rounded-lg bg-white border border-slate-200">
                           <span className="text-[10px] text-slate-500 block font-semibold">{t.inKg}</span>
-                          <span className="font-bold font-mono text-slate-900 text-sm">{p.stockKg.toLocaleString()}</span>
+                          <span className="font-bold font-mono text-slate-900 text-sm">{stockKg.toLocaleString()}</span>
                         </div>
                       </div>)}
                   </div>
@@ -703,7 +748,7 @@ export const FormulaPage = () => {
 
                 <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
                   <span>{t.processingDateLabel}: {p.lastUpdated}</span>
-                  <span className="font-mono">ID: {p.id.slice(-6)}</span>
+                  <span className="font-mono">ID: {String(p.id || '').slice(-6)}</span>
                 </div>
               </div>);
         })}
@@ -782,11 +827,12 @@ export const FormulaPage = () => {
 
         <div className="space-y-2.5">
           {db.productionBatches.slice(0, 8).map(b => {
-            const batchTons = b.totalWeightKg / 1000;
-            const batchBags = Math.round((b.totalWeightKg / 50) * 100) / 100;
+            const batchWeightKg = Number(b.totalWeightKg) || 0;
+            const batchTons = batchWeightKg / 1000;
+            const batchBags = Math.round((batchWeightKg / 50) * 100) / 100;
             return (<div key={b.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div>
-                  <h4 className="font-bold text-slate-900">{getLocalizedName(b.formulaName)}</h4>
+                  <h4 className="font-bold text-slate-900">{b.formulaName}</h4>
                   <span className="text-[11px] text-slate-500">
                     {t.date}: {b.date} {b.operatorName ? `• ${t.operatorNameLabel}: ${b.operatorName}` : ''}
                   </span>
@@ -796,7 +842,7 @@ export const FormulaPage = () => {
                     {batchTons.toFixed(2)} {t.tons}
                   </span>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {batchBags} {t.bags} • {b.totalWeightKg.toLocaleString()} {t.kilo}
+                    {batchBags} {t.bags} • {batchWeightKg.toLocaleString()} {t.kilo}
                   </span>
                 </div>
               </div>);
@@ -831,9 +877,9 @@ export const FormulaPage = () => {
 
 const normalizeSearch = (value) => value?.toLocaleLowerCase().trim() || '';
 
-const RawMaterialCombobox = ({ materials, value, onChange, getLocalizedName, kiloLabel, lang }) => {
+const RawMaterialCombobox = ({ materials, value, onChange, kiloLabel, lang }) => {
     const selected = materials.find(material => material.id === value);
-    const selectedName = selected ? getLocalizedName(selected.name) : '';
+    const selectedName = selected?.name || '';
     const [query, setQuery] = useState(selectedName);
     const [isOpen, setIsOpen] = useState(false);
 
@@ -843,15 +889,13 @@ const RawMaterialCombobox = ({ materials, value, onChange, getLocalizedName, kil
             return materials.slice(0, 20);
         return materials
             .map((material, index) => {
-                const localizedName = normalizeSearch(getLocalizedName(material.name));
                 const storedName = normalizeSearch(material.name);
-                const searchableName = `${localizedName} ${storedName}`;
                 let score = 3;
-                if (localizedName === keyword || storedName === keyword)
+                if (storedName === keyword)
                     score = 0;
-                else if (localizedName.startsWith(keyword) || storedName.startsWith(keyword))
+                else if (storedName.startsWith(keyword))
                     score = 1;
-                else if (searchableName.includes(keyword))
+                else if (storedName.includes(keyword))
                     score = 2;
                 return { material, score, index };
             })
@@ -859,7 +903,7 @@ const RawMaterialCombobox = ({ materials, value, onChange, getLocalizedName, kil
             .sort((a, b) => a.score - b.score || a.index - b.index)
             .slice(0, 20)
             .map(result => result.material);
-    }, [materials, query, getLocalizedName]);
+    }, [materials, query]);
 
     const placeholder = lang === 'fa' ? 'نام مواد خام را بنویسید...' : lang === 'ps' ? 'د خامو موادو نوم ولیکئ...' : 'Type a raw material name...';
     const noResults = lang === 'fa' ? 'مواد نزدیک به جستجو پیدا نشد.' : lang === 'ps' ? 'ورته خام مواد ونه موندل شول.' : 'No matching raw material found.';
@@ -887,14 +931,14 @@ const RawMaterialCombobox = ({ materials, value, onChange, getLocalizedName, kil
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
               onChange(material.id);
-              setQuery(getLocalizedName(material.name));
+              setQuery(material.name);
               setIsOpen(false);
           }}
           className="w-full flex items-center justify-between gap-3 px-3 py-2 text-start hover:bg-amber-50 border-b border-slate-100 last:border-0"
         >
-          <span className="text-xs font-semibold text-slate-800 truncate">{getLocalizedName(material.name)}</span>
+          <span className="text-xs font-semibold text-slate-800 truncate">{material.name}</span>
           <span className="flex items-center gap-2 shrink-0 text-[10px] text-slate-500 font-mono">
-            {material.stockKg.toLocaleString()} {kiloLabel}
+            {(Number(material.stockKg) || 0).toLocaleString()} {kiloLabel}
             {material.id === value && <Check className="w-3.5 h-3.5 text-amber-700"/>}
           </span>
         </button>)) : <div className="px-3 py-4 text-center text-xs text-slate-500">{noResults}</div>}
