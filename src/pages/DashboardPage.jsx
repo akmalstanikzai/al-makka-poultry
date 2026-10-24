@@ -2,6 +2,7 @@ import React from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Wheat, PackageCheck, Truck, Users, TrendingUp, Wallet, Receipt, CalendarClock, AlertTriangle, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
+import { rawStockValue } from '../lib/rawMaterialCost';
 
 const CurrencyPair = ({ amounts, t, tone = 'text-slate-900', compact = false }) => {
     const values = [
@@ -21,7 +22,12 @@ export const DashboardPage = ({ setActiveTab }) => {
     const isRtl = lang === 'fa' || lang === 'ps';
     // 1. RAW stock in kilo
     const totalRawStockKg = db.rawMaterials.reduce((acc, r) => acc + (r.stockKg || 0), 0);
-    const totalRawStockValue = db.rawMaterials.reduce((acc,r)=>{acc[r.currency === 'USD' ? 'USD' : 'AFN'] += r.stockKg*r.unitPrice||0;return acc;},{AFN:0,USD:0});
+    const totalRawStockValue = db.rawMaterials.reduce((acc, material) => {
+        const value = rawStockValue(material);
+        acc.AFN += value.AFN;
+        acc.USD += value.USD;
+        return acc;
+    }, { AFN: 0, USD: 0 });
     // 2. Processed Stock in kilo and bags (1 bag = 50 kg)
     const totalProcessedKg = db.processedStock.reduce((acc, p) => acc + (p.stockKg || 0), 0);
     const totalProcessedBags = Math.round((totalProcessedKg / 50) * 100) / 100;

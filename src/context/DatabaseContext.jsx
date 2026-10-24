@@ -4,6 +4,7 @@ import { supabase, supabaseConfigurationError } from '../lib/supabase';
 import { addCustomerAccountEntryInSupabase, billNumberExistsInSupabase, clearAllDataFromSupabase, correctAccountTransactionInSupabase, correctCustomerAccountEntryInSupabase, deleteCustomerFromSupabase, deleteExpenseFromSupabase, deleteFormulaFromSupabase, deleteRawMaterialFromSupabase, deleteSupplierFromSupabase, loadFactorySettings, loadStateFromSupabase, persistStateChanges, saveLowStockThreshold, writeStateToSupabase } from '../lib/supabaseData';
 import { canonicalSupplierNames, normalizePartyName } from '../lib/partyRoles';
 import { billNumberExists, cleanBillNumber } from '../lib/billNumber';
+import { addToRawMovingAverage, rawAverageCostPerKg } from '../lib/rawMaterialCost';
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
     rawMaterials: [],
@@ -398,6 +399,8 @@ export const DatabaseProvider = ({ children }) => {
             ...item,
             id: newId,
             dateAdded: today,
+            averageCostPerKg: currency === 'AFN' ? Number(item.unitPrice) || 0 : 0,
+            averageCostPerKgUsd: currency === 'USD' ? Number(item.unitPrice) || 0 : 0,
         };
         let updatedSuppliers = [...db.suppliers];
         let assignedSupplierId = item.supplierId;
@@ -554,6 +557,7 @@ export const DatabaseProvider = ({ children }) => {
             }
         }
         const expectedStock = material.stockKg + weight;
+        const movingAverage = addToRawMovingAverage(material, weight, price, currency);
         const nextState = {
             ...db,
             rawMaterials: db.rawMaterials.map(item => item.id === materialId ? {
@@ -561,6 +565,7 @@ export const DatabaseProvider = ({ children }) => {
                 stockKg: expectedStock,
                 unitPrice: price,
                 currency,
+                ...movingAverage,
                 supplierId,
                 supplierName: resolvedName || item.supplierName,
                 notes: notes || item.notes,
@@ -599,9 +604,11 @@ export const DatabaseProvider = ({ children }) => {
         const name = String(updates.name || '').trim();
         const stockKg = Number(updates.stockKg);
         const unitPrice = Number(updates.unitPrice);
+        const averageCostPerKg = Number(updates.averageCostPerKg ?? (currencyCode(updates.currency) === 'AFN' ? unitPrice : 0));
+        const averageCostPerKgUsd = Number(updates.averageCostPerKgUsd ?? (currencyCode(updates.currency) === 'USD' ? unitPrice : 0));
         const threshold = updates.lowStockThreshold === '' || updates.lowStockThreshold == null ? undefined : Number(updates.lowStockThreshold);
-        if (!name || !Number.isFinite(stockKg) || stockKg < 0 || !Number.isFinite(unitPrice) || unitPrice < 0 || (threshold !== undefined && (!Number.isFinite(threshold) || threshold < 0))) return { success: false, error: 'Please enter valid raw-stock values.' };
-        setDb(prev => ({ ...prev, rawMaterials: prev.rawMaterials.map(item => item.id === id ? { ...item, name, category: updates.category || item.category, stockKg, unitPrice, currency: currencyCode(updates.currency), supplierName: String(updates.supplierName || '').trim() || undefined, notes: String(updates.notes || '').trim() || undefined, lowStockThreshold: threshold } : item) }));
+        if (!name || !Number.isFinite(stockKg) || stockKg < 0 || !Number.isFinite(averageCostPerKg) || averageCostPerKg < 0 || !Number.isFinite(averageCostPerKgUsd) || averageCostPerKgUsd < 0 || (threshold !== undefined && (!Number.isFinite(threshold) || threshold < 0))) return { success: false, error: 'Please enter valid raw-stock values.' };
+        setDb(prev => ({ ...prev, rawMaterials: prev.rawMaterials.map(item => item.id === id ? { ...item, name, category: updates.category || item.category, stockKg, averageCostPerKg, averageCostPerKgUsd, supplierName: String(updates.supplierName || '').trim() || undefined, notes: String(updates.notes || '').trim() || undefined, lowStockThreshold: threshold } : item) }));
         return { success: true };
     };
     // Edit supplier fields independently while adjusting cash by the change in paid amounts.
@@ -941,7 +948,9 @@ export const DatabaseProvider = ({ children }) => {
         ingredients.forEach(ing => {
             const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
             totalWeight += Number(ing.weightKg) || 0;
-            costs[currencyCode(raw.currency)] += (Number(ing.weightKg) || 0) * raw.unitPrice;
+            const weight = Number(ing.weightKg) || 0;
+            costs.AFN += weight * rawAverageCostPerKg(raw, 'AFN');
+            costs.USD += weight * rawAverageCostPerKg(raw, 'USD');
         });
         const expenseCurrency = currencyCode(batchExpenseCurrency);
         costs[expenseCurrency] += Number(batchExpenses) || 0;
@@ -995,16 +1004,19 @@ export const DatabaseProvider = ({ children }) => {
             const weight = Number(ingredient.weightKg) || 0;
             if (!raw || weight <= 0)
                 return { success: false, error: t.invalidRawMaterialSelected };
-            const ingredientCost = weight * raw.unitPrice;
+            const ingredientCostAfn = weight * rawAverageCostPerKg(raw, 'AFN');
+            const ingredientCostUsd = weight * rawAverageCostPerKg(raw, 'USD');
             totalWeight += weight;
-            totalCosts[currencyCode(raw.currency)] += ingredientCost;
+            totalCosts.AFN += ingredientCostAfn;
+            totalCosts.USD += ingredientCostUsd;
             populatedIngredients.push({
                 rawMaterialId: raw.id,
                 rawMaterialName: raw.name,
                 weightKg: weight,
-                costPerKg: raw.unitPrice,
-                totalCost: ingredientCost,
-                currency: currencyCode(raw.currency),
+                costPerKg: rawAverageCostPerKg(raw, 'AFN'),
+                costPerKgUsd: rawAverageCostPerKg(raw, 'USD'),
+                totalCost: ingredientCostAfn,
+                totalCostUsd: ingredientCostUsd,
             });
         }
         if (totalWeight <= 0)
@@ -1284,7 +1296,7 @@ export const DatabaseProvider = ({ children }) => {
         const customerCreditCreated = Math.max(0, totalValue - customerOffset);
         const timestamp = Date.now();
         const today = new Date().toISOString().split('T')[0];
-        const existingMaterialIndex = db.rawMaterials.findIndex(material => material.name.trim().toLowerCase() === name.toLowerCase() && currencyCode(material.currency) === currency);
+        const existingMaterialIndex = db.rawMaterials.findIndex(material => normalizeStockName(material.name) === normalizeStockName(name));
         const rawMaterialId = existingMaterialIndex >= 0 ? db.rawMaterials[existingMaterialIndex].id : `rm-${timestamp}`;
 
         const nextState = (() => {
@@ -1326,13 +1338,14 @@ export const DatabaseProvider = ({ children }) => {
                 const material = updatedRawMaterials[existingMaterialIndex];
                 const oldWeight = Number(material.stockKg) || 0;
                 const newWeight = oldWeight + quantityKg;
-                const averageUnitPrice = newWeight > 0 ? ((oldWeight * (Number(material.unitPrice) || 0)) + totalValue) / newWeight : unitPricePerKg;
+                const movingAverage = addToRawMovingAverage(material, quantityKg, unitPricePerKg, currency);
                 updatedRawMaterials[existingMaterialIndex] = {
                     ...material,
                     stockKg: newWeight,
-                    unitPrice: averageUnitPrice,
+                    unitPrice: unitPricePerKg,
                     category,
                     currency,
+                    ...movingAverage,
                     customerId: customer.id,
                     notes: settlement.notes?.trim() || material.notes,
                     dateAdded: today,
@@ -1345,6 +1358,8 @@ export const DatabaseProvider = ({ children }) => {
                     stockKg: quantityKg,
                     unitPrice: unitPricePerKg,
                     currency,
+                    averageCostPerKg: currency === 'AFN' ? unitPricePerKg : 0,
+                    averageCostPerKgUsd: currency === 'USD' ? unitPricePerKg : 0,
                     customerId: customer.id,
                     dateAdded: today,
                     notes: settlement.notes?.trim() || t.customerRawSettlement,

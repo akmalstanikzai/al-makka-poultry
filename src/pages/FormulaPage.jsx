@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { normalizeDecimalInput } from '../lib/numberInput';
+import { rawAverageCostPerKg } from '../lib/rawMaterialCost';
 import { Scale, Plus, Trash2, PackageCheck, DollarSign, Layers, CalendarClock, Zap, Info, ArrowRightLeft, ChevronDown, ChevronUp, Bookmark, FolderOpen, Search, Check } from 'lucide-react';
 
 let ingredientRowSequence = 0;
@@ -107,7 +108,10 @@ export const FormulaPage = () => {
         const raw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
         const weight = Number(ing.weightKg) || 0;
         totalBatchWeight += weight;
-        if (raw) totalRawMaterialCost[raw.currency === 'USD' ? 'USD' : 'AFN'] += raw.unitPrice * weight;
+        if (raw) {
+            totalRawMaterialCost.AFN += rawAverageCostPerKg(raw, 'AFN') * weight;
+            totalRawMaterialCost.USD += rawAverageCostPerKg(raw, 'USD') * weight;
+        }
     });
     const productionUnitKg = productionUnit === 'ton' ? 1000 : productionUnit === 'bag' ? 50 : 1;
     const requestedProductionKg = (Number(productionQuantity) || 0) * productionUnitKg;
@@ -410,7 +414,10 @@ export const FormulaPage = () => {
               <div className="space-y-2.5">
                 {ingredients.map((ing, idx) => {
             const selectedRaw = db.rawMaterials.find(r => r.id === ing.rawMaterialId);
-            const cost = selectedRaw ? selectedRaw.unitPrice * (Number(ing.weightKg) || 0) : 0;
+            const cost = selectedRaw ? {
+                AFN: rawAverageCostPerKg(selectedRaw, 'AFN') * (Number(ing.weightKg) || 0),
+                USD: rawAverageCostPerKg(selectedRaw, 'USD') * (Number(ing.weightKg) || 0),
+            } : { AFN: 0, USD: 0 };
             const requiredForProduction = (Number(ing.weightKg) || 0) * productionScale;
             const totalRequiredForMaterial = scaledRequirementByMaterial.get(ing.rawMaterialId) || requiredForProduction;
             const isInsufficient = selectedRaw && requestedProductionKg > 0 && (Number(selectedRaw.stockKg) || 0) < totalRequiredForMaterial;
@@ -435,9 +442,8 @@ export const FormulaPage = () => {
 
                       <div className="w-full sm:w-32 text-end sm:pt-4">
                         <span className="text-[10px] text-slate-500 block">{t.itemCostTotal}</span>
-                        <span className="text-xs font-bold text-amber-700 font-mono">
-                          {cost.toLocaleString()} {selectedRaw?.currency || 'AFN'}
-                        </span>
+                        <span className="text-xs font-bold text-amber-700 font-mono block">{cost.AFN.toLocaleString(undefined, { maximumFractionDigits: 2 })} AFN</span>
+                        <span className="text-xs font-bold text-emerald-700 font-mono block">{cost.USD.toLocaleString(undefined, { maximumFractionDigits: 4 })} USD</span>
                         {requestedProductionKg > 0 && <span className={`block text-[10px] font-mono mt-1 ${isInsufficient ? 'text-rose-700 font-bold' : 'text-slate-500'}`}>{t.requiredForBatch}: {totalRequiredForMaterial.toLocaleString(undefined, { maximumFractionDigits: 3 })} {t.kilo}</span>}
                       </div>
 

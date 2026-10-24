@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { rawAverageCostPerKg } from './rawMaterialCost';
 let writeQueue = Promise.resolve();
 function reportDatabaseError(message) {
     console.error(message);
@@ -139,6 +140,12 @@ export async function loadStateFromSupabase() {
             stockKg: Number(r.stock_kg) || 0,
             unitPrice: Number(r.unit_price) || 0,
             currency: r.currency || 'AFN',
+            averageCostPerKg: r.average_cost_per_kg == null
+                ? ((r.currency || 'AFN') === 'AFN' ? Number(r.unit_price) || 0 : 0)
+                : Number(r.average_cost_per_kg) || 0,
+            averageCostPerKgUsd: r.average_cost_per_kg_usd == null
+                ? (r.currency === 'USD' ? Number(r.unit_price) || 0 : 0)
+                : Number(r.average_cost_per_kg_usd) || 0,
             supplierId: r.supplier_id || undefined,
             supplierName: r.supplier_name || undefined,
             customerId: r.customer_id || undefined,
@@ -492,6 +499,8 @@ export async function writeStateToSupabase(state) {
                 stock_kg: rm.stockKg,
                 unit_price: rm.unitPrice,
                 currency: rm.currency || 'AFN',
+                average_cost_per_kg: rawAverageCostPerKg(rm, 'AFN'),
+                average_cost_per_kg_usd: rawAverageCostPerKg(rm, 'USD'),
                 supplier_id: rm.supplierId || null,
                 supplier_name: rm.supplierName || null,
                 customer_id: rm.customerId || null,

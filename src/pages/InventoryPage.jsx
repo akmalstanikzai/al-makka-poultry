@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, X, RefreshCw } from 'lucide-react';
+import { rawAverageCostPerKg, rawStockValue } from '../lib/rawMaterialCost';
 const normalizeSupplierName = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 export const InventoryPage = () => {
@@ -214,7 +215,12 @@ export const InventoryPage = () => {
             (item.supplierName && item.supplierName.toLowerCase().includes(search));
     });
     const totalWarehouseKg = db.rawMaterials.reduce((acc, i) => acc + i.stockKg, 0);
-    const totalWarehouseValue = db.rawMaterials.reduce((acc, i) => { const code = i.currency === 'USD' ? 'USD' : 'AFN'; acc[code] += i.stockKg * i.unitPrice; return acc; }, { AFN: 0, USD: 0 });
+    const totalWarehouseValue = db.rawMaterials.reduce((acc, item) => {
+        const value = rawStockValue(item);
+        acc.AFN += value.AFN;
+        acc.USD += value.USD;
+        return acc;
+    }, { AFN: 0, USD: 0 });
     const lowStockCount = db.rawMaterials.filter(i => i.stockKg <= (i.lowStockThreshold ?? lowStockThreshold)).length;
     return (<div className="space-y-6">
       {/* Header with Title and Add Button */}
@@ -305,7 +311,7 @@ export const InventoryPage = () => {
         <div className="hidden lg:grid lg:grid-cols-12 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
           <span className="col-span-3">{t.materialName}</span>
           <span className="col-span-2">{t.currentStockLabel}</span>
-          <span>{t.unitPriceKilo}</span>
+          <span>{t.averageCostKilo}</span>
           <span>{t.totalValue}</span>
           <span className="col-span-2">{t.individualThresholdHeader}</span>
           <span className="col-span-2">{t.supplier}</span>
@@ -314,7 +320,11 @@ export const InventoryPage = () => {
         {filteredItems.map((item) => {
             const itemThreshold = item.lowStockThreshold ?? lowStockThreshold;
             const isLowStock = item.stockKg <= itemThreshold;
-            const totalVal = item.stockKg * item.unitPrice;
+            const averageCost = {
+                AFN: rawAverageCostPerKg(item, 'AFN'),
+                USD: rawAverageCostPerKg(item, 'USD'),
+            };
+            const totalVal = rawStockValue(item);
             return (<div key={item.id} className={`grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-4 items-center px-4 sm:px-5 py-4 border-b border-slate-100 last:border-b-0 transition-colors ${isLowStock ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50/70'}`}>
               <div className="col-span-2 lg:col-span-3 min-w-0">
                 <div className="flex items-start gap-2">
@@ -336,15 +346,15 @@ export const InventoryPage = () => {
               </div>
 
               <div>
-                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.unitPriceKilo}</span>
-                <span className="text-sm font-bold text-amber-700 font-mono">{item.unitPrice.toLocaleString()} {item.currency || 'AFN'}</span>
-                <span className="block text-[10px] text-slate-400">AFN / USD</span>
+                <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.averageCostKilo}</span>
+                <span className="text-xs font-bold text-amber-700 font-mono block">{averageCost.AFN.toLocaleString(undefined, { maximumFractionDigits: 4 })} AFN</span>
+                <span className="text-xs font-bold text-emerald-700 font-mono block">{averageCost.USD.toLocaleString(undefined, { maximumFractionDigits: 6 })} USD</span>
               </div>
 
               <div>
                 <span className="lg:hidden text-[10px] text-slate-400 block mb-0.5">{t.totalValue}</span>
-                <span className="text-sm font-bold text-emerald-700 font-mono">{totalVal.toLocaleString()}</span>
-                <span className="block text-[10px] text-slate-400">AFN / USD</span>
+                <span className="text-xs font-bold text-amber-700 font-mono block">{totalVal.AFN.toLocaleString(undefined, { maximumFractionDigits: 2 })} AFN</span>
+                <span className="text-xs font-bold text-emerald-700 font-mono block">{totalVal.USD.toLocaleString(undefined, { maximumFractionDigits: 4 })} USD</span>
               </div>
 
               <div className="lg:col-span-2">
