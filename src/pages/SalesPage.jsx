@@ -1,3 +1,4 @@
+import { recordTone } from '../lib/recordAppearance';
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
@@ -282,7 +283,7 @@ export const SalesPage = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="ui-data-table mobile-card-table w-full text-start text-xs sm:text-sm">
+          <table className="ui-data-table mobile-card-table sales-list-table w-full text-start text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase text-[11px]">
               <tr>
                 <th className="py-3 px-4 text-start">{t.invoiceNumber}</th>
@@ -299,7 +300,7 @@ export const SalesPage = () => {
               {filteredSales.map((sale) => {
             const isPaidInFull = sale.remainingAmount === 0;
             const itemLines = getSaleLineItems(sale);
-            return (<tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
+            return (<tr key={sale.id} data-record-tone={recordTone(sale.id)} className="sale-record hover:bg-slate-50/80 transition-colors">
                     <td data-label={t.invoiceNumber} className="py-3.5 px-4 font-mono font-bold text-amber-700">
                       #{sale.billNumber || sale.id.slice(-6).toUpperCase()}
                       <span className="block text-[10px] text-slate-400 font-normal">{sale.date}</span>

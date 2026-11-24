@@ -7,7 +7,6 @@ export const ExpensesPage = () => {
     const { db, t, addExpense, deleteExpense } = useDatabase();
     const [expenseDate, setExpenseDate] = useState(() => localDateValue());
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
     const [expenseToDelete, setExpenseToDelete] = useState(null);
     // Form State
     const [category, setCategory] = useState('fuel');
@@ -98,7 +97,7 @@ export const ExpensesPage = () => {
         setNotes('');
         setErrorMsg('');
     };
-    const filteredExpenses = db.expenses.filter(e => selectedCategoryFilter === 'all' || e.category === selectedCategoryFilter);
+    const filteredExpenses = db.expenses;
     const totalExpenses = db.expenses.reduce((acc, e) => { acc[e.currency === 'USD' ? 'USD' : 'AFN'] += e.amount; return acc; }, { AFN: 0, USD: 0 });
     return (<div className="workspace-page space-y-6">
       {/* Header */}
@@ -126,34 +125,11 @@ export const ExpensesPage = () => {
       </div>
 
       {/* Summary Card */}
-      <div className="expense-overview grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="expense-total p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-xs font-semibold text-slate-500">{t.totalExpenses}</span>
-            <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
-              {totalExpenses.AFN.toLocaleString()} AFN · {totalExpenses.USD.toLocaleString()} USD
-            </div>
-            <span className="text-xs text-slate-500">{db.expenses.length} {t.records}</span>
-          </div>
-          <div className="p-3 bg-rose-100 text-rose-700 rounded-xl border border-rose-200">
-            <Wallet className="w-6 h-6"/>
-          </div>
-        </div>
-
-        {/* Category Filter Chips */}
-        <div className="expense-filters lg:col-span-2 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setSelectedCategoryFilter('all')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedCategoryFilter === 'all'
-            ? 'bg-amber-600 text-white shadow-xs'
-            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-            {t.allCategories}
-          </button>
-          {Object.entries(categoryConfig).map(([key, cfg]) => (<button key={key} type="button" onClick={() => setSelectedCategoryFilter(key)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedCategoryFilter === key
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-              {cfg.name}
-            </button>))}
-        </div>
-      </div>
+      <section className="expense-summary-strip" aria-label={t.totalExpenses}>
+        <div className="expense-summary-label"><Wallet className="w-5 h-5"/><span>{t.totalExpenses}</span></div>
+        <strong><bdi dir="ltr">{totalExpenses.AFN.toLocaleString()} AFN</bdi><span aria-hidden="true">·</span><bdi dir="ltr">{totalExpenses.USD.toLocaleString()} USD</bdi></strong>
+        <span className="expense-record-count">{db.expenses.length} {t.records}</span>
+      </section>
 
       {/* Expenses Table */}
       <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

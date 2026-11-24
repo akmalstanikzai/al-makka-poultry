@@ -1,3 +1,5 @@
+import { RecordAvatar } from '../components/RecordAvatar';
+import { recordTone } from '../lib/recordAppearance';
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
@@ -316,7 +318,7 @@ export const InventoryPage = () => {
 
       {/* Raw materials displayed as clean, scannable rows */}
       <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="hidden lg:grid lg:grid-cols-12 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        <div className="stock-list-head hidden lg:grid lg:grid-cols-12 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
           <span className="col-span-3">{t.materialName}</span>
           <span className="col-span-2">{t.currentStockLabel}</span>
           <span>{t.averageCostKilo}</span>
@@ -333,9 +335,10 @@ export const InventoryPage = () => {
                 USD: rawAverageCostPerKg(item, 'USD'),
             };
             const totalVal = rawStockValue(item);
-            return (<div key={item.id} className={`stock-record grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-4 items-center px-4 sm:px-5 py-4 border-b border-slate-100 last:border-b-0 transition-colors ${isLowStock ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50/70'}`}>
+            return (<div key={item.id} data-record-tone={recordTone(item.id || item.name)} className={`stock-record grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-4 items-center px-4 sm:px-5 py-4 border-b border-slate-100 last:border-b-0 transition-colors ${isLowStock ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50/70'}`}>
               <div className="col-span-2 lg:col-span-3 min-w-0">
-                <div className="flex items-start gap-2">
+                <div className="stock-identity flex items-start gap-2">
+                  <RecordAvatar id={item.id} name={item.name} icon={Wheat}/>
                   {isLowStock && <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5"/>}
                   <div className="min-w-0">
                     <h3 className="text-sm font-bold text-slate-900 truncate" title={item.name}>{item.name}</h3>

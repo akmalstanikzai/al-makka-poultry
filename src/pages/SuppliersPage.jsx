@@ -1,3 +1,5 @@
+import { RecordAvatar } from '../components/RecordAvatar';
+import { recordTone } from '../lib/recordAppearance';
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
@@ -328,23 +330,24 @@ export const SuppliersPage = () => {
                 <th className="py-3.5 px-4 text-center">{t.financialActions}</th>
               </tr>
             </thead>
-            <tbody className="grid gap-3 p-3 2xl:table-row-group 2xl:divide-y 2xl:divide-slate-100 2xl:p-0">
+            <tbody className="account-records">
               {filteredSuppliers.map((sup) => {
             const hasDebt = sup.balanceOwed > 0 || (sup.balanceOwedUsd || 0) > 0;
             const hasReceivable = (sup.receivableBalance || 0) > 0 || (sup.receivableBalanceUsd || 0) > 0;
             const isExpanded = !!expandedSupplierIds[sup.id];
             const transactionsCount = sup.transactions?.length || 0;
             return (<React.Fragment key={sup.id}>
-                    <tr className={`account-record grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasReceivable ? 'bg-sky-50/30 hover:bg-sky-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
+                    <tr data-record-tone={recordTone(sup.id || sup.name)} className={`account-record grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasReceivable ? 'bg-sky-50/30 hover:bg-sky-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
                       <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
                         <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.supplierAndCompany}</span>
-                        <div className="flex items-center gap-2">
+                        <div className="account-identity flex items-center gap-2">
+                          <RecordAvatar id={sup.id} name={sup.name}/>
                           <button type="button" onClick={() => toggleExpand(sup.id)} className="p-1 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer" title={t.toggleHistoryTooltip}>
                             {isExpanded ? <ChevronUp className="w-4 h-4 text-amber-600"/> : <ChevronDown className="w-4 h-4"/>}
                           </button>
                           <div>
-                            <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <div className="account-name font-bold text-slate-900 text-sm flex flex-wrap items-center gap-1.5">
                               <span>{sup.name}</span>
                               {hasDebt ? (<span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
                                   {t.supplierCreditBadge}
@@ -444,7 +447,7 @@ export const SuppliersPage = () => {
                     </tr>
 
                     {/* Inline Expandable Transaction Histories Row */}
-                    {isExpanded && (<tr className="block min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 2xl:table-row 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
+                    {isExpanded && (<tr className="account-history-row block min-w-0 rounded-xl border border-slate-200 bg-slate-50/90">
                         <td colSpan={7} className="block min-w-0 p-2 sm:p-4 2xl:table-cell">
                           <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
                             <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-100/70 p-3 sm:flex-row sm:items-center sm:justify-between">

@@ -461,7 +461,7 @@ export const FormulaPage = () => {
             const isInsufficient = selectedRaw && requestedProductionKg > 0 && (Number(selectedRaw.stockKg) || 0) < totalRequiredForMaterial;
             const availableMaterials = db.rawMaterials.filter(material => material.id === ing.rawMaterialId
                 || !ingredients.some(otherIngredient => otherIngredient.rowId !== ing.rowId && otherIngredient.rawMaterialId === material.id));
-            return (<div key={ing.rowId} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isInsufficient ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+            return (<div key={ing.rowId} className={`ingredient-row p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isInsufficient ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex-1 min-w-0">
                         <label className="block text-[10px] text-slate-500 mb-1">{t.selectRawIndex} #{idx + 1}</label>
                         <RawMaterialCombobox
@@ -623,7 +623,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* Processed Feed Stock Section with Multi-Unit View (Tons, Bags, Kg) */}
-      <div className="order-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="formula-stock order-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         {/* Section Header & Unit Selector */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -800,7 +800,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* Saved Formulated Items Section with Delete Option & Tons */}
-      <div className="order-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="formula-recipes order-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-4">
           <Layers className="w-4 h-4 text-amber-600"/>
           <span>{t.savedFormulasWithTons}</span>
@@ -868,7 +868,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* Recent Production Batches with Tons */}
-      <div className="order-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="formula-log order-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-3">
           <CalendarClock className="w-4 h-4 text-amber-600"/>
           <span>{t.productionHistoryTons}</span>

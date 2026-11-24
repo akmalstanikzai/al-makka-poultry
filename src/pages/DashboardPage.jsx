@@ -209,7 +209,7 @@ export const DashboardPage = ({ setActiveTab }) => {
         <div className="dashboard-metrics grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           {rectangularCards.map((card) => {
             const Icon = card.icon;
-            return (<button type="button" key={card.id} data-metric={card.id} onClick={() => setActiveTab(card.tab)} className={`dashboard-metric h-full p-5 rounded-2xl border text-start transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md hover:-translate-y-0.5 ${card.bg} ${card.border}`}>
+            return (<button type="button" key={card.id} data-metric={card.id} onClick={() => setActiveTab(card.tab)} className={`dashboard-metric p-3 rounded-2xl border text-start transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md hover:-translate-y-0.5 ${card.bg} ${card.border}`}>
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className={`p-2.5 rounded-xl ${card.iconBg} transition-transform group-hover:scale-110 shadow-2xs`}>
                     <Icon className="w-5 h-5"/>
