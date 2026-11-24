@@ -288,9 +288,9 @@ export const CustomersPage = () => {
         }
         return true;
     }).sort((first, second) => latestSaleTime(second) - latestSaleTime(first));
-    return (<div className="space-y-6">
+    return (<div className="workspace-page space-y-6">
       {/* Header with Title and Search */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
@@ -316,7 +316,7 @@ export const CustomersPage = () => {
       </div>
 
       {/* Financial Summary Banners */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="stats-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalCustomerPurchases}</span>
@@ -373,7 +373,7 @@ export const CustomersPage = () => {
       </div>
 
       {/* Comprehensive Row Layout / Line Structure Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Table Toolbar & Filters */}
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
           <div className="flex items-center gap-2">
@@ -411,7 +411,7 @@ export const CustomersPage = () => {
 
         {/* Structured Row / Line Table */}
         <div className="min-w-0 2xl:overflow-x-auto">
-          <table className="block w-full min-w-0 text-start text-xs sm:text-sm 2xl:table 2xl:min-w-[1120px]">
+          <table className="account-table ui-data-table block w-full min-w-0 text-start text-xs sm:text-sm 2xl:table 2xl:min-w-[1120px]">
             <thead className="hidden bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold text-[11px] uppercase 2xl:table-header-group">
               <tr>
                 <th className="py-3.5 px-4 text-start">{t.nameAndFarm}</th>
@@ -430,7 +430,7 @@ export const CustomersPage = () => {
             const isExpanded = !!expandedCustomerIds[cust.id];
             const transactionsCount = cust.transactions?.length || 0;
             return (<React.Fragment key={cust.id}>
-                    <tr className={`grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasCredit ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
+                    <tr className={`account-record grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasCredit ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
                       <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
                         <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.nameAndFarm}</span>
@@ -584,7 +584,7 @@ export const CustomersPage = () => {
                                 </article>))}
                               </div>
                               <div className="hidden overflow-x-auto overscroll-x-contain touch-pan-x 2xl:block">
-                                <table className="w-full min-w-[1120px] table-auto text-xs text-start">
+                                <table className="ui-data-table w-full min-w-[1120px] table-auto text-xs text-start">
                                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-[10px]">
                                     <tr>
                                       <th className="py-2 px-3 text-start">{t.dateCol}</th>
@@ -712,7 +712,7 @@ export const CustomersPage = () => {
       </div>}
 
       {/* Customer account editor; related inventory, sales, and history remain unchanged. */}
-      {editingCustomer && customerEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+      {editingCustomer && customerEdit && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
           <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-blue-600"/>{t.editCustomer}</h3><p className="text-xs text-slate-500 mt-1">{t.customerEditNotice}</p></div><button type="button" onClick={()=>setEditingCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <form onSubmit={handleCustomerEdit} className="space-y-5">
@@ -732,7 +732,7 @@ export const CustomersPage = () => {
       </div>)}
 
       {/* Receive raw material from a customer as a non-cash settlement. */}
-      {rawSettlementCustomer && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+      {rawSettlementCustomer && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
           <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Wheat className="w-5 h-5 text-amber-600"/>{t.settleWithRawMaterial}</h3><p className="text-xs text-slate-500 mt-1">{rawSettlementCustomer.name} · {t.remainingDebt}: {(rawSettlementCustomer.balanceOwed || 0).toLocaleString()} AFN · {(rawSettlementCustomer.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setRawSettlementCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">{t.rawSettlementNotice}</p>
@@ -763,7 +763,7 @@ export const CustomersPage = () => {
         </div>
       </div>)}
       {/* Receive Customer Payment Modal */}
-      {receiveModalCustomer && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      {receiveModalCustomer && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
@@ -826,7 +826,7 @@ export const CustomersPage = () => {
         </div>)}
 
       {/* Customer Transaction History / Statement Modal */}
-      {selectedHistoryCustomer && (<div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-xs">
+      {selectedHistoryCustomer && (<div className="ui-overlay fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white w-full max-w-6xl max-h-[calc(100dvh-2rem)] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 flex flex-col">
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -858,7 +858,7 @@ export const CustomersPage = () => {
         </div>)}
 
       {/* In-app Confirmation Modal for Customer Deletion */}
-      {customerToDelete && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {customerToDelete && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6"/>

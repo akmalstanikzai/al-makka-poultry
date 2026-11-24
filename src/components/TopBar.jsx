@@ -38,16 +38,16 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
         }
     };
     return (<>
-      <header className="print:hidden sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-xs">
+      <header className="app-topbar print:hidden sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-xs">
         {/* Left / Start: Mobile Menu Toggle & Title */}
         <div className="flex items-center gap-3 min-w-0">
-          <button type="button" onClick={onOpenMobileMenu} className="lg:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+          <button type="button" onClick={onOpenMobileMenu} aria-label={t.morePages} className="lg:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
             <Menu className="w-5 h-5"/>
           </button>
 
           <div>
             <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate flex items-center gap-2">
-              <span>{getTabTitle()}</span>
+              <span className="truncate">{getTabTitle()}</span>
             </h1>
             <span className="text-[11px] text-slate-500 hidden md:inline-flex items-center gap-1.5 font-medium">
               <span>{t.companyName}</span>
@@ -58,7 +58,7 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
         </div>
 
         {/* Right / End: Notification Bell, Cash Balance, Language & Profile */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="topbar-actions flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Low Stock Notification Bell */}
           <button type="button" onClick={() => setShowNotificationModal(true)} className={`relative p-2 rounded-xl border transition-all ${lowStockMaterials.length > 0
             ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 animate-pulse'
@@ -70,9 +70,9 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
           </button>
 
           {/* Language Switcher in Top Bar */}
-          <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200 p-1 rounded-xl text-xs">
+          <div className="language-switcher flex items-center gap-0.5 bg-slate-50 border border-slate-200 p-1 rounded-xl text-xs">
             <Globe2 className="w-3.5 h-3.5 text-slate-500 mx-1 hidden sm:block"/>
-            {['fa', 'ps', 'en'].map((l) => (<button key={l} type="button" onClick={() => setLang(l)} className={`px-2 py-0.5 text-[11px] font-bold rounded-lg transition-all ${lang === l
+            {['fa', 'ps', 'en'].map((l) => (<button key={l} type="button" onClick={() => setLang(l)} aria-pressed={lang === l} className={`px-2 py-0.5 text-[11px] font-bold rounded-lg transition-all ${lang === l
                 ? 'bg-amber-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'}`}>
                 {l === 'fa' ? 'دری' : l === 'ps' ? 'پښتو' : 'EN'}

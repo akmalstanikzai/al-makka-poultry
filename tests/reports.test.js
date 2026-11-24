@@ -56,6 +56,7 @@ const fixture = {
 };
 
 test('reports sum itemized and counter sales, purchases and expenses without double counting or currency conversion', () => {
+    const original = structuredClone(fixture);
     const report = buildReport(fixture, reportDateRange('daily', date));
     assert.deepEqual(report.revenue, { AFN: 300, USD: 30 });
     assert.deepEqual(report.purchaseTotal, { AFN: 140, USD: 5 });
@@ -66,10 +67,49 @@ test('reports sum itemized and counter sales, purchases and expenses without dou
     assert.equal(report.sales.length, 3);
     assert.equal(report.saleLines.length, 4);
     assert.equal(report.soldKg, 300);
+    assert.equal(report.processedSoldKg, 200);
+    assert.equal(report.rawSoldKg, 100);
+    assert.deepEqual(report.processedSalesTotal, { AFN: 300, USD: 20 });
+    assert.deepEqual(report.rawSalesTotal, { AFN: 0, USD: 10 });
     assert.equal(report.purchasedKg, 725);
     assert.equal(report.saleLines.find(line => line.id === 'counter-0').productName, 'Wheat');
     assert.equal(report.saleLines.find(line => line.id === 'counter-0').stockType, 'raw');
     assert.equal(report.saleLines.reduce((sum, line) => sum + line.totalAmount, 0), 330);
+    assert.deepEqual(fixture, original);
+});
+
+test('stock summary combines production and purchases with separately valued raw and processed sales', () => {
+    const report = buildReport({
+        productionBatches: [
+            { id: 'batch', date, totalWeightKg: 1000, totalCost: 28000, totalCostUsd: 12 },
+            { id: 'older', date: '2026-11-23', totalWeightKg: 9000, totalCost: 99999 },
+            { id: 'void', date, totalWeightKg: 999, totalCost: 999, status: 'voided' },
+        ],
+        rawMaterialPurchases: [{ id: 'purchase', date, unitType: 'ton', unitQuantity: 2, amount: 75000, currency: 'AFN' }],
+        sales: [{ id: 'legacy', date, productName: 'Feed', unitType: 'bag', unitQuantity: 3, totalAmount: 4500, currency: 'AFN' }],
+        counterSales: [{ id: 'mixed', date, totalAmount: 1, currency: 'USD', items: [
+            { stockType: 'raw', stockName: 'Wheat', unitType: 'kg', unitQuantity: 1, salePricePerUnit: 0.333 },
+            { stockType: 'processed', stockName: 'Feed', unitType: 'bag', unitQuantity: 1, salePricePerUnit: 0.666 },
+        ] }],
+    }, reportDateRange('daily', date));
+    assert.equal(report.producedKg, 1000);
+    assert.deepEqual(report.productionCost, { AFN: 28000, USD: 12 });
+    assert.equal(report.purchasedKg, 2000);
+    assert.deepEqual(report.purchaseTotal, { AFN: 75000, USD: 0 });
+    assert.equal(report.processedSoldKg, 200);
+    assert.equal(report.rawSoldKg, 1);
+    assert.deepEqual(report.processedSalesTotal, { AFN: 4500, USD: 0.67 });
+    assert.deepEqual(report.rawSalesTotal, { AFN: 0, USD: 0.33 });
+    assert.equal(report.hasRawSales, true);
+    const empty = buildReport({}, reportDateRange('all'));
+    assert.equal(empty.hasRawSales, false);
+    assert.equal(empty.processedSoldKg, 0);
+    assert.deepEqual(empty.productionCost, { AFN: 0, USD: 0 });
+});
+
+test('Pashto supplier debt labels clearly say the debt is owed by us', () => {
+    assert.equal(translations.ps.remainingOwedToSupplier, 'په مونږه پاتې پور');
+    assert.equal(translations.ps.balanceOwedToSupplier, 'په مونږه پاتې پور');
 });
 
 test('empty or invalid periods show zero totals and all-time reports include records beyond today', () => {

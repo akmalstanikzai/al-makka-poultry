@@ -230,9 +230,9 @@ export const InventoryPage = () => {
         return acc;
     }, { AFN: 0, USD: 0 });
     const lowStockCount = db.rawMaterials.filter(i => i.stockKg <= (i.lowStockThreshold ?? lowStockThreshold)).length;
-    return (<div className="space-y-6">
+    return (<div className="workspace-page space-y-5">
       {/* Header with Title and Add Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="page-hero flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
@@ -254,7 +254,7 @@ export const InventoryPage = () => {
       </div>
 
       {/* Overview Stat Banners */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="stats-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.rawStockCard}</span>
@@ -315,7 +315,7 @@ export const InventoryPage = () => {
       </div>
 
       {/* Raw materials displayed as clean, scannable rows */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="hidden lg:grid lg:grid-cols-12 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
           <span className="col-span-3">{t.materialName}</span>
           <span className="col-span-2">{t.currentStockLabel}</span>
@@ -333,7 +333,7 @@ export const InventoryPage = () => {
                 USD: rawAverageCostPerKg(item, 'USD'),
             };
             const totalVal = rawStockValue(item);
-            return (<div key={item.id} className={`grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-4 items-center px-4 sm:px-5 py-4 border-b border-slate-100 last:border-b-0 transition-colors ${isLowStock ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50/70'}`}>
+            return (<div key={item.id} className={`stock-record grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-4 items-center px-4 sm:px-5 py-4 border-b border-slate-100 last:border-b-0 transition-colors ${isLowStock ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50/70'}`}>
               <div className="col-span-2 lg:col-span-3 min-w-0">
                 <div className="flex items-start gap-2">
                   {isLowStock && <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5"/>}
@@ -408,7 +408,7 @@ export const InventoryPage = () => {
       </div>
 
       {/* Add Raw Material Modal */}
-      {isModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      {isModalOpen && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative max-h-[92vh] overflow-y-auto text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
@@ -538,7 +538,7 @@ export const InventoryPage = () => {
         </div>)}
 
       {/* Quick Edit Threshold Modal */}
-      {editingThresholdItem && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {editingThresholdItem && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200">
             <h3 className="text-sm font-bold text-slate-900 mb-2">
               {t.individualThresholdTitle}
@@ -571,7 +571,7 @@ export const InventoryPage = () => {
           </div>
         </div>)}
 
-      {restockItem && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {restockItem && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 mb-5">
               <div>
@@ -606,7 +606,7 @@ export const InventoryPage = () => {
         </div>)}
 
       {/* In-app Confirmation Modal for Raw Material Deletion */}
-      {materialToDelete && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {materialToDelete && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6"/>

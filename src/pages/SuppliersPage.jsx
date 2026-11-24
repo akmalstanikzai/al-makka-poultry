@@ -210,9 +210,9 @@ export const SuppliersPage = () => {
         }
         return true;
     }).sort((first, second) => latestRawPurchaseTime(second) - latestRawPurchaseTime(first));
-    return (<div className="space-y-6">
+    return (<div className="workspace-page space-y-6">
       {/* Header with Title and Search */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
@@ -238,7 +238,7 @@ export const SuppliersPage = () => {
       </div>
 
       {/* Financial Summary Banners */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="stats-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalPurchasedAmount}</span>
@@ -283,7 +283,7 @@ export const SuppliersPage = () => {
       </div>
 
       {/* Comprehensive Row Layout / Line Structure Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Table Toolbar & Filters */}
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
           <div className="flex items-center gap-2">
@@ -316,7 +316,7 @@ export const SuppliersPage = () => {
 
         {/* Structured Row / Line Table */}
         <div className="min-w-0 2xl:overflow-x-auto">
-          <table className="block w-full min-w-0 text-start text-xs sm:text-sm 2xl:table 2xl:min-w-[1120px]">
+          <table className="account-table ui-data-table block w-full min-w-0 text-start text-xs sm:text-sm 2xl:table 2xl:min-w-[1120px]">
             <thead className="hidden bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold text-[11px] uppercase 2xl:table-header-group">
               <tr>
                 <th className="py-3.5 px-4 text-start">{t.supplierAndCompany}</th>
@@ -335,7 +335,7 @@ export const SuppliersPage = () => {
             const isExpanded = !!expandedSupplierIds[sup.id];
             const transactionsCount = sup.transactions?.length || 0;
             return (<React.Fragment key={sup.id}>
-                    <tr className={`grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasReceivable ? 'bg-sky-50/30 hover:bg-sky-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
+                    <tr className={`account-record grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasReceivable ? 'bg-sky-50/30 hover:bg-sky-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
                       <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
                         <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.supplierAndCompany}</span>
@@ -489,7 +489,7 @@ export const SuppliersPage = () => {
                                 </article>))}
                               </div>
                               <div className="hidden overflow-x-auto overscroll-x-contain touch-pan-x 2xl:block">
-                                <table className="w-full min-w-[1120px] table-auto text-xs text-start">
+                                <table className="ui-data-table w-full min-w-[1120px] table-auto text-xs text-start">
                                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-[10px]">
                                     <tr>
                                       <th className="py-2 px-3 text-start">{t.dateCol}</th>
@@ -586,7 +586,7 @@ export const SuppliersPage = () => {
       />}
 
       {/* Supplier editor leaves inventory, stock, and transactions unchanged; paid differences adjust cash. */}
-      {editingSupplier && supplierEdit && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+      {editingSupplier && supplierEdit && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
           <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-amber-600"/>{t.editSupplier}</h3><p className="text-xs text-slate-500 mt-1">{t.supplierEditNotice}</p></div><button type="button" onClick={()=>setEditingSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <form onSubmit={handleSupplierEdit} className="space-y-5">
@@ -606,7 +606,7 @@ export const SuppliersPage = () => {
       </div>)}
 
       {/* Settle supplier debt by transferring processed stock. */}
-      {goodsSupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+      {goodsSupplier && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 text-slate-900">
           <div className="flex items-start justify-between gap-3 mb-3"><div><h3 className="font-bold flex items-center gap-2"><Package className="w-5 h-5 text-emerald-600"/>{t.settleWithProcessedGoods}</h3><p className="text-xs text-slate-500 mt-1">{goodsSupplier.name} · {t.remainingDebt}: {(goodsSupplier.balanceOwed || 0).toLocaleString()} AFN · {(goodsSupplier.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setGoodsSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">{t.goodsSettlementNotice}</p>
@@ -637,7 +637,7 @@ export const SuppliersPage = () => {
         </div>
       </div>)}
       {/* Settle Supplier Payment Modal */}
-      {settleModalSupplier && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      {settleModalSupplier && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
@@ -691,7 +691,7 @@ export const SuppliersPage = () => {
         </div>)}
 
       {/* Supplier Transaction History / Statement Modal */}
-      {selectedHistorySupplier && (<div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-xs">
+      {selectedHistorySupplier && (<div className="ui-overlay fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white w-full max-w-6xl max-h-[calc(100dvh-2rem)] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 flex flex-col">
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -723,7 +723,7 @@ export const SuppliersPage = () => {
         </div>)}
 
       {/* In-app Confirmation Modal for Supplier Deletion */}
-      {supplierToDelete && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {supplierToDelete && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6"/>

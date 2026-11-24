@@ -83,6 +83,11 @@ supported; digits and number separators use English formatting in every language
 Sales and purchase quantities show kilos and equivalent 50 kg bags. AFN and USD
 remain separate. Profit deducts cost of goods sold and expenses; purchase value
 is reported separately, rather than deducted twice.
+The stock summary pairs quantities with production cost, raw-material purchase
+value, and processed-feed sales value. Mixed quick-sale invoices are split by
+stock type; raw-material sales appear separately when present. Saved invoice
+totals are preserved when allocating mixed sales. Production cost describes feed
+made during the period; cost of goods sold describes goods sold during it.
 Money in, money out, and net cash flow use actual cash payments on their payment
 dates, including account payments, customer cash advances, fees, and counter
 refunds. Invoice ledger mirrors and non-cash goods settlements are excluded.

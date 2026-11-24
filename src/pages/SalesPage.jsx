@@ -180,9 +180,9 @@ export const SalesPage = () => {
     const totalSalesProfit = db.sales.reduce((acc, s) => { acc[s.currency === 'USD' ? 'USD' : 'AFN'] += s.profit; return acc; }, { AFN: 0, USD: 0 });
     const totalReceivables = db.sales.reduce((acc, s) => { acc[s.currency === 'USD' ? 'USD' : 'AFN'] += s.remainingAmount; return acc; }, { AFN: 0, USD: 0 });
     const totalVolumeKg = db.sales.reduce((acc, s) => acc + s.quantityKg, 0);
-    return (<div className="space-y-6">
+    return (<div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
@@ -210,7 +210,7 @@ export const SalesPage = () => {
       </div>
 
       {/* Financial Summary Banners */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="stats-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.totalSaleAmount}</span>
           <div className="text-xl font-bold font-mono text-slate-900 mt-1">
@@ -272,7 +272,7 @@ export const SalesPage = () => {
       </div>
 
       {/* Sales Invoices List */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
             <Receipt className="w-4 h-4 text-amber-600"/>
@@ -282,7 +282,7 @@ export const SalesPage = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-start text-xs sm:text-sm">
+          <table className="ui-data-table mobile-card-table w-full text-start text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase text-[11px]">
               <tr>
                 <th className="py-3 px-4 text-start">{t.invoiceNumber}</th>
@@ -300,25 +300,25 @@ export const SalesPage = () => {
             const isPaidInFull = sale.remainingAmount === 0;
             const itemLines = getSaleLineItems(sale);
             return (<tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-amber-700">
+                    <td data-label={t.invoiceNumber} className="py-3.5 px-4 font-mono font-bold text-amber-700">
                       #{sale.billNumber || sale.id.slice(-6).toUpperCase()}
                       <span className="block text-[10px] text-slate-400 font-normal">{sale.date}</span>
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td data-label={t.customerName} className="py-3.5 px-4">
                       <div className="font-bold text-slate-900">{sale.customerName}</div>
                       {sale.customerPhone && (<div className="text-[11px] text-slate-500 font-mono" dir="ltr">{sale.customerPhone}</div>)}
                     </td>
-                    <td className="py-3.5 px-4 font-medium text-slate-800">
+                    <td data-label={t.productName} className="py-3.5 px-4 font-medium text-slate-800">
                       <div className="space-y-1">{itemLines.map((item, index) => <div key={`${sale.id}-name-${index}`} className="font-bold text-slate-900">{item.productName}</div>)}</div>
                     </td>
-                    <td className="py-3.5 px-4 font-mono">
+                    <td data-label={t.quantity} className="py-3.5 px-4 font-mono">
                       <div className="space-y-1">{itemLines.map((item, index) => <div key={`${sale.id}-qty-${index}`}><strong>{item.unitQuantity.toLocaleString()}</strong> {saleUnitLabel(item.unitType, t)}</div>)}</div>
                       <span className="block text-[10px] text-slate-500">{sale.quantityKg.toLocaleString()} {t.kilo}</span>
                     </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                    <td data-label={t.totalAmount} className="py-3.5 px-4 font-mono font-bold text-slate-900">
                       {sale.totalAmount.toLocaleString()} {sale.currency || 'AFN'}
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td data-label={t.paidAmount} className="py-3.5 px-4">
                       <div className="font-mono text-emerald-700 font-semibold">{sale.paidAmount.toLocaleString()} {sale.currency || 'AFN'}</div>
                       {!isPaidInFull ? (<span className="inline-block mt-0.5 text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-bold">
                           {t.remainingDebt}: {sale.remainingAmount.toLocaleString()} {sale.currency || 'AFN'}
@@ -326,10 +326,10 @@ export const SalesPage = () => {
                           {t.statusPaid}
                         </span>)}
                     </td>
-                    {showCostRate && (<td className="py-3.5 px-4 font-mono text-emerald-700 font-bold">
+                    {showCostRate && (<td data-label={t.netProfit} className="py-3.5 px-4 font-mono text-emerald-700 font-bold">
                         +{(sale.profit || 0).toLocaleString()} AFN · {(sale.profitUsd || 0).toLocaleString()} USD
                       </td>)}
-                    <td className="py-3.5 px-4 text-center">
+                    <td data-label={t.action} className="py-3.5 px-4 text-center">
                       <button type="button" onClick={() => setSelectedInvoice(sale)} className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 mx-auto transition-colors cursor-pointer">
                         <Printer className="w-3.5 h-3.5"/>
                         <span>{t.printInvoice}</span>
@@ -349,7 +349,7 @@ export const SalesPage = () => {
       </div>
 
       {/* Record New Sale Modal */}
-      {isModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      {isModalOpen && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 sm:p-6 relative max-h-[92vh] overflow-y-auto overscroll-contain text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
@@ -460,7 +460,7 @@ export const SalesPage = () => {
         </div>)}
 
       {/* Printable Invoice Modal */}
-      {selectedInvoice && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs print:p-0 print:bg-white print:inset-auto">
+      {selectedInvoice && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs print:p-0 print:bg-white print:inset-auto">
           <div className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative max-h-[95vh] overflow-y-auto text-slate-900 print:shadow-none print:border-none print:w-full print:max-w-none print:text-black">
             {/* Close Button / Print Action */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 print:hidden">

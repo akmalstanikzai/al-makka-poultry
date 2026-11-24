@@ -9,10 +9,10 @@ const CurrencyPair = ({ amounts, t, tone = 'text-slate-900', compact = false }) 
         { code: 'AFN', label: t.dashboardAfnLabel, amount: Number(amounts?.AFN) || 0 },
         { code: 'USD', label: t.dashboardUsdLabel, amount: Number(amounts?.USD) || 0 },
     ];
-    return <div className={compact ? 'grid grid-cols-1 sm:grid-cols-2 gap-1.5' : 'space-y-1.5'}>
-      {values.map(value => <div key={value.code} className={`rounded-lg border border-slate-200 bg-slate-50/80 ${compact ? 'px-2 py-1' : 'px-3 py-2'}`}>
-        <span className={`block font-semibold text-slate-500 ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{value.label}</span>
-        <strong dir="ltr" className={`block font-mono tracking-tight ${tone} ${compact ? 'text-xs' : 'text-lg sm:text-xl'}`}>{value.amount.toLocaleString()}</strong>
+    return <div className={`dashboard-currency ${compact ? 'is-compact' : ''}`}>
+      {values.map(value => <div key={value.code} className="dashboard-currency-row" dir="ltr">
+        <span title={value.label}>{value.code}</span>
+        <strong className={tone}>{value.amount.toLocaleString()}</strong>
       </div>)}
     </div>;
 };
@@ -194,7 +194,51 @@ export const DashboardPage = ({ setActiveTab }) => {
             badge: `${todayBatches.length} ${t.records}`,
         },
     ];
-    return (<div className="space-y-6">
+    return (<div className="workspace-page dashboard-page space-y-6">
+      {/* 2. RECTANGULAR CLICKABLE METRIC TABLES / CARDS */}
+      <div className="dashboard-overview">
+        <div className="dashboard-section-heading flex items-center justify-between gap-3 mb-4">
+          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+            {t.companySubtitle}
+          </h2>
+          <span className="text-xs text-slate-500 font-medium">
+            {t.viewDetails}
+          </span>
+        </div>
+
+        <div className="dashboard-metrics grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+          {rectangularCards.map((card) => {
+            const Icon = card.icon;
+            return (<button type="button" key={card.id} data-metric={card.id} onClick={() => setActiveTab(card.tab)} className={`dashboard-metric h-full p-5 rounded-2xl border text-start transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md hover:-translate-y-0.5 ${card.bg} ${card.border}`}>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className={`p-2.5 rounded-xl ${card.iconBg} transition-transform group-hover:scale-110 shadow-2xs`}>
+                    <Icon className="w-5 h-5"/>
+                  </div>
+                  <span className="metric-badge max-w-[65%] px-2.5 py-0.5 rounded-full text-[11px] text-center font-semibold bg-slate-100 border border-slate-200 text-slate-700">
+                    {card.badge}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="metric-title text-xs font-semibold text-slate-600 block">
+                    {card.title}
+                  </span>
+                  {card.moneyValue ? <CurrencyPair amounts={card.moneyValue} t={t} tone={card.textColor}/> : <div dir="ltr" className={`text-xl sm:text-2xl font-black tracking-tight font-mono text-end ${card.textColor}`}>
+                    {card.value}
+                  </div>}
+                  {card.secondaryMoney && <div className="pt-2 border-t border-slate-100">
+                    <span className="mb-1 block text-[10px] font-semibold text-slate-500">{card.secondaryMoneyLabel}</span>
+                    <CurrencyPair amounts={card.secondaryMoney} t={t} tone={card.textColor} compact/>
+                  </div>}
+                  <p className="metric-footnote text-xs text-slate-500 pt-2 border-t border-slate-100">
+                    {card.subvalue}
+                  </p>
+                </div>
+              </button>);
+        })}
+        </div>
+      </div>
+
       {/* 1. VISUAL NOTIFICATION SYSTEM BANNER (LOW STOCK HIGHLIGHT) */}
       {lowStockMaterials.length > 0 ? (<div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50/50 to-white border border-rose-200 shadow-sm relative overflow-hidden">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -247,54 +291,10 @@ export const DashboardPage = ({ setActiveTab }) => {
           </div>
         </div>)}
 
-      {/* 2. RECTANGULAR CLICKABLE METRIC TABLES / CARDS */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
-            {t.companySubtitle}
-          </h2>
-          <span className="text-xs text-slate-500 font-medium">
-            {t.viewDetails}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {rectangularCards.map((card) => {
-            const Icon = card.icon;
-            return (<button type="button" key={card.id} onClick={() => setActiveTab(card.tab)} className={`h-full p-5 rounded-2xl border text-start transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md hover:-translate-y-0.5 ${card.bg} ${card.border}`}>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className={`p-2.5 rounded-xl ${card.iconBg} transition-transform group-hover:scale-110 shadow-2xs`}>
-                    <Icon className="w-5 h-5"/>
-                  </div>
-                  <span className="max-w-[65%] px-2.5 py-0.5 rounded-full text-[11px] text-center font-semibold bg-slate-100 border border-slate-200 text-slate-700">
-                    {card.badge}
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-xs font-medium text-slate-600 block min-h-8">
-                    {card.title}
-                  </span>
-                  {card.moneyValue ? <CurrencyPair amounts={card.moneyValue} t={t} tone={card.textColor}/> : <div dir="ltr" className={`text-xl sm:text-2xl font-black tracking-tight font-mono text-end ${card.textColor}`}>
-                    {card.value}
-                  </div>}
-                  {card.secondaryMoney && <div className="pt-2 border-t border-slate-100">
-                    <span className="mb-1 block text-[10px] font-semibold text-slate-500">{card.secondaryMoneyLabel}</span>
-                    <CurrencyPair amounts={card.secondaryMoney} t={t} tone={card.textColor} compact/>
-                  </div>}
-                  <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
-                    {card.subvalue}
-                  </p>
-                </div>
-              </button>);
-        })}
-        </div>
-      </div>
-
       {/* 3. CHARTS & ANALYTICS ROW */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="dashboard-charts grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Sales & Profit Trend (2 Columns) */}
-        <div className="lg:col-span-2 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div className="analytics-panel xl:col-span-2 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
             <div>
               <h3 className="font-bold text-sm text-slate-900">{t.salesSummary} & {t.reportsTitle}</h3>

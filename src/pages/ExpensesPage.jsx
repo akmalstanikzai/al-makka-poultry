@@ -100,9 +100,9 @@ export const ExpensesPage = () => {
     };
     const filteredExpenses = db.expenses.filter(e => selectedCategoryFilter === 'all' || e.category === selectedCategoryFilter);
     const totalExpenses = db.expenses.reduce((acc, e) => { acc[e.currency === 'USD' ? 'USD' : 'AFN'] += e.amount; return acc; }, { AFN: 0, USD: 0 });
-    return (<div className="space-y-6">
+    return (<div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-rose-100 text-rose-700">
@@ -126,8 +126,8 @@ export const ExpensesPage = () => {
       </div>
 
       {/* Summary Card */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="expense-overview grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="expense-total p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalExpenses}</span>
             <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
@@ -141,7 +141,7 @@ export const ExpensesPage = () => {
         </div>
 
         {/* Category Filter Chips */}
-        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-wrap items-center gap-2">
+        <div className="expense-filters lg:col-span-2 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setSelectedCategoryFilter('all')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedCategoryFilter === 'all'
             ? 'bg-amber-600 text-white shadow-xs'
             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
@@ -156,7 +156,7 @@ export const ExpensesPage = () => {
       </div>
 
       {/* Expenses Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="content-panel bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
             <Receipt className="w-4 h-4 text-amber-600"/>
@@ -166,7 +166,7 @@ export const ExpensesPage = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-start text-xs sm:text-sm">
+          <table className="ui-data-table mobile-card-table w-full text-start text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase text-[11px]">
               <tr>
                 <th className="py-3 px-4 text-start">{t.expenseCategory}</th>
@@ -182,26 +182,26 @@ export const ExpensesPage = () => {
             const cfg = categoryConfig[exp.category] || categoryConfig.other;
             const IconComponent = cfg.icon;
             return (<tr key={exp.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4">
+                    <td data-label={t.expenseCategory} className="py-3.5 px-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold ${cfg.bg} ${cfg.color} border ${cfg.border}`}>
                         <IconComponent className="w-3.5 h-3.5"/>
                         <span>{cfg.name}</span>
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 font-medium text-slate-900">
+                    <td data-label={t.expenseDescription} className="py-3.5 px-4 font-medium text-slate-900">
                       {exp.description}
                       {exp.notes && <span className="block text-[11px] text-slate-500 font-normal">{exp.notes}</span>}
                     </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-rose-700">
+                    <td data-label={t.expenseAmount} className="py-3.5 px-4 font-mono font-bold text-rose-700">
                       {exp.amount.toLocaleString()} {exp.currency || 'AFN'}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-700">
+                    <td data-label={t.expensePaidBy} className="py-3.5 px-4 text-slate-700">
                       {exp.paidBy || '---'}
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-slate-500 text-xs">
+                    <td data-label={t.date} className="py-3.5 px-4 font-mono text-slate-500 text-xs">
                       {exp.date}
                     </td>
-                    <td className="py-3.5 px-4 text-center">
+                    <td data-label={t.action} className="py-3.5 px-4 text-center">
                       <button type="button" onClick={() => setExpenseToDelete(exp.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer" title={t.delete}>
                         <Trash2 className="w-4 h-4"/>
                       </button>
@@ -220,7 +220,7 @@ export const ExpensesPage = () => {
       </div>
 
       {/* Record Expense Modal */}
-      {isModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      {isModalOpen && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 relative text-slate-900">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
@@ -294,7 +294,7 @@ export const ExpensesPage = () => {
         </div>)}
 
       {/* In-app Confirmation Modal for Expense Deletion */}
-      {expenseToDelete && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {expenseToDelete && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6"/>

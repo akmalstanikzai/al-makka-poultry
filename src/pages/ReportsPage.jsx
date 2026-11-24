@@ -48,7 +48,7 @@ export const ReportsPage = () => {
             <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
               <FileSpreadsheet className="w-5 h-5"/>
             </div>
-            <span>{t.reportsTitle}</span>
+            <span>{t.navReports}</span>
           </h2>
 
         </div>
@@ -56,7 +56,7 @@ export const ReportsPage = () => {
         {/* Period Selector & Print CTA */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-            {['daily', 'weekly', 'monthly', 'custom', 'all'].map((p) => (<button key={p} type="button" onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${period === p
+            {['daily', 'weekly', 'monthly', 'custom', 'all'].map((p) => (<button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${period === p
                 ? 'bg-amber-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'}`}>
                 {getPeriodLabel(p)}

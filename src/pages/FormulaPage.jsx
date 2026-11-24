@@ -275,9 +275,9 @@ export const FormulaPage = () => {
             setFormulaToDelete(null);
         }
     };
-    return (<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
+    return (<div className="workspace-page flex min-w-0 flex-col gap-4 sm:gap-6">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
@@ -358,9 +358,9 @@ export const FormulaPage = () => {
         </div>)}
 
       {/* Main Grid: Recipe Builder (2 Cols) + Live Cost Calculator (1 Col) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="formula-layout grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* Formula Recipe Builder Form (2 Columns) */}
-        <div className="min-w-0 lg:col-span-2 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="min-w-0 xl:col-span-2 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center mb-4 pb-3 border-b border-slate-100">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Scale className="w-5 h-5 text-amber-600"/>
@@ -902,7 +902,7 @@ export const FormulaPage = () => {
       </div>
 
       {/* In-app Confirmation Modal for Deleting Formula */}
-      {formulaToDelete && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {formulaToDelete && (<div className="ui-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6"/>
