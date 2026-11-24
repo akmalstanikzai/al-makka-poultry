@@ -23,6 +23,17 @@ function queueWrite(operation) {
     return next;
 }
 const DEFAULT_CASH_IN_HAND = 0;
+async function readAllRows(query) {
+    const rows = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await query.range(offset, offset + pageSize - 1);
+        if (error) return { data: null, error };
+        rows.push(...data);
+        if (data.length < pageSize) return { data: rows, error: null };
+    }
+}
+
 
 export async function loadFactorySettings() {
     if (!supabase)
@@ -104,20 +115,21 @@ export async function loadStateFromSupabase() {
     if (!supabase)
         return null;
     try {
-        const [rawRes, supRes, supTxRes, custRes, custTxRes, procRes, salesRes, expRes, formRes, batchRes, counterCustRes, counterTxRes, counterSalesRes] = await Promise.all([
-            supabase.from('raw_materials').select('*'),
-            supabase.from('suppliers').select('*'),
-            supabase.from('supplier_transactions').select('*'),
-            supabase.from('customers').select('*'),
-            supabase.from('customer_transactions').select('*'),
-            supabase.from('processed_stock').select('*'),
-            supabase.from('sales').select('*').order('date', { ascending: false }),
-            supabase.from('expenses').select('*').order('date', { ascending: false }),
-            supabase.from('formulas').select('*'),
-            supabase.from('production_batches').select('*').order('date', { ascending: false }),
-            supabase.from('counter_customers').select('*'),
-            supabase.from('counter_customer_transactions').select('*').order('created_at', { ascending: false }),
-            supabase.from('counter_sales').select('*').order('created_at', { ascending: false }),
+        const [rawRes, supRes, supTxRes, custRes, custTxRes, procRes, salesRes, expRes, formRes, batchRes, counterCustRes, counterTxRes, counterSalesRes, purchaseRes] = await Promise.all([
+            readAllRows(supabase.from('raw_materials').select('*').order('id')),
+            readAllRows(supabase.from('suppliers').select('*').order('id')),
+            readAllRows(supabase.from('supplier_transactions').select('*').order('id')),
+            readAllRows(supabase.from('customers').select('*').order('id')),
+            readAllRows(supabase.from('customer_transactions').select('*').order('id')),
+            readAllRows(supabase.from('processed_stock').select('*').order('id')),
+            readAllRows(supabase.from('sales').select('*').order('date', { ascending: false }).order('id')),
+            readAllRows(supabase.from('expenses').select('*').order('date', { ascending: false }).order('id')),
+            readAllRows(supabase.from('formulas').select('*').order('id')),
+            readAllRows(supabase.from('production_batches').select('*').order('date', { ascending: false }).order('id')),
+            readAllRows(supabase.from('counter_customers').select('*').order('id')),
+            readAllRows(supabase.from('counter_customer_transactions').select('*').order('created_at', { ascending: false }).order('id')),
+            readAllRows(supabase.from('counter_sales').select('*').order('created_at', { ascending: false }).order('id')),
+            readAllRows(supabase.from('raw_material_purchases').select('*').order('id')),
         ]);
         const queryResults = [
             rawRes,
@@ -139,6 +151,17 @@ export async function loadStateFromSupabase() {
             reportDatabaseError(`Supabase read failed: ${failedQuery.error.message}`);
             return null;
         }
+        const missingPurchaseTable = purchaseRes.error && ['42P01', 'PGRST205'].includes(purchaseRes.error.code);
+        if (purchaseRes.error && !missingPurchaseTable) {
+            reportDatabaseError(`Purchase history read failed: ${purchaseRes.error.message}`);
+            return null;
+        }
+        const rawMaterialPurchases = (purchaseRes.data || []).map(row => ({
+            id: row.id, date: row.date, itemName: row.item_name,
+            quantityKg: Number(row.quantity_kg), unitType: row.unit_type,
+            unitQuantity: Number(row.unit_quantity), unitPricePerUnit: Number(row.unit_price_per_unit),
+            amount: Number(row.amount), paidAmount: Number(row.paid_amount), currency: row.currency,
+        }));
         const rawMaterials = (rawRes.data || []).map(r => ({
             id: r.id,
             name: r.name,
@@ -471,6 +494,8 @@ export async function loadStateFromSupabase() {
             salesReconciliationNeeded: salesReconciliationNeeded || customerBalanceReconciliationNeeded || supplierBalanceReconciliationNeeded,
             state: {
                 rawMaterials,
+                rawMaterialPurchases,
+                purchaseHistoryAvailable: !missingPurchaseTable,
                 processedStock,
                 suppliers,
                 customers,
@@ -771,6 +796,14 @@ export async function writeStateToSupabase(state) {
             }));
             await checked(supabase.from('sales').upsert(saleRows), 'sales seed');
         }
+        if ((state.rawMaterialPurchases || []).length) {
+            await checked(supabase.from('raw_material_purchases').upsert(state.rawMaterialPurchases.map(row => ({
+                id: row.id, date: row.date, item_name: row.itemName,
+                quantity_kg: row.quantityKg, unit_type: row.unitType,
+                unit_quantity: row.unitQuantity, unit_price_per_unit: row.unitPricePerUnit,
+                amount: row.amount, paid_amount: row.paidAmount, currency: row.currency,
+            }))), 'purchase history save (apply migration 20261124000000 if missing)');
+        }
         // 8. Expenses
         if (state.expenses.length > 0) {
             const expRows = state.expenses.map(e => ({
@@ -803,6 +836,7 @@ export async function persistStateChanges(previousState, nextState) {
     return writeStateToSupabase({
         ...nextState,
         rawMaterials: changed(previousState.rawMaterials, nextState.rawMaterials),
+        rawMaterialPurchases: changed(previousState.rawMaterialPurchases || [], nextState.rawMaterialPurchases || []),
         processedStock: changed(previousState.processedStock, nextState.processedStock),
         suppliers: changed(previousState.suppliers, nextState.suppliers),
         customers: changed(previousState.customers, nextState.customers),
@@ -825,6 +859,8 @@ export async function clearAllDataFromSupabase() {
             'production_batches', 'processed_stock', 'raw_materials',
             'expenses', 'formulas', 'customers', 'suppliers',
         ];
+        const purchaseClear = await supabase.from('raw_material_purchases').delete().not('id', 'is', null);
+        if (purchaseClear.error && !['42P01', 'PGRST205'].includes(purchaseClear.error.code)) throw new Error(purchaseClear.error.message);
         for (const table of tables) {
             await checked(supabase.from(table).delete().not('id', 'is', null), `${table} clear`);
         }

@@ -1,3 +1,5 @@
+import { TransactionDateField } from '../components/TransactionDateField';
+import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { AccountStatement } from '../components/AccountStatement';
@@ -10,13 +12,11 @@ import { getTransactionEntryDetails } from '../lib/transactionDetails';
 import { getSaleLineItems, saleUnitLabel } from '../lib/saleLineItems';
 import { Users, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, DollarSign, Receipt, ArrowDownLeft, ChevronDown, ChevronUp, CheckCircle, Wheat, Pencil, HandCoins, Truck } from 'lucide-react';
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
-const localDateValue = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-};
 const latestSaleTime = customer => (customer.transactions || []).reduce((latest, transaction) => transaction.type === 'sale' && (transaction.status || 'active') === 'active' ? Math.max(latest, getTransactionActivityTime(transaction)) : latest, 0);
 export const CustomersPage = () => {
     const { db, t, lang, deleteCustomer, updateCustomer, updateCustomerTransaction, voidCustomerTransaction, receiveCustomerPayment, addCustomerAccountEntry, settleCustomerWithRawMaterial, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const [rawDate, setRawDate] = useState(() => localDateValue());
+    const [paymentDate, setPaymentDate] = useState(() => localDateValue());
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
     const [statementMode, setStatementMode] = useState('current');
@@ -162,6 +162,7 @@ export const CustomersPage = () => {
         setPaymentCurrency((c.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
         setReceivedAmount('');
         setPaymentNote('');
+        setPaymentDate(localDateValue());
         setPaymentStatus(null);
     };
     const handleReceiveSubmit = async (e) => {
@@ -177,7 +178,7 @@ export const CustomersPage = () => {
         setIsSavingPayment(true);
         setPaymentStatus(null);
         try {
-            const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote, paymentCurrency);
+            const result = await receiveCustomerPayment(receiveModalCustomer.id, amount, paymentNote, paymentCurrency, paymentDate);
             if (result.success) {
                 setReceiveModalCustomer(null);
                 return;
@@ -198,6 +199,7 @@ export const CustomersPage = () => {
         setRawCurrency((customer.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
         setRawThreshold('');
         setRawNotes('');
+        setRawDate(localDateValue());
         setRawSettlementError('');
     };
     const handleRawMaterialName = value => {
@@ -234,6 +236,7 @@ export const CustomersPage = () => {
         try {
             const result = await settleCustomerWithRawMaterial({
                 customerId: rawSettlementCustomer.id,
+                date: rawDate,
                 materialName: rawMaterialName,
                 category: 'Uncategorized',
                 unitType: rawUnit,
@@ -734,6 +737,7 @@ export const CustomersPage = () => {
           <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Wheat className="w-5 h-5 text-amber-600"/>{t.settleWithRawMaterial}</h3><p className="text-xs text-slate-500 mt-1">{rawSettlementCustomer.name} · {t.remainingDebt}: {(rawSettlementCustomer.balanceOwed || 0).toLocaleString()} AFN · {(rawSettlementCustomer.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setRawSettlementCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">{t.rawSettlementNotice}</p>
           <form onSubmit={handleRawSettlement} className="space-y-4">
+              <TransactionDateField value={rawDate} onChange={setRawDate} t={t}/>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.materialName}</label><input required value={rawMaterialName} onChange={event=>handleRawMaterialName(event.target.value)} list="customer-raw-materials" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-600"/><datalist id="customer-raw-materials">{db.rawMaterials.map(material=><option key={material.id} value={material.name}>{material.name}</option>)}</datalist></div>
             </div>
@@ -781,6 +785,7 @@ export const CustomersPage = () => {
             </div>
 
             <form onSubmit={handleReceiveSubmit} className="space-y-4 mt-4">
+              <TransactionDateField value={paymentDate} onChange={setPaymentDate} t={t}/>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {t.cashReceived} ({paymentCurrency}) *

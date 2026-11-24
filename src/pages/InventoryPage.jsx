@@ -1,3 +1,5 @@
+import { TransactionDateField } from '../components/TransactionDateField';
+import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Plus, Search, Wheat, Trash2, AlertTriangle, DollarSign, Scale, Truck, X, RefreshCw } from 'lucide-react';
@@ -6,6 +8,8 @@ const normalizeSupplierName = value => String(value || '').normalize('NFKC').tri
 const unitMultiplierKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
 export const InventoryPage = () => {
     const { db, t, lang, addRawMaterial, restockRawMaterial, deleteRawMaterial, updateRawMaterialThreshold, lowStockThreshold } = useDatabase();
+    const [restockDate, setRestockDate] = useState(() => localDateValue());
+    const [purchaseDate, setPurchaseDate] = useState(() => localDateValue());
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [materialToDelete, setMaterialToDelete] = useState(null);
@@ -101,6 +105,7 @@ export const InventoryPage = () => {
             if (existingMaterial) {
                 result = await restockRawMaterial({
                 materialId: existingMaterial.id,
+                date: purchaseDate,
                 addedWeightKg: numericStock,
                 newUnitPrice: numericPrice,
                 purchaseUnitType: stockUnit,
@@ -118,6 +123,7 @@ export const InventoryPage = () => {
             else {
                 result = await addRawMaterial({
                 name: itemName.trim(),
+                date: purchaseDate,
                 category: 'Uncategorized',
                 stockKg: numericStock,
                 unitPrice: numericPrice,
@@ -157,6 +163,7 @@ export const InventoryPage = () => {
     const openRestockModal = (item) => {
         const supplier = db.suppliers.find(value => value.id === item.supplierId || value.name === item.supplierName);
         setRestockItem(item);
+        setRestockDate(localDateValue());
         setRestockUnit('kg');
         setRestockQuantity('');
         setRestockPrice(item.unitPrice);
@@ -188,6 +195,7 @@ export const InventoryPage = () => {
         try {
             const result = await restockRawMaterial({
                 materialId: restockItem.id,
+                date: restockDate,
                 addedWeightKg: restockWeightKg,
                 newUnitPrice: restockPricePerKg,
                 purchaseUnitType: restockUnit,
@@ -238,7 +246,7 @@ export const InventoryPage = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-amber-600/25 transition-all cursor-pointer active:scale-95">
+          <button type="button" onClick={() => { setPurchaseDate(localDateValue()); setIsModalOpen(true); }} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-amber-600/25 transition-all cursor-pointer active:scale-95">
             <Plus className="w-4 h-4"/>
             <span>{t.addRawMaterial}</span>
           </button>
@@ -419,6 +427,7 @@ export const InventoryPage = () => {
 
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+              <TransactionDateField value={purchaseDate} onChange={setPurchaseDate} t={t}/>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -572,6 +581,7 @@ export const InventoryPage = () => {
               <button type="button" onClick={() => setRestockItem(null)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleRestock} className="space-y-4">
+              <TransactionDateField value={restockDate} onChange={setRestockDate} t={t}/>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.purchaseUnit}</label><select value={restockUnit} onChange={(e) => { setRestockUnit(e.target.value); setRestockPrice(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="kg">{t.kg}</option><option value="bag">{t.bag}</option><option value="ton">{t.ton}</option></select></div>
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">{t.quantity}</label><input required type="number" min="0.001" step="any" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"/></div>

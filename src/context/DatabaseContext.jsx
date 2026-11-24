@@ -1,3 +1,4 @@
+import { localDateValue as getLocalRecordDate, normalizeRecordDate } from '../lib/recordDate';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { translations, getLocalizedTransactionType, getLocalizedTransactionDescription } from '../translations';
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
@@ -8,6 +9,7 @@ import { addToRawMovingAverage, rawAverageCostPerKg } from '../lib/rawMaterialCo
 const LANG_STORAGE_KEY = 'al_makkah_poultry_feed_lang';
 const emptyFactoryData = {
     rawMaterials: [],
+    rawMaterialPurchases: [],
     processedStock: [],
     suppliers: [],
     customers: [],
@@ -28,16 +30,6 @@ const normalizeStockName = value => String(value || '')
     .trim()
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase();
-const getLocalRecordDate = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
-const normalizeRecordDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
-    ? String(value)
-    : getLocalRecordDate();
 const currencyField = (field, currency) => currencyCode(currency) === 'USD' ? field + 'Usd' : field;
 const applySupplierPurchase = (supplier, purchaseAmount, paidAmount, currency) => {
     const purchaseField = currencyField('totalPurchasedAmount', currency);
@@ -442,7 +434,8 @@ export const DatabaseProvider = ({ children }) => {
         if (requestedSupplierName && matchesCustomer && !canonicalSupplierNames.has(requestedSupplierKey)) {
             return { success: false, error: t.customerMustUseRawSettlement };
         }
-        const today = new Date().toISOString().split('T')[0];
+        if (!requestedSupplierName && db.purchaseHistoryAvailable === false) return { success: false, error: t.reporting.purchaseHistoryPending };
+        const today = normalizeRecordDate(item.date);
         const operationTimestamp = Date.now();
         const newId = `rm-${operationTimestamp}`;
         const currency = currencyCode(item.currency);
@@ -518,6 +511,13 @@ export const DatabaseProvider = ({ children }) => {
             ...db,
             rawMaterials: [newItem, ...db.rawMaterials],
             suppliers: updatedSuppliers,
+            rawMaterialPurchases: [...(db.rawMaterialPurchases || []), ...(!supplierTransactionId ? [{
+                id: `purchase-${operationTimestamp}`, date: today, itemName: item.name,
+                quantityKg: Number(item.stockKg), unitType: item.purchaseUnitType || 'kg',
+                unitQuantity: item.purchaseUnitQuantity ?? item.stockKg,
+                unitPricePerUnit: item.purchaseUnitPrice ?? item.unitPrice,
+                amount: totalBill, paidAmount: paid, currency,
+            }] : [])],
             ...cashPatch(db, -paid, currency),
         };
         const saved = await commitConfirmedState(nextState, state => {
@@ -529,7 +529,7 @@ export const DatabaseProvider = ({ children }) => {
         return saved ? { success: true } : { success: false, error: t.restockFailed };
     };
     // RESTOCK AN EXISTING RAW MATERIAL & RECORD THE SUPPLIER PURCHASE
-    const restockRawMaterial = async ({ materialId, addedWeightKg, newUnitPrice, purchaseUnitType = 'kg', purchaseUnitQuantity, purchaseUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency }) => {
+    const restockRawMaterial = async ({ materialId, addedWeightKg, newUnitPrice, purchaseUnitType = 'kg', purchaseUnitQuantity, purchaseUnitPrice, supplierId: requestedSupplierId, supplierName, supplierPhone, paidAmount, notes, currency: requestedCurrency, date }) => {
         const material = db.rawMaterials.find(item => item.id === materialId);
         const weight = Number(addedWeightKg);
         const price = Number(newUnitPrice);
@@ -544,7 +544,8 @@ export const DatabaseProvider = ({ children }) => {
         if (requestedSupplierName && matchesCustomer && !canonicalSupplierNames.has(requestedSupplierKey)) {
             return { success: false, error: t.customerMustUseRawSettlement };
         }
-        const today = new Date().toISOString().split('T')[0];
+        if (!requestedSupplierName && db.purchaseHistoryAvailable === false) return { success: false, error: t.reporting.purchaseHistoryPending };
+        const today = normalizeRecordDate(date);
         const totalBill = weight * price;
         const paid = Math.min(Math.max(0, Number(paidAmount) || 0), totalBill);
         const remaining = Math.max(0, totalBill - paid);
@@ -626,6 +627,13 @@ export const DatabaseProvider = ({ children }) => {
                 dateAdded: today,
             } : item),
             suppliers: updatedSuppliers,
+            rawMaterialPurchases: [...(db.rawMaterialPurchases || []), ...(!supplierTransactionId ? [{
+                id: `purchase-${operationTimestamp}`, date: today, itemName: material.name,
+                quantityKg: weight, unitType: purchaseUnitType,
+                unitQuantity: purchaseUnitQuantity ?? weight,
+                unitPricePerUnit: purchaseUnitPrice ?? price,
+                amount: totalBill, paidAmount: paid, currency,
+            }] : [])],
             ...cashPatch(db, -paid, currency),
         };
         const saved = await commitConfirmedState(nextState, state => {
@@ -809,10 +817,10 @@ export const DatabaseProvider = ({ children }) => {
         void deleteRawMaterialFromSupabase(id);
     };
     // SETTLE PAYMENT TO SUPPLIER
-    const settleSupplierPayment = async (supplierId, amountToPay, note, currency = 'AFN') => {
+    const settleSupplierPayment = async (supplierId, amountToPay, note, currency = 'AFN', date) => {
         if (amountToPay <= 0)
             return { success: false, error: t.paymentAmountRequired };
-        const today = new Date().toISOString().split('T')[0];
+        const today = normalizeRecordDate(date);
         const supIndex = db.suppliers.findIndex(s => s.id === supplierId);
         if (supIndex === -1) return { success: false, error: t.invalidSupplierOrProduct };
         const sup = db.suppliers[supIndex];
@@ -874,7 +882,7 @@ export const DatabaseProvider = ({ children }) => {
         const offsetAmount = Math.min(totalAmount, Number(supplier[balanceField]) || 0);
         const customerDebt = Math.max(0, totalAmount - offsetAmount);
         const timestamp = Date.now();
-        const today = new Date().toISOString().split('T')[0];
+        const today = normalizeRecordDate(settlement.date);
         const costRatePerKg = Number(product.averageCostPerKg) || 0;
         const costRatePerKgUsd = Number(product.averageCostPerKgUsd) || 0;
         const totalCostOfGoods = costRatePerKg * quantityKg;
@@ -1224,7 +1232,7 @@ export const DatabaseProvider = ({ children }) => {
         const costRatePerKg = quantityKg > 0 ? totalCostOfGoods / quantityKg : 0;
         const profit = (currency === 'AFN' ? totalAmount : 0) - totalCostOfGoods;
         const profitUsd = (currency === 'USD' ? totalAmount : 0) - totalCostOfGoodsUsd;
-        const today = new Date().toISOString().split('T')[0];
+        const today = normalizeRecordDate(saleData.date);
         const operationTimestamp = Date.now();
         const saleId = `sale-${operationTimestamp}`;
         const customerTransactionId = `ct-${operationTimestamp}`;
@@ -1529,7 +1537,7 @@ export const DatabaseProvider = ({ children }) => {
         return { success: true, saleId, counterCustomerId };
     };
 
-    const receiveCounterCustomerPayment = async ({ counterCustomerId, amount, currency: requestedCurrency, notes }) => {
+    const receiveCounterCustomerPayment = async ({ counterCustomerId, amount, currency: requestedCurrency, notes, date }) => {
         const customer = (db.counterCustomers || []).find(item => item.id === counterCustomerId);
         const currency = currencyCode(requestedCurrency);
         const payment = Number(amount);
@@ -1548,7 +1556,7 @@ export const DatabaseProvider = ({ children }) => {
             [balanceField]: remaining,
             transactions: [{
                 id: transactionId,
-                date: getLocalRecordDate(),
+                date: normalizeRecordDate(date),
                 type: 'payment',
                 description: String(notes || '').trim(),
                 amount: payment,
@@ -1795,7 +1803,7 @@ export const DatabaseProvider = ({ children }) => {
         const customerOffset = Math.min(totalValue, currentCustomerBalance);
         const customerCreditCreated = Math.max(0, totalValue - customerOffset);
         const timestamp = Date.now();
-        const today = new Date().toISOString().split('T')[0];
+        const today = normalizeRecordDate(settlement.date);
         const existingMaterialIndex = db.rawMaterials.findIndex(material => normalizeStockName(material.name) === normalizeStockName(name));
         const rawMaterialId = existingMaterialIndex >= 0 ? db.rawMaterials[existingMaterialIndex].id : `rm-${timestamp}`;
 
@@ -1880,10 +1888,10 @@ export const DatabaseProvider = ({ children }) => {
         return { success: true, customerOffset, supplierDebt: customerCreditCreated, customerCreditCreated };
     };
     // RECEIVE PAYMENT FROM CUSTOMER
-    const receiveCustomerPayment = async (customerId, amount, note, currency = 'AFN') => {
+    const receiveCustomerPayment = async (customerId, amount, note, currency = 'AFN', date) => {
         if (amount <= 0)
             return { success: false, error: 'Payment must be greater than zero.' };
-        const today = new Date().toISOString().split('T')[0];
+        const today = normalizeRecordDate(date);
         const transactionId = `ct-${Date.now()}`;
         const nextState = (() => {
             const prev = db;
@@ -1980,7 +1988,7 @@ export const DatabaseProvider = ({ children }) => {
     };
     // 4. ADD EXPENSE (AUTOMATICALLY DEDUCT FROM CASH IN HAND)
     const addExpense = (expense) => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = normalizeRecordDate(expense.date);
         const newExpense = {
             ...expense,
             id: `exp-${Date.now()}`,
@@ -2019,8 +2027,8 @@ export const DatabaseProvider = ({ children }) => {
         try {
             const parsed = JSON.parse(jsonData);
             if (parsed.rawMaterials && parsed.processedStock && parsed.suppliers && parsed.customers) {
-                setDb(parsed);
-                writeStateToSupabase(parsed);
+                setDb({ ...emptyFactoryData, ...parsed });
+                writeStateToSupabase({ ...emptyFactoryData, ...parsed });
                 return true;
             }
             return false;

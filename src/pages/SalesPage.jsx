@@ -1,3 +1,5 @@
+import { TransactionDateField } from '../components/TransactionDateField';
+import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
@@ -15,6 +17,7 @@ const newSaleItem = productId => ({
 
 export const SalesPage = () => {
     const { db, t, recordSale } = useDatabase();
+    const [saleDate, setSaleDate] = useState(() => localDateValue());
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPaymentFilter, setSelectedPaymentFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -76,6 +79,7 @@ export const SalesPage = () => {
         setPaidAmount('');
         setNotes('');
         setBillNumber('');
+        setSaleDate(localDateValue());
         setSaveStatus(null);
         setIsModalOpen(true);
     };
@@ -135,6 +139,7 @@ export const SalesPage = () => {
         try {
             const result = await recordSale({
                 billNumber: cleanBillNumber(billNumber),
+                date: saleDate,
                 items: calculatedItems.map(item => ({
                     productId: item.product.id,
                     productName: item.product.name,
@@ -362,6 +367,7 @@ export const SalesPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+              <TransactionDateField value={saleDate} onChange={setSaleDate} t={t}/>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700">{t.invoiceNumber} *</label>
                 <input type="text" required value={billNumber} onChange={event=>{setBillNumber(event.target.value);setSaveStatus(null);}} placeholder={t.billNumberPlaceholder} className={`w-full rounded-xl border bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 shadow-2xs focus:outline-none ${isDuplicateBillNumber?'border-rose-500 focus:border-rose-600':'border-slate-300 focus:border-amber-600'}`}/>

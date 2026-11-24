@@ -42,6 +42,18 @@ input[type="number"]::-webkit-inner-spin-button {
   page-break-inside: avoid;
 }
 
+.report-table tbody td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.65rem 0.75rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+@page report {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -65,5 +77,59 @@ input[type="number"]::-webkit-inner-spin-button {
   }
   .statement-ledger thead {
     display: table-header-group;
+  }
+  body:has(.report-document) main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  body:has(.report-document) #root,
+  body:has(.report-document) #root > div,
+  body:has(.report-document) #root > div > div,
+  body:has(.report-document) main > div {
+    display: block !important;
+    min-height: 0 !important;
+    padding-bottom: 0 !important;
+    background: white !important;
+  }
+  .report-document {
+    page: report;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    font-size: 10pt;
+  }
+  .report-summary {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+  .report-heading,
+  .report-summary > div,
+  .report-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-section > h3 {
+    break-after: avoid;
+  }
+  .report-table {
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+  .report-table table {
+    width: 100%;
+    table-layout: fixed;
+    font-size: 9pt;
+  }
+  .report-table td,
+  .report-table th {
+    padding: 6px !important;
+    overflow-wrap: anywhere;
+  }
+  .report-table thead {
+    display: table-header-group;
+  }
+  .report-table tfoot {
+    display: table-row-group;
   }
 }

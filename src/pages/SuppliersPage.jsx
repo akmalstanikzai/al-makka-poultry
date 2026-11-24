@@ -1,3 +1,5 @@
+import { TransactionDateField } from '../components/TransactionDateField';
+import { localDateValue } from '../lib/recordDate';
 import React, { useRef, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { AccountStatement } from '../components/AccountStatement';
@@ -12,6 +14,8 @@ import { Truck, Search, Phone, MapPin, Trash2, X, Printer, History, Wallet, Cred
 const latestRawPurchaseTime = supplier => (supplier.transactions || []).reduce((latest, transaction) => transaction.type === 'purchase' && (transaction.status || 'active') === 'active' ? Math.max(latest, getTransactionActivityTime(transaction)) : latest, 0);
 export const SuppliersPage = () => {
     const { db, t, lang, deleteSupplier, settleSupplierPayment, settleSupplierWithProcessedStock, updateSupplier, updateSupplierTransaction, voidSupplierTransaction, getLocalizedTxType, getLocalizedTxDesc } = useDatabase();
+    const [goodsDate, setGoodsDate] = useState(() => localDateValue());
+    const [paymentDate, setPaymentDate] = useState(() => localDateValue());
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);
     const [statementMode, setStatementMode] = useState('current');
@@ -81,6 +85,7 @@ export const SuppliersPage = () => {
         setPaymentCurrency((s.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
         setPaymentAmount('');
         setPaymentNote('');
+        setPaymentDate(localDateValue());
         setPaymentError('');
     };
     const handleSettleSubmit = async (e) => {
@@ -101,7 +106,7 @@ export const SuppliersPage = () => {
         paymentSaveLock.current = true;
         setIsSavingPayment(true);
         try {
-            const result = await settleSupplierPayment(settleModalSupplier.id, amount, paymentNote, paymentCurrency);
+            const result = await settleSupplierPayment(settleModalSupplier.id, amount, paymentNote, paymentCurrency, paymentDate);
             if (!result?.success) { setPaymentError(result?.error || t.historyChangeSaveFailed); return; }
             setSettleModalSupplier(null);
         }
@@ -137,6 +142,7 @@ export const SuppliersPage = () => {
         setGoodsPrice('');
         setGoodsCurrency((supplier.balanceOwed || 0) > 0 ? 'AFN' : 'USD');
         setGoodsNotes('');
+        setGoodsDate(localDateValue());
         setGoodsBillNumber('');
         setGoodsError('');
     };
@@ -161,6 +167,7 @@ export const SuppliersPage = () => {
             const result = await settleSupplierWithProcessedStock({
                 billNumber: cleanBillNumber(goodsBillNumber),
                 supplierId: goodsSupplier.id,
+                date: goodsDate,
                 productId: goodsProductId,
                 unitType: goodsUnit,
                 unitQuantity: goodsQuantityNumber,
@@ -604,6 +611,7 @@ export const SuppliersPage = () => {
           <div className="flex items-start justify-between gap-3 mb-3"><div><h3 className="font-bold flex items-center gap-2"><Package className="w-5 h-5 text-emerald-600"/>{t.settleWithProcessedGoods}</h3><p className="text-xs text-slate-500 mt-1">{goodsSupplier.name} · {t.remainingDebt}: {(goodsSupplier.balanceOwed || 0).toLocaleString()} AFN · {(goodsSupplier.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setGoodsSupplier(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">{t.goodsSettlementNotice}</p>
           <form onSubmit={handleGoodsSettlement} className="space-y-3">
+              <TransactionDateField value={goodsDate} onChange={setGoodsDate} t={t}/>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <EditField label={t.productName}><select required value={goodsProductId} onChange={event=>setGoodsProductId(event.target.value)} className={controlClass}><option value="">{t.selectProduct}</option>{db.processedStock.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></EditField>
               <EditField label={`${t.invoiceNumber} *`}><input required type="text" value={goodsBillNumber} onChange={event=>{setGoodsBillNumber(event.target.value);setGoodsError('');}} placeholder={t.billNumberPlaceholder} className={`${controlClass} font-mono ${isDuplicateGoodsBillNumber?'border-rose-500 focus:border-rose-600':''}`}/>{isDuplicateGoodsBillNumber&&<span className="mt-1 block text-xs font-semibold text-rose-700" role="alert">{t.duplicateBillNumber}</span>}</EditField>
@@ -651,6 +659,7 @@ export const SuppliersPage = () => {
             </div>
 
             <form onSubmit={handleSettleSubmit} className="space-y-4 mt-4">
+              <TransactionDateField value={paymentDate} onChange={setPaymentDate} t={t}/>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {t.paidAmountLabel} ({paymentCurrency}) *

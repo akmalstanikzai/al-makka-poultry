@@ -67,3 +67,33 @@ and run `supabase db push --db-url "$SUPABASE_DB_URL"`.......
 npm install
 npm run dev
 ```
+
+## Reports and transaction dates
+
+Sales, raw-material purchases/restocks, supplier goods settlements, customer
+raw-material settlements, cash payments, and expenses accept a transaction date.
+It defaults to the local day and is saved on linked ledger records as well.
+Existing transaction-history corrections can change an older record's date.
+
+Reports support a selected day, seven days ending on a selected date, a full
+Gregorian calendar month, an inclusive custom date range, or all dates. Print
+uses an A4 landscape layout with repeating table headings. English, Dari, and
+Pashto labels, Gregorian month names, and right-to-left layouts are supported.
+Sales and purchase quantities show kilos and equivalent 50 kg bags. AFN and USD
+remain separate. Profit deducts cost of goods sold and expenses; purchase value
+is reported separately, rather than deducted twice.
+
+Apply `supabase/migrations/20261124000000_add_unassigned_purchase_history.sql`
+before recording purchases without a supplier account. This adds an
+authenticated, RLS-protected purchase history that survives stock consumption.
+Until applied, the app continues to load existing records and asks for purchase
+history to be enabled before accepting a purchase without a supplier. Purchases
+with supplier accounts continue to use their existing auditable ledger; customer
+raw-material settlements are included as purchases. Voided and reversed records
+are excluded. Old purchases without a recorded ledger cannot be reconstructed
+from the remaining inventory, so the migration deliberately does not invent
+historical transactions.
+
+Run `npm test` for report calculations, date boundaries, currency separation,
+settlement counting, and translation coverage. Run `npm run build` and
+`npm run lint` for the production build and code checks.

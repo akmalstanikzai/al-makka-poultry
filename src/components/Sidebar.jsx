@@ -143,12 +143,12 @@ export const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen
     </div>);
     return (<>
       {/* Desktop Sidebar */}
-      <aside className={`hidden lg:block shrink-0 transition-all duration-300 z-30 h-screen sticky top-0 border-r border-slate-200 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+      <aside className={`print:hidden hidden lg:block shrink-0 transition-all duration-300 z-30 h-screen sticky top-0 border-r border-slate-200 ${isCollapsed ? 'w-20' : 'w-64'}`}>
         {sidebarContent}
       </aside>
 
       {/* Mobile Backdrop & Off-canvas Drawer */}
-      {isMobileOpen && (<div className="fixed inset-0 z-50 lg:hidden flex">
+      {isMobileOpen && (<div className="fixed inset-0 z-50 lg:hidden flex print:hidden">
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity" onClick={() => setIsMobileOpen(false)}/>
           <div className={`relative z-50 w-72 max-w-[85vw] h-full shadow-2xl ${isRtl ? 'ms-auto' : 'me-auto'}`}>
             {sidebarContent}

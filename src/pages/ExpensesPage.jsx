@@ -1,8 +1,11 @@
+import { TransactionDateField } from '../components/TransactionDateField';
+import { localDateValue } from '../lib/recordDate';
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Receipt, Plus, Fuel, Users, Utensils, Zap, Wrench, Truck, Building, MoreHorizontal, Trash2, Wallet, AlertCircle, X } from 'lucide-react';
 export const ExpensesPage = () => {
     const { db, t, addExpense, deleteExpense } = useDatabase();
+    const [expenseDate, setExpenseDate] = useState(() => localDateValue());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
     const [expenseToDelete, setExpenseToDelete] = useState(null);
@@ -80,6 +83,7 @@ export const ExpensesPage = () => {
             return;
         }
         addExpense({
+            date: expenseDate,
             category,
             amount: Number(amount),
             currency,
@@ -113,6 +117,7 @@ export const ExpensesPage = () => {
 
         <button type="button" onClick={() => {
             setErrorMsg('');
+            setExpenseDate(localDateValue());
             setIsModalOpen(true);
         }} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-amber-600/25 transition-all cursor-pointer active:scale-95">
           <Plus className="w-4 h-4"/>
@@ -233,6 +238,7 @@ export const ExpensesPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+              <TransactionDateField value={expenseDate} onChange={setExpenseDate} t={t}/>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {t.expenseCategory} *

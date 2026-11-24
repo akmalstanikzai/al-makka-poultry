@@ -1,41 +1,23 @@
+import { localDateValue, reportDateRange, formatReportDate } from '../lib/recordDate';
+import { buildReport } from '../lib/reportData';
+import { ReportDocument } from '../components/ReportDocument';
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { FileSpreadsheet, Printer, Download, Upload, RotateCcw, PackageCheck, Scale, Wheat, CheckCircle2, FileText } from 'lucide-react';
+import { FileSpreadsheet, Printer, Download, Upload, RotateCcw, CheckCircle2, FileText } from 'lucide-react';
 export const ReportsPage = () => {
-    const { db, t, exportDatabase, importDatabase, resetToDefaultData } = useDatabase();
+    const { db, t, lang, exportDatabase, importDatabase, resetToDefaultData } = useDatabase();
     const [period, setPeriod] = useState('daily');
     const [importStatus, setImportStatus] = useState(null);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
-    // Helper date filtering
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const getStartDate = () => {
-        const d = new Date();
-        if (period === 'daily')
-            return todayStr;
-        if (period === 'weekly') {
-            d.setDate(d.getDate() - 7);
-            return d.toISOString().split('T')[0];
-        }
-        if (period === 'monthly') {
-            d.setDate(d.getDate() - 30);
-            return d.toISOString().split('T')[0];
-        }
-        return '1970-01-01';
-    };
-    const startDate = getStartDate();
-    // Filter items in period
-    const filteredSales = [...db.sales, ...(db.counterSales || []).filter(sale => (sale.status || 'active') === 'active')].filter(s => period === 'all' || (s.date >= startDate && s.date <= todayStr));
-    const filteredBatches = db.productionBatches.filter(b => period === 'all' || (b.date >= startDate && b.date <= todayStr));
-    const filteredExpenses = db.expenses.filter(e => period === 'all' || (e.date >= startDate && e.date <= todayStr));
-    // Financial aggregates
-    const totalSalesRevenue = filteredSales.reduce((a,s)=>{a[s.currency === 'USD' ? 'USD' : 'AFN']+=s.totalAmount;return a;},{AFN:0,USD:0});
-    const totalSalesCogs = filteredSales.reduce((a,s)=>{a.AFN += s.totalCostOfGoods || 0; a.USD += s.totalCostOfGoodsUsd || 0; return a;},{AFN:0,USD:0});
-    const totalExpensesSum = filteredExpenses.reduce((a,e)=>{a[e.currency === 'USD' ? 'USD' : 'AFN']+=e.amount;return a;},{AFN:0,USD:0});
-    const totalGrossProfit = { AFN: totalSalesRevenue.AFN-totalSalesCogs.AFN, USD: totalSalesRevenue.USD-totalSalesCogs.USD };
-    const netProfit = { AFN: totalGrossProfit.AFN-totalExpensesSum.AFN, USD: totalGrossProfit.USD-totalExpensesSum.USD };
-    const totalProducedKg = filteredBatches.reduce((acc, b) => acc + b.totalWeightKg, 0);
-    const totalProducedBags = Math.round((totalProducedKg / 50) * 100) / 100;
+    const [selectedDate, setSelectedDate] = useState(() => localDateValue());
+    const [selectedMonth, setSelectedMonth] = useState(() => localDateValue().slice(0, 7));
+    const [customStart, setCustomStart] = useState(() => localDateValue());
+    const [customEnd, setCustomEnd] = useState(() => localDateValue());
+    const range = reportDateRange(period, selectedDate, selectedMonth, customStart, customEnd);
+    const report = buildReport(db, range);
+    const labels = t.reporting;
+    const formatDate = value => formatReportDate(value, lang, t);
+    const rangeLabel = period === 'all' ? labels.allDates : range.valid ? `${formatDate(range.start)} — ${formatDate(range.end)}` : labels.invalidRange;
     const handleFileUpload = (e) => {
         const file = e.target.files?.[0];
         if (!file)
@@ -57,14 +39,7 @@ export const ReportsPage = () => {
         };
         reader.readAsText(file);
     };
-    const getPeriodLabel = (p) => {
-        switch (p) {
-            case 'daily': return t.todayFilter;
-            case 'weekly': return t.lastWeekFilter;
-            case 'monthly': return t.lastMonthFilter;
-            case 'all': return t.all;
-        }
-    };
+    const getPeriodLabel = p => ({ daily: labels.day, weekly: labels.week, monthly: labels.month, custom: labels.custom, all: t.all }[p]);
     return (<div className="space-y-6">
       {/* Header with period toggle and print */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
@@ -82,15 +57,15 @@ export const ReportsPage = () => {
 
         {/* Period Selector & Print CTA */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-            {['daily', 'weekly', 'monthly', 'all'].map((p) => (<button key={p} type="button" onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${period === p
+          <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            {['daily', 'weekly', 'monthly', 'custom', 'all'].map((p) => (<button key={p} type="button" onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${period === p
                 ? 'bg-amber-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'}`}>
                 {getPeriodLabel(p)}
               </button>))}
           </div>
 
-          <button type="button" onClick={() => window.print()} className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-600/25 transition-all cursor-pointer">
+          <button type="button" disabled={!range.valid} onClick={async () => { await document.fonts.ready; window.print(); }} className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-600/25 transition-all cursor-pointer">
             <Printer className="w-4 h-4"/>
             <span>{t.printReport}</span>
           </button>
@@ -102,100 +77,21 @@ export const ReportsPage = () => {
           <span>{importStatus}</span>
         </div>)}
 
-      {/* Printable Report Section */}
-      <div className="space-y-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm print:shadow-none print:border-none print:p-0">
-        {/* Report Header for Print */}
-        <div className="hidden print:block text-center pb-6 border-b-2 border-black">
-          <h1 className="text-2xl font-black">{t.companyName}</h1>
-          <p className="text-sm font-medium mt-1">{t.companySubtitle}</p>
-          <p className="text-xs text-slate-600 mt-1">
-            {t.factoryBalanceReportSubtitle} ({getPeriodLabel(period)}) • {t.date}: {todayStr}
-          </p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 print:hidden">
+        <div className="flex flex-wrap items-end gap-4">
+          {(period === 'daily' || period === 'weekly') && <label className="block text-xs font-semibold text-slate-700"><span className="mb-1 block">{period === 'weekly' ? labels.weekEnding : t.date}</span><input required type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm"/></label>}
+          {period === 'monthly' && <label className="block text-xs font-semibold text-slate-700"><span className="mb-1 block">{labels.month}</span><input required type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm"/></label>}
+          {period === 'custom' && <>
+            <label className="block text-xs font-semibold text-slate-700"><span className="mb-1 block">{labels.from}</span><input required type="date" value={customStart} max={customEnd || undefined} onChange={event => setCustomStart(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm"/></label>
+            <label className="block text-xs font-semibold text-slate-700"><span className="mb-1 block">{labels.to}</span><input required type="date" value={customEnd} min={customStart || undefined} onChange={event => setCustomEnd(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm"/></label>
+          </>}
+          <p className="py-2 text-sm font-semibold text-slate-700" aria-live="polite">{rangeLabel}</p>
         </div>
-
-        {/* Financial & Production KPI Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500">{t.periodSalesTotal}</span>
-            <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-              {totalSalesRevenue.AFN.toLocaleString()} AFN · {totalSalesRevenue.USD.toLocaleString()} USD
-            </div>
-            <span className="text-xs text-amber-700 font-medium">
-              {filteredSales.length} {t.recordedInvoicesCount}
-            </span>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500">{t.factoryExpensesTotal}</span>
-            <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-              {totalExpensesSum.AFN.toLocaleString()} AFN · {totalExpensesSum.USD.toLocaleString()} USD
-            </div>
-            <span className="text-xs text-rose-600 font-medium">
-              {filteredExpenses.length} {t.expensesCountLabel}
-            </span>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500">{t.operationalGrossProfit}</span>
-            <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalGrossProfit.AFN.toLocaleString()} AFN · {totalGrossProfit.USD.toLocaleString()} USD
-            </div>
-            <span className="text-xs text-emerald-600 font-medium">{t.cogsDeductedLabel}</span>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500">{t.netProfit}</span>
-            <div className={`text-xl font-bold font-mono mt-1 ${netProfit.AFN >= 0 && netProfit.USD >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
-              {netProfit.AFN.toLocaleString()} AFN · {netProfit.USD.toLocaleString()} USD
-            </div>
-            <span className="text-xs text-slate-500">{t.afterAllExpenses}</span>
-          </div>
-        </div>
-
-        {/* Production Output Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold text-slate-500">{t.feedProducedInPeriod}</span>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-                {totalProducedKg.toLocaleString()} {t.kilo}
-              </div>
-              <span className="text-xs text-amber-700 font-medium">
-                {t.equivalentTonRate} {totalProducedBags.toLocaleString()} {t.bag}
-              </span>
-            </div>
-            <div className="p-3 bg-amber-100 text-amber-700 rounded-xl">
-              <PackageCheck className="w-6 h-6"/>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold text-slate-500">{t.prodBatchesLine}</span>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-                {filteredBatches.length} {t.records}
-              </div>
-              <span className="text-xs text-slate-500">{t.autoProcessLine}</span>
-            </div>
-            <div className="p-3 bg-blue-100 text-blue-700 rounded-xl">
-              <Scale className="w-6 h-6"/>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold text-slate-500">{t.rawMaterialsConsumed}</span>
-              <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-                {db.rawMaterials.reduce((acc, r) => acc + r.stockKg, 0).toLocaleString()} {t.kilo}
-              </div>
-              <span className="text-xs text-slate-500">{t.currentSiloStock}</span>
-            </div>
-            <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl">
-              <Wheat className="w-6 h-6"/>
-            </div>
-          </div>
-        </div>
+        {period === 'weekly' && <p className="mt-2 text-xs text-slate-500">{labels.weekNote}</p>}
+        {!range.valid && <p role="alert" className="mt-2 text-sm text-rose-700">{labels.invalidRange}</p>}
       </div>
+      {db.purchaseHistoryAvailable === false && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 print:hidden">{labels.purchaseHistoryPending}</p>}
+      {range.valid && <ReportDocument report={report} rangeLabel={rangeLabel} periodLabel={getPeriodLabel(period)} lang={lang} t={t}/>}
 
       {/* Database Backup & Restore / Reset Section (Print Hidden) */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm print:hidden">
@@ -244,8 +140,8 @@ export const ReportsPage = () => {
         </div>
       </div>
 
-      {/* Developed By Footer (Visible on Screen and Print) */}
-      <div className="text-center pt-4 border-t border-slate-200 text-xs font-mono text-slate-500 print:text-black">
+      {/* Developed By Footer */}
+      <div className="text-center pt-4 border-t border-slate-200 text-xs font-mono text-slate-500 print:hidden">
         {t.developedBy}
       </div>
 
