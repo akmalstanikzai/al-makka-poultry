@@ -2,6 +2,15 @@ export const translations = {
     "fa": {
         "transactionDate": "تاریخ معامله",
         "reporting": {
+            "summaryTitle": "خلاصهٔ دوره",
+            "financialSummary": "مجموع مبالغ",
+            "quantitySummary": "مجموع مقادیر",
+            "summaryItem": "شرح",
+            "moneyIn": "پول دریافتی",
+            "moneyOut": "پول پرداختی",
+            "netCashFlow": "خالص جریان نقدی",
+            "summaryBags": "بوجی (50 کیلو)",
+            "summaryNote": "مبالغ نقدی بر اساس تاریخ پرداخت است و تصفیه با جنس را شامل نمی‌شود. سود = فروش − قیمت تمام‌شده − مصارف.",
             "monthNames": ["جنوری","فبروری","مارچ","اپریل","می","جون","جولای","آگست","سپتمبر","اکتوبر","نومبر","دسمبر"],
             "day": "روز",
             "week": "هفته",
@@ -641,6 +650,15 @@ export const translations = {
     "ps": {
         "transactionDate": "د معاملې نېټه",
         "reporting": {
+            "summaryTitle": "د مودې لنډیز",
+            "financialSummary": "د پیسو ټولیز حساب",
+            "quantitySummary": "ټول مقدارونه",
+            "summaryItem": "تفصیل",
+            "moneyIn": "ترلاسه شوې پیسې",
+            "moneyOut": "ورکړل شوې پیسې",
+            "netCashFlow": "خالص نغدي بهیر",
+            "summaryBags": "بوجۍ (50 کیلو)",
+            "summaryNote": "نغدي حساب د پیسو د ورکړې د نېټې له مخې دی او د توکو تصفیه پکې نشته. ګټه = خرڅلاو − تمامه شوې بیه − لګښتونه.",
             "monthNames": ["جنوري","فبروري","مارچ","اپرېل","مې","جون","جولای","اګست","سپتمبر","اکتوبر","نومبر","دسمبر"],
             "day": "ورځ",
             "week": "اوونۍ",
@@ -1280,6 +1298,15 @@ export const translations = {
     "en": {
         "transactionDate": "Transaction date",
         "reporting": {
+            "summaryTitle": "Period summary",
+            "financialSummary": "Financial totals",
+            "quantitySummary": "Quantity totals",
+            "summaryItem": "Description",
+            "moneyIn": "Money in",
+            "moneyOut": "Money out",
+            "netCashFlow": "Net cash flow",
+            "summaryBags": "Bags (50 kg)",
+            "summaryNote": "Cash totals follow payment dates and exclude goods settlements. Profit = sales − cost of goods − expenses.",
             "monthNames": ["January","February","March","April","May","June","July","August","September","October","November","December"],
             "day": "Day",
             "week": "Week",

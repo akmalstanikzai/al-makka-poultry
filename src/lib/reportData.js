@@ -36,9 +36,28 @@ export const buildReport = (db, range) => {
     const expenseTotal = sumMoney(expenses, 'amount');
     const cogs = sales.reduce((sum, sale) => ({ AFN: sum.AFN + number(sale.totalCostOfGoods), USD: sum.USD + number(sale.totalCostOfGoodsUsd) }), { AFN: 0, USD: 0 });
     const grossProfit = { AFN: revenue.AFN - cogs.AFN, USD: revenue.USD - cogs.USD };
+    // Cash follows payment dates, independently of invoice value. Ledger
+    // mirrors and goods offsets must not be counted as cash a second time.
+    const customerPayments = [...(db.customers || []), ...(db.counterCustomers || [])]
+        .flatMap(party => party.transactions || []).filter(included);
+    const supplierPayments = (db.suppliers || []).flatMap(party => party.transactions || [])
+        .filter(tx => tx.type === 'payment' && included(tx));
+    const cashAmount = record => number(record.cashAmount ?? record.paidAmount);
+    const moneyIn = sumMoney([
+        ...sales.filter(sale => sale.paymentMethod !== 'supplier_balance_offset'),
+        ...customerPayments.filter(tx => tx.type === 'payment'),
+    ].map(record => ({ ...record, cash: cashAmount(record) })), 'cash');
+    const paidOut = sumMoney([
+        ...purchases.filter(purchase => purchase.type !== 'raw_goods_settlement'),
+        ...supplierPayments,
+        ...customerPayments.filter(tx => ['cash_given', 'transport_fee', 'adjustment'].includes(tx.type)),
+    ].map(record => ({ ...record, cash: cashAmount(record) })), 'cash');
+    const moneyOut = { AFN: paidOut.AFN + expenseTotal.AFN, USD: paidOut.USD + expenseTotal.USD };
     return {
         sales, saleLines, purchases, expenses, batches, revenue, purchaseTotal, expenseTotal, cogs, grossProfit,
         netProfit: { AFN: grossProfit.AFN - expenseTotal.AFN, USD: grossProfit.USD - expenseTotal.USD },
+        moneyIn, moneyOut,
+        netCashFlow: { AFN: moneyIn.AFN - moneyOut.AFN, USD: moneyIn.USD - moneyOut.USD },
         soldKg: sales.reduce((sum, sale) => sum + weight(sale), 0),
         purchasedKg: purchases.reduce((sum, purchase) => sum + number(purchase.quantityKg), 0),
         producedKg: batches.reduce((sum, batch) => sum + number(batch.totalWeightKg), 0),

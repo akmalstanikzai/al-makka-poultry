@@ -17,7 +17,7 @@ export const ReportsPage = () => {
     const report = buildReport(db, range);
     const labels = t.reporting;
     const formatDate = value => formatReportDate(value, lang, t);
-    const rangeLabel = period === 'all' ? labels.allDates : range.valid ? `${formatDate(range.start)} — ${formatDate(range.end)}` : labels.invalidRange;
+    const rangeLabel = period === 'all' ? labels.allDates : range.valid ? (range.start === range.end ? formatDate(range.start) : `${formatDate(range.start)} — ${formatDate(range.end)}`) : labels.invalidRange;
     const handleFileUpload = (e) => {
         const file = e.target.files?.[0];
         if (!file)
@@ -40,9 +40,9 @@ export const ReportsPage = () => {
         reader.readAsText(file);
     };
     const getPeriodLabel = p => ({ daily: labels.day, weekly: labels.week, monthly: labels.month, custom: labels.custom, all: t.all }[p]);
-    return (<div className="space-y-6">
+    return (<div className="space-y-4">
       {/* Header with period toggle and print */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
@@ -50,9 +50,7 @@ export const ReportsPage = () => {
             </div>
             <span>{t.reportsTitle}</span>
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            {t.reportsDesc}
-          </p>
+
         </div>
 
         {/* Period Selector & Print CTA */}
@@ -77,7 +75,7 @@ export const ReportsPage = () => {
           <span>{importStatus}</span>
         </div>)}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 print:hidden">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 print:hidden">
         <div className="flex flex-wrap items-end gap-4">
           {(period === 'daily' || period === 'weekly') && <label className="block text-xs font-semibold text-slate-700"><span className="mb-1 block">{period === 'weekly' ? labels.weekEnding : t.date}</span><input required type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm"/></label>}
           {period === 'monthly' && <label className="block text-xs font-semibold text-slate-700"><span className="mb-1 block">{labels.month}</span><input required type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm"/></label>}
@@ -94,12 +92,12 @@ export const ReportsPage = () => {
       {range.valid && <ReportDocument report={report} rangeLabel={rangeLabel} periodLabel={getPeriodLabel(period)} lang={lang} t={t}/>}
 
       {/* Database Backup & Restore / Reset Section (Print Hidden) */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm print:hidden">
-        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 mb-2">
+      <details className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm print:hidden">
+        <summary className="text-sm font-bold text-slate-700 flex items-center gap-2 cursor-pointer">
           <FileText className="w-4 h-4 text-amber-600"/>
           <span>{t.backupManagementTitle}</span>
-        </h3>
-        <p className="text-xs text-slate-600 mb-6">
+        </summary>
+        <p className="text-xs text-slate-600 mt-3 mb-4">
           {t.backupManagementDesc}
         </p>
 
@@ -138,7 +136,7 @@ export const ReportsPage = () => {
             </div>
           </button>
         </div>
-      </div>
+      </details>
 
       {/* Developed By Footer */}
       <div className="text-center pt-4 border-t border-slate-200 text-xs font-mono text-slate-500 print:hidden">

@@ -42,15 +42,63 @@ input[type="number"]::-webkit-inner-spin-button {
   page-break-inside: avoid;
 }
 
-.report-table tbody td {
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.65rem 0.75rem;
-  vertical-align: top;
-  overflow-wrap: anywhere;
+.report-document {
+  max-width: 940px;
+  margin-inline: auto;
+  padding: 20px 24px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  font-variant-numeric: tabular-nums;
+}
+.report-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #0f172a;
+}
+.report-heading h1 { font-size: 16px; font-weight: 800; line-height: 1.5; }
+.report-heading p { margin-top: 3px; font-size: 12px; color: #64748b; }
+.report-heading .report-period { color: #334155; text-align: end; }
+.report-cash-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-block: 14px; }
+.report-cash-total { min-width: 0; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
+.report-cash-total h2 { margin-bottom: 5px; font-size: 12px; font-weight: 600; color: #475569; }
+.report-cash-total > div { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.report-cash-total bdi { font-size: clamp(14px, 2vw, 21px); font-weight: 750; overflow-wrap: anywhere; }
+.report-cash-total > div + div bdi { font-size: 14px; font-weight: 600; }
+.report-cash-total span { font-size: 10px; color: #64748b; }
+.report-cash-net { border-color: #0f172a; background: #0f172a; color: white; }
+.report-cash-net h2, .report-cash-net span { color: #cbd5e1; }
+.report-section { margin-top: 14px; }
+.report-section h2 { margin-bottom: 5px; font-size: 13px; font-weight: 750; }
+.report-summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.report-summary-table th, .report-summary-table td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; overflow-wrap: anywhere; }
+.report-summary-table th:first-child { width: 52%; text-align: start; }
+.report-summary-table thead th { background: #f1f5f9; font-size: 11px; font-weight: 650; color: #64748b; text-align: end; }
+.report-summary-table tbody th { font-weight: 500; }
+.report-summary-table td { text-align: end; font-weight: 600; }
+.report-summary-table .report-total-row > * { border-top: 2px solid #cbd5e1; background: #f8fafc; font-weight: 800; }
+.report-note { margin-top: 12px; font-size: 10px; line-height: 1.6; color: #64748b; }
+@media (max-width: 540px) {
+  .report-document { padding: 14px; border-radius: 12px; }
+  .report-heading { align-items: start; flex-direction: column; gap: 3px; }
+  .report-heading h1 { font-size: 14px; }
+  .report-cash-summary { gap: 6px; }
+  .report-cash-total { padding: 8px; }
+  .report-cash-total h2 { font-size: 11px; }
+  .report-cash-total > div { flex-wrap: wrap; gap: 0 4px; }
+  .report-cash-total > div + div bdi { font-size: 12px; }
+  .report-summary-table { font-size: 12px; }
+  .report-summary-table th, .report-summary-table td { padding: 7px 5px; }
+  .report-summary-table th:first-child { width: 46%; }
 }
 
 @page report {
-  size: A4 landscape;
+  size: A4 portrait;
   margin: 12mm;
 }
 
@@ -99,37 +147,16 @@ input[type="number"]::-webkit-inner-spin-button {
     box-shadow: none !important;
     font-size: 10pt;
   }
-  .report-summary {
+  .report-cash-summary {
     display: grid !important;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
-  .report-heading,
-  .report-summary > div,
-  .report-table tr {
+  .report-document, .report-heading, .report-section, .report-cash-total {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .report-section > h3 {
-    break-after: avoid;
-  }
-  .report-table {
-    overflow: visible !important;
-    border-radius: 0 !important;
-  }
-  .report-table table {
-    width: 100%;
-    table-layout: fixed;
-    font-size: 9pt;
-  }
-  .report-table td,
-  .report-table th {
-    padding: 6px !important;
-    overflow-wrap: anywhere;
-  }
-  .report-table thead {
-    display: table-header-group;
-  }
-  .report-table tfoot {
-    display: table-row-group;
+  .report-cash-net {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }

@@ -87,9 +87,45 @@ test('every report label and transaction date label exists in all three language
     }
 });
 
-test('Dari and Pashto dates use translated Gregorian months without browser locale fallback', () => {
+test('all report languages use English date digits with translated month names', () => {
     assert.equal(formatReportDate('2026-11-24', 'en', translations.en), '24 November 2026');
     for (const lang of ['fa', 'ps']) {
-        assert.equal(formatReportDate('2026-11-24', lang, translations[lang]), '۲۴ نومبر ۲۰۲۶');
+        assert.equal(formatReportDate('2026-11-24', lang, translations[lang]), '24 نومبر 2026');
     }
+});
+
+test('cash totals count payments on their own dates without invoice mirrors or non-cash offsets', () => {
+    const report = buildReport({
+        sales: [
+            { id: 'sale', date, currency: 'AFN', totalAmount: 1000, paidAmount: 900, cashAmount: 200 },
+            { id: 'offset', date, currency: 'AFN', totalAmount: 500, paidAmount: 500, paymentMethod: 'supplier_balance_offset' },
+            { id: 'credit', date, currency: 'AFN', totalAmount: 100, paidAmount: 100, cashAmount: 0 },
+        ],
+        counterSales: [{ id: 'counter', date, currency: 'USD', totalAmount: 80, cashAmount: 30 }],
+        suppliers: [{ transactions: [
+            { id: 'purchase', type: 'purchase', date, currency: 'AFN', amount: 2000, paidAmount: 600, cashAmount: 600 },
+            { id: 'payment', type: 'payment', date, currency: 'AFN', cashAmount: 50 },
+            { id: 'void-payment', type: 'payment', date, currency: 'AFN', cashAmount: 999, status: 'voided' },
+        ] }],
+        customers: [{ transactions: [
+            { id: 'mirror', type: 'sale', date, currency: 'AFN', cashAmount: 200 },
+            { id: 'payment', type: 'payment', date, currency: 'AFN', cashAmount: 70 },
+            { id: 'earlier', type: 'payment', date: '2026-11-23', currency: 'AFN', cashAmount: 999 },
+            { id: 'cash-given', type: 'cash_given', date, currency: 'AFN', cashAmount: 20 },
+            { id: 'transport', type: 'transport_fee', date, currency: 'USD', cashAmount: 2 },
+            { id: 'goods', type: 'raw_goods_settlement', date, currency: 'USD', amount: 400, paidAmount: 400, cashAmount: 0 },
+        ] }],
+        counterCustomers: [{ transactions: [
+            { id: 'counter-mirror', type: 'sale', date, currency: 'USD', cashAmount: 30 },
+            { id: 'counter-payment', type: 'payment', date, currency: 'USD', paidAmount: 5 },
+            { id: 'refund', type: 'adjustment', date, currency: 'USD', cashAmount: 3 },
+        ] }],
+        rawMaterialPurchases: [{ id: 'anonymous', date, currency: 'USD', amount: 100, paidAmount: 10 }],
+        expenses: [{ id: 'expense', date, currency: 'AFN', amount: 25 }],
+    }, reportDateRange('daily', date));
+    assert.deepEqual(report.moneyIn, { AFN: 270, USD: 35 });
+    assert.deepEqual(report.moneyOut, { AFN: 695, USD: 15 });
+    assert.deepEqual(report.netCashFlow, { AFN: -425, USD: 20 });
+    assert.deepEqual(report.revenue, { AFN: 1600, USD: 80 });
+    assert.deepEqual(report.purchaseTotal, { AFN: 2000, USD: 500 });
 });

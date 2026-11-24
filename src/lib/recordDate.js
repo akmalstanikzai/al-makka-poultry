@@ -15,10 +15,10 @@ export const normalizeRecordDate = value => {
 
 // Chromium does not consistently support ps-AF date formatting. Translate
 // Gregorian month names explicitly so Pashto reports never fall back to English.
-export const formatReportDate = (value, lang, t) => {
+export const formatReportDate = (value, _lang, t) => {
     if (!isValidRecordDate(value)) return '—';
     const [year, month, day] = value.split('-').map(Number);
-    const format = number => number.toLocaleString(lang === 'en' ? 'en-US' : 'fa-AF', { useGrouping: false });
+    const format = number => number.toLocaleString('en-US', { useGrouping: false });
     return `${format(day)} ${t.reporting.monthNames[month - 1]} ${format(year)}`;
 };
 

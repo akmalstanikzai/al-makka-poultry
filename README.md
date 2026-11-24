@@ -77,11 +77,15 @@ Existing transaction-history corrections can change an older record's date.
 
 Reports support a selected day, seven days ending on a selected date, a full
 Gregorian calendar month, an inclusive custom date range, or all dates. Print
-uses an A4 landscape layout with repeating table headings. English, Dari, and
-Pashto labels, Gregorian month names, and right-to-left layouts are supported.
+uses a compact A4 portrait summary without individual transactions. English,
+Dari, and Pashto labels, Gregorian month names, and right-to-left layouts are
+supported; digits and number separators use English formatting in every language.
 Sales and purchase quantities show kilos and equivalent 50 kg bags. AFN and USD
 remain separate. Profit deducts cost of goods sold and expenses; purchase value
 is reported separately, rather than deducted twice.
+Money in, money out, and net cash flow use actual cash payments on their payment
+dates, including account payments, customer cash advances, fees, and counter
+refunds. Invoice ledger mirrors and non-cash goods settlements are excluded.
 
 Apply `supabase/migrations/20261124000000_add_unassigned_purchase_history.sql`
 before recording purchases without a supplier account. This adds an
