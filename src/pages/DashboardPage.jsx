@@ -197,15 +197,6 @@ export const DashboardPage = ({ setActiveTab }) => {
     return (<div className="workspace-page dashboard-page space-y-6">
       {/* 2. RECTANGULAR CLICKABLE METRIC TABLES / CARDS */}
       <div className="dashboard-overview">
-        <div className="dashboard-section-heading flex items-center justify-between gap-3 mb-4">
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
-            {t.companySubtitle}
-          </h2>
-          <span className="text-xs text-slate-500 font-medium">
-            {t.viewDetails}
-          </span>
-        </div>
-
         <div className="dashboard-metrics grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           {rectangularCards.map((card) => {
             const Icon = card.icon;

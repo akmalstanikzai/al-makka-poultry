@@ -101,18 +101,7 @@ export const ExpensesPage = () => {
     const totalExpenses = db.expenses.reduce((acc, e) => { acc[e.currency === 'USD' ? 'USD' : 'AFN'] += e.amount; return acc; }, { AFN: 0, USD: 0 });
     return (<div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-rose-100 text-rose-700">
-              <Receipt className="w-5 h-5"/>
-            </div>
-            <span>{t.expensesTitle}</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            {t.expensesDesc}
-          </p>
-        </div>
+      <div className="page-toolbar">
 
         <button type="button" onClick={() => {
             setErrorMsg('');

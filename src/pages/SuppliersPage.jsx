@@ -214,18 +214,7 @@ export const SuppliersPage = () => {
     }).sort((first, second) => latestRawPurchaseTime(second) - latestRawPurchaseTime(first));
     return (<div className="workspace-page space-y-6">
       {/* Header with Title and Search */}
-      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-              <Truck className="w-5 h-5"/>
-            </div>
-            <span>{t.suppliersTitle}</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            {t.suppliersDesc}
-          </p>
-        </div>
+      <div className="page-toolbar">
 
         {/* Search */}
         <div className="relative w-full sm:w-80">
@@ -331,12 +320,13 @@ export const SuppliersPage = () => {
               </tr>
             </thead>
             <tbody className="account-records">
-              {filteredSuppliers.map((sup) => {
+              {filteredSuppliers.map((sup, index) => {
             const hasDebt = sup.balanceOwed > 0 || (sup.balanceOwedUsd || 0) > 0;
             const hasReceivable = (sup.receivableBalance || 0) > 0 || (sup.receivableBalanceUsd || 0) > 0;
             const isExpanded = !!expandedSupplierIds[sup.id];
             const transactionsCount = sup.transactions?.length || 0;
             return (<React.Fragment key={sup.id}>
+                    {index > 0 && <tr className="account-divider" aria-hidden="true"><td colSpan={7}><hr/></td></tr>}
                     <tr data-record-tone={recordTone(sup.id || sup.name)} className={`account-record grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasReceivable ? 'bg-sky-50/30 hover:bg-sky-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
                       <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">

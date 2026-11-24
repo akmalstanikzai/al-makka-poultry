@@ -277,18 +277,7 @@ export const FormulaPage = () => {
     };
     return (<div className="workspace-page flex min-w-0 flex-col gap-4 sm:gap-6">
       {/* Header */}
-      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-              <Scale className="w-5 h-5"/>
-            </div>
-            <span>{t.formulaTitle}</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            {t.formulaDesc}
-          </p>
-        </div>
+      <div className="page-toolbar">
 
         {/* Optional unit converter */}
         <div className="flex flex-wrap items-center gap-2">

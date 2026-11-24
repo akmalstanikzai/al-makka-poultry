@@ -49,11 +49,6 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
             <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate flex items-center gap-2">
               <span className="truncate">{getTabTitle()}</span>
             </h1>
-            <span className="text-[11px] text-slate-500 hidden md:inline-flex items-center gap-1.5 font-medium">
-              <span>{t.companyName}</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-amber-700 font-mono" dir="ltr">0780 001 923</span>
-            </span>
           </div>
         </div>
 

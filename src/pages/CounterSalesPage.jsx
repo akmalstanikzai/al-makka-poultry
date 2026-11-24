@@ -1,7 +1,7 @@
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
 import React, { useMemo, useRef, useState } from 'react';
-import { Banknote, Ban, History, Pencil, Plus, Receipt, Search, ShoppingBasket, Trash2, Users, Wallet, X } from 'lucide-react';
+import { Banknote, Ban, History, Pencil, Plus, Receipt, Search, Trash2, Users, Wallet, X } from 'lucide-react';
 import { useDatabase } from '../context/DatabaseContext';
 import { ReceiptActions } from '../components';
 import { cleanBillNumber, billNumberExists } from '../lib/billNumber';
@@ -126,10 +126,9 @@ export const CounterSalesPage = () => {
     const debts = (db.counterCustomers || []).reduce((sum, customer) => ({ AFN: sum.AFN + (Number(customer.balanceOwed) || 0), USD: sum.USD + (Number(customer.balanceOwedUsd) || 0) }), { AFN: 0, USD: 0 });
 
     return <div className="workspace-page space-y-6">
-      <header className="page-hero rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div><h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><ShoppingBasket className="h-6 w-6 text-violet-600"/>{labels.title}</h2><p className="mt-1 text-sm text-slate-500">{labels.description}</p></div>
+      <div className="page-toolbar">
         <button type="button" onClick={openSale} className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow"><Plus className="h-4 w-4"/>{labels.newSale}</button>
-      </header>
+      </div>
       <section className="stats-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Stat icon={Receipt} label={labels.purchases} value={moneyPair(totals.sales.AFN, totals.sales.USD)} tone="violet"/>
         <Stat icon={Wallet} label={labels.payments} value={moneyPair((db.counterCustomers || []).reduce((s,c)=>s+(Number(c.totalPaid)||0),0),(db.counterCustomers || []).reduce((s,c)=>s+(Number(c.totalPaidUsd)||0),0))} tone="emerald"/>

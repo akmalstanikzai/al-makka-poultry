@@ -3,7 +3,7 @@ import { buildReport } from '../lib/reportData';
 import { ReportDocument } from '../components/ReportDocument';
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { FileSpreadsheet, Printer, Download, Upload, RotateCcw, CheckCircle2, FileText } from 'lucide-react';
+import { Printer, Download, Upload, RotateCcw, CheckCircle2, FileText } from 'lucide-react';
 export const ReportsPage = () => {
     const { db, t, lang, exportDatabase, importDatabase, resetToDefaultData } = useDatabase();
     const [period, setPeriod] = useState('daily');
@@ -40,19 +40,9 @@ export const ReportsPage = () => {
         reader.readAsText(file);
     };
     const getPeriodLabel = p => ({ daily: labels.day, weekly: labels.week, monthly: labels.month, custom: labels.custom, all: t.all }[p]);
-    return (<div className="space-y-4">
+    return (<div className="workspace-page reports-page space-y-4">
       {/* Header with period toggle and print */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-              <FileSpreadsheet className="w-5 h-5"/>
-            </div>
-            <span>{t.navReports}</span>
-          </h2>
-
-        </div>
-
+      <div className="page-toolbar print:hidden">
         {/* Period Selector & Print CTA */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200">

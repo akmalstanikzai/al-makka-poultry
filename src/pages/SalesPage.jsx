@@ -183,18 +183,7 @@ export const SalesPage = () => {
     const totalVolumeKg = db.sales.reduce((acc, s) => acc + s.quantityKg, 0);
     return (<div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-              <TrendingUp className="w-5 h-5"/>
-            </div>
-            <span>{t.salesTitle}</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            {t.salesDesc}
-          </p>
-        </div>
+      <div className="page-toolbar">
 
         <div className="flex items-center gap-3">
           {/* Cost rate visibility toggle */}

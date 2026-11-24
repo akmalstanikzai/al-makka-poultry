@@ -1,7 +1,7 @@
 import { RecordAvatar } from '../components/RecordAvatar';
 import { recordTone } from '../lib/recordAppearance';
 import React, { useState } from 'react';
-import { Search, Warehouse, Wheat, PackageCheck, Scale, DollarSign, X, Pencil } from 'lucide-react';
+import { Search, Wheat, PackageCheck, Scale, DollarSign, X, Pencil } from 'lucide-react';
 import { useDatabase } from '../context/DatabaseContext';
 import { rawAverageCostPerKg, rawStockValue } from '../lib/rawMaterialCost';
 
@@ -41,7 +41,6 @@ export const StockOverviewPage = () => {
         setEditingItem(null); setEditForm(null);
     };
     return (<div className="workspace-page space-y-5">
-      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5"><span className="p-2 rounded-xl bg-indigo-100 text-indigo-700"><Warehouse className="w-5 h-5"/></span>{t.combinedInventoryTitle}</h2><p className="text-xs sm:text-sm text-slate-600 mt-1">{t.combinedInventoryDesc}</p></div>
       <div className="stats-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">{[
         { label: t.rawStockCard, value: `${rawKg.toLocaleString()} ${t.kilo}`, detail: `${(rawKg / 1000).toFixed(2)} ${t.tons}`, icon: Wheat, color: 'amber' },
         { label: t.processedStockCard, value: `${processedKg.toLocaleString()} ${t.kilo}`, detail: `${(processedKg / 1000).toFixed(2)} ${t.tons}`, icon: PackageCheck, color: 'emerald' },

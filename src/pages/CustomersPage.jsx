@@ -292,18 +292,7 @@ export const CustomersPage = () => {
     }).sort((first, second) => latestSaleTime(second) - latestSaleTime(first));
     return (<div className="workspace-page space-y-6">
       {/* Header with Title and Search */}
-      <div className="page-hero bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
-              <Users className="w-5 h-5"/>
-            </div>
-            <span>{t.customersTitle}</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            {t.customersDesc}
-          </p>
-        </div>
+      <div className="page-toolbar">
 
         {/* Search */}
         <div className="relative w-full sm:w-80">
@@ -426,12 +415,13 @@ export const CustomersPage = () => {
               </tr>
             </thead>
             <tbody className="account-records">
-              {filteredCustomers.map((cust) => {
+              {filteredCustomers.map((cust, index) => {
             const hasDebt = cust.balanceOwed > 0 || (cust.balanceOwedUsd || 0) > 0;
             const hasCredit = (cust.creditBalance || 0) > 0 || (cust.creditBalanceUsd || 0) > 0;
             const isExpanded = !!expandedCustomerIds[cust.id];
             const transactionsCount = cust.transactions?.length || 0;
             return (<React.Fragment key={cust.id}>
+                    {index > 0 && <tr className="account-divider" aria-hidden="true"><td colSpan={7}><hr/></td></tr>}
                     <tr data-record-tone={recordTone(cust.id || cust.name)} className={`account-record grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-slate-200 transition-colors sm:grid-cols-2 lg:grid-cols-3 2xl:table-row 2xl:rounded-none 2xl:border-0 ${hasDebt ? 'bg-rose-50/20 hover:bg-rose-50/40' : hasCredit ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'bg-white hover:bg-slate-50/80'}`}>
                       {/* Name & Identity */}
                       <td className="min-w-0 px-3 py-3 2xl:px-4 2xl:py-3.5">
