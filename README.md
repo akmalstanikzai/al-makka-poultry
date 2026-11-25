@@ -46,6 +46,12 @@ Migrations are stored in `supabase/migrations` in execution order:
     raw-settlement and supplier processed-goods totals from active ledger rows,
     repairs balances after duplicate rows are voided, and keeps those summaries
     synchronized automatically.
+11. `20261125000000_fix_raw_history_currency_corrections.sql` lets a receipt
+    correction keep its raw material when switching between AFN and USD. It
+    updates the remaining stock's two currency value pools independently and
+    retains the original transaction and correction audit. Existing installations
+    must apply this migration to enable saving these corrections. Installing it
+    does not rewrite existing records.
 
 The baseline starts with no suppliers, customers, inventory, formulas, batches,
 sales, expenses, or transactions. It creates only two required configuration
@@ -106,3 +112,8 @@ historical transactions.
 Run `npm test` for report calculations, date boundaries, currency separation,
 settlement counting, and translation coverage. Run `npm run build` and
 `npm run lint` for the production build and code checks.
+
+`tests/raw-history-currency.test.sql` exercises receipt corrections against a
+disposable PostgreSQL database with the migrations applied: currency-only edits,
+partly consumed and mixed-currency stock, quantity changes, account/cash/audit
+updates, material changes, voids, and failed-save rollback. Its fixtures roll back.

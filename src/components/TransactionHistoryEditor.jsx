@@ -25,6 +25,7 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
     const originalIsAccountCharge = transaction.type === 'cash_given' || transaction.type === 'transport_fee';
     const acceptsCash = form.type === 'purchase' || form.type === 'sale' || isPayment;
     const isRawStock = form.type === 'purchase' || form.type === 'raw_goods_settlement';
+    // Raw stock supports both currency value pools; currency edits keep its id.
     const stockOptions = isRawStock ? rawStockOptions : processedStockOptions;
     const allowedTypes = role === 'supplier'
         ? ['purchase', 'payment', 'goods_settlement']
@@ -32,7 +33,6 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
             ? ['cash_given', 'transport_fee']
             : ['sale', 'payment', 'raw_goods_settlement'];
     const computedAmount = (Number(form.unitQuantity) || 0) * (Number(form.unitPricePerUnit) || 0);
-    const visibleStockOptions = isRawStock ? stockOptions.filter(item => (item.currency || 'AFN') === form.currency) : stockOptions;
     const buttonColor = accent === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700';
     const updateDecimal = field => event => setForm(current => ({ ...current, [field]: normalizeDecimalInput(event.target.value) }));
     const handleItemChange = event => {
@@ -77,10 +77,10 @@ export const TransactionHistoryEditor = ({ partyName, transaction, role, rawStoc
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t.date}><input required type="date" value={form.date} onChange={event => setForm(current => ({ ...current, date: event.target.value }))} className={controlClass}/></Field>
             <Field label={t.transactionType}><select value={form.type} onChange={handleTypeChange} className={`${controlClass} font-semibold`}>{allowedTypes.map(type => <option key={type} value={type}>{getLocalizedTxType(type)}</option>)}</select></Field>
-            <Field label={t.currency}><select value={form.currency} onChange={event => setForm(current => ({ ...current, currency: event.target.value, linkedItemId: isRawStock ? '' : current.linkedItemId }))} className={controlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></Field>
+            <Field label={t.currency}><select value={form.currency} onChange={event => setForm(current => ({ ...current, currency: event.target.value }))} className={controlClass}><option value="AFN">AFN</option><option value="USD">USD</option></select></Field>
           </div>
           {!isPayment && !isAccountCharge && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label={isRawStock ? t.rawMaterialsSection : t.processedStockCard} className="sm:col-span-2 lg:col-span-1"><select required value={form.linkedItemId} onChange={handleItemChange} className={controlClass}><option value="">{isRawStock ? t.selectRawMaterial : t.selectProduct}</option>{visibleStockOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+            <Field label={isRawStock ? t.rawMaterialsSection : t.processedStockCard} className="sm:col-span-2 lg:col-span-1"><select required value={form.linkedItemId} onChange={handleItemChange} className={controlClass}><option value="">{isRawStock ? t.selectRawMaterial : t.selectProduct}</option>{stockOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
             <Field label={t.saleUnit}><select value={form.unitType} onChange={event => setForm(current => ({ ...current, unitType: event.target.value }))} className={controlClass}><option value="kg">{t.statementKilo}</option><option value="bag">{t.statementBag}</option><option value="ton">{t.statementTon}</option></select></Field>
             <Field label={t.quantity}><input required type="text" inputMode="decimal" value={form.unitQuantity} onChange={updateDecimal('unitQuantity')} className={`${controlClass} font-mono`}/></Field>
             <Field label={t.statementPricePerUnit}><input required type="text" inputMode="decimal" value={form.unitPricePerUnit} onChange={updateDecimal('unitPricePerUnit')} className={`${controlClass} font-mono`}/></Field>

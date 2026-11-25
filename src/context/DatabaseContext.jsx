@@ -783,7 +783,7 @@ export const DatabaseProvider = ({ children }) => {
                 reason: String(reason).trim(),
             });
         if (!result?.success) {
-            const missingMigration = /correct_account_transaction|schema cache|function/i.test(result?.error || '');
+            const missingMigration = /correct_account_transaction|schema cache|function|raw-material record that uses the corrected currency/i.test(result?.error || '');
             return { success: false, error: missingMigration ? t.historyMigrationRequired : (result?.error || t.historyChangeSaveFailed) };
         }
         const refreshed = await loadStateFromSupabase();
