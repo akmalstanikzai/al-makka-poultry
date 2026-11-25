@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import { RecordAvatar } from '../components/RecordAvatar';
 import { recordTone } from '../lib/recordAppearance';
 import { TransactionDateField } from '../components/TransactionDateField';
@@ -312,9 +313,9 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalCustomerPurchases}</span>
             <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-              {totalSalesAll.AFN.toLocaleString()} AFN · {totalSalesAll.USD.toLocaleString()} USD
+              <CurrencyAmounts afn={totalSalesAll.AFN.toLocaleString()} usd={totalSalesAll.USD.toLocaleString()}/>
             </div>
-            <span className="block text-[10px] text-blue-700">{t.customerAccountCharges}: {totalAccountChargesAll.AFN.toLocaleString()} AFN · {totalAccountChargesAll.USD.toLocaleString()} USD</span>
+            <span className="block text-[10px] text-blue-700">{t.customerAccountCharges}: <CurrencyAmounts afn={totalAccountChargesAll.AFN.toLocaleString()} usd={totalAccountChargesAll.USD.toLocaleString()}/></span>
             <span className="text-xs text-slate-500">{customers.length} {t.navCustomers}</span>
           </div>
           <div className="p-3 bg-blue-100 text-blue-700 rounded-xl border border-blue-200">
@@ -326,7 +327,7 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.weOweCustomers}</span>
             <div className="text-xl font-bold font-mono text-amber-700 mt-1">
-              {totalCustomerCreditAll.AFN.toLocaleString()} AFN · {totalCustomerCreditAll.USD.toLocaleString()} USD
+              <CurrencyAmounts afn={totalCustomerCreditAll.AFN.toLocaleString()} usd={totalCustomerCreditAll.USD.toLocaleString()}/>
             </div>
             <span className="text-xs text-amber-700 font-medium">{customerCreditCount} {t.customerCreditAccounts}</span>
           </div>
@@ -337,10 +338,10 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalSettledByCustomer}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalSettledAll.AFN.toLocaleString()} AFN · {totalSettledAll.USD.toLocaleString()} USD
+              <CurrencyAmounts afn={totalSettledAll.AFN.toLocaleString()} usd={totalSettledAll.USD.toLocaleString()}/>
             </div>
-            <span className="text-[10px] text-emerald-700 block">{t.cashReceivedFromCustomer}: {totalCashReceivedAll.AFN.toLocaleString()} AFN · {totalCashReceivedAll.USD.toLocaleString()} USD</span>
-            <span className="text-[10px] text-emerald-600 block">{t.nonCashRawSettled}: {totalRawSettledAll.AFN.toLocaleString()} AFN · {totalRawSettledAll.USD.toLocaleString()} USD</span>
+            <span className="text-[10px] text-emerald-700 block">{t.cashReceivedFromCustomer}: <CurrencyAmounts afn={totalCashReceivedAll.AFN.toLocaleString()} usd={totalCashReceivedAll.USD.toLocaleString()}/></span>
+            <span className="text-[10px] text-emerald-600 block">{t.nonCashRawSettled}: <CurrencyAmounts afn={totalRawSettledAll.AFN.toLocaleString()} usd={totalRawSettledAll.USD.toLocaleString()}/></span>
           </div>
           <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200">
             <Wallet className="w-6 h-6"/>
@@ -351,7 +352,7 @@ export const CustomersPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.balanceOwedToCustomer}</span>
             <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-              {totalReceivableDebtAll.AFN.toLocaleString()} AFN · {totalReceivableDebtAll.USD.toLocaleString()} USD
+              <CurrencyAmounts afn={totalReceivableDebtAll.AFN.toLocaleString()} usd={totalReceivableDebtAll.USD.toLocaleString()}/>
             </div>
             <span className="text-xs text-rose-600 font-medium">
               {debtorCount} {t.debtorFarmsCount}
@@ -468,16 +469,16 @@ export const CustomersPage = () => {
                       {/* Total Purchases */}
                       <td className="min-w-0 break-words px-3 py-3 font-mono font-bold text-slate-900 2xl:px-4 2xl:py-3.5">
                         <span className="mb-1 block font-sans text-[10px] font-semibold text-slate-500 2xl:hidden">{t.totalCustomerPurchases}</span>
-                        {cust.totalPurchasedAmount.toLocaleString()} AFN · {(cust.totalPurchasedAmountUsd || 0).toLocaleString()} USD
-                        <span className="mt-0.5 block text-[10px] font-medium text-blue-700">{t.customerAccountCharges}: {(cust.accountCharges || 0).toLocaleString()} AFN · {(cust.accountChargesUsd || 0).toLocaleString()} USD</span>
+                        <CurrencyAmounts afn={cust.totalPurchasedAmount.toLocaleString()} usd={(cust.totalPurchasedAmountUsd || 0).toLocaleString()}/>
+                        <span className="mt-0.5 block text-[10px] font-medium text-blue-700">{t.customerAccountCharges}: <CurrencyAmounts afn={(cust.accountCharges || 0).toLocaleString()} usd={(cust.accountChargesUsd || 0).toLocaleString()}/></span>
                       </td>
 
                       {/* Total Payments */}
                       <td className="min-w-0 break-words px-3 py-3 font-mono font-bold text-emerald-700 2xl:px-4 2xl:py-3.5">
                         <span className="mb-1 block font-sans text-[10px] font-semibold text-slate-500 2xl:hidden">{t.totalSettledByCustomer}</span>
-                        {((cust.totalPaid || 0) + (cust.rawSettledAmount || 0)).toLocaleString()} AFN · {((cust.totalPaidUsd || 0) + (cust.rawSettledAmountUsd || 0)).toLocaleString()} USD
-                        <span className="block text-[10px] font-medium text-emerald-700 mt-0.5">{t.cashReceivedFromCustomer}: {(cust.totalPaid || 0).toLocaleString()} AFN · {(cust.totalPaidUsd || 0).toLocaleString()} USD</span>
-                        <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashRawSettled}: {(cust.rawSettledAmount || 0).toLocaleString()} AFN · {(cust.rawSettledAmountUsd || 0).toLocaleString()} USD</span>
+                        <CurrencyAmounts afn={((cust.totalPaid || 0) + (cust.rawSettledAmount || 0)).toLocaleString()} usd={((cust.totalPaidUsd || 0) + (cust.rawSettledAmountUsd || 0)).toLocaleString()}/>
+                        <span className="block text-[10px] font-medium text-emerald-700 mt-0.5">{t.cashReceivedFromCustomer}: <CurrencyAmounts afn={(cust.totalPaid || 0).toLocaleString()} usd={(cust.totalPaidUsd || 0).toLocaleString()}/></span>
+                        <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">{t.nonCashRawSettled}: <CurrencyAmounts afn={(cust.rawSettledAmount || 0).toLocaleString()} usd={(cust.rawSettledAmountUsd || 0).toLocaleString()}/></span>
                       </td>
 
                       {/* Remaining Debt */}
@@ -485,13 +486,13 @@ export const CustomersPage = () => {
                         <span className="mb-1 block text-[10px] font-semibold text-slate-500 2xl:hidden">{t.customerAccountBalance}</span>
                         {hasDebt && (<div className="inline-flex flex-col">
                             <span className="font-mono font-bold text-rose-700 text-sm">
-                              {cust.balanceOwed.toLocaleString()} AFN · {(cust.balanceOwedUsd || 0).toLocaleString()} USD
+                              <CurrencyAmounts afn={cust.balanceOwed.toLocaleString()} usd={(cust.balanceOwedUsd || 0).toLocaleString()}/>
                             </span>
                             <span className="text-[10px] text-rose-600 font-medium">{t.customerDebtBadge}</span>
                           </div>)}
-                        {hasCredit && (<div className="inline-flex flex-col mt-1"><span className="font-mono font-bold text-amber-700 text-sm">{(cust.creditBalance || 0).toLocaleString()} AFN · {(cust.creditBalanceUsd || 0).toLocaleString()} USD</span><span className="text-[10px] text-amber-700 font-medium">{t.weOweThem}</span></div>)}
+                        {hasCredit && (<div className="inline-flex flex-col mt-1"><span className="font-mono font-bold text-amber-700 text-sm"><CurrencyAmounts afn={(cust.creditBalance || 0).toLocaleString()} usd={(cust.creditBalanceUsd || 0).toLocaleString()}/></span><span className="text-[10px] text-amber-700 font-medium">{t.weOweThem}</span></div>)}
                         {!hasDebt && !hasCredit && (<span className="font-mono text-slate-500 text-xs">
-                            0 AFN · 0 USD
+                            <CurrencyAmounts/>
                           </span>)}
                       </td>
 
@@ -727,7 +728,7 @@ export const CustomersPage = () => {
       {/* Receive raw material from a customer as a non-cash settlement. */}
       {rawSettlementCustomer && (<div className="ui-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
         <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-slate-900">
-          <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Wheat className="w-5 h-5 text-amber-600"/>{t.settleWithRawMaterial}</h3><p className="text-xs text-slate-500 mt-1">{rawSettlementCustomer.name} · {t.remainingDebt}: {(rawSettlementCustomer.balanceOwed || 0).toLocaleString()} AFN · {(rawSettlementCustomer.balanceOwedUsd || 0).toLocaleString()} USD</p></div><button type="button" onClick={()=>setRawSettlementCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
+          <div className="flex items-start justify-between gap-3 mb-5"><div><h3 className="font-bold flex items-center gap-2"><Wheat className="w-5 h-5 text-amber-600"/>{t.settleWithRawMaterial}</h3><p className="text-xs text-slate-500 mt-1">{rawSettlementCustomer.name} · {t.remainingDebt}: <CurrencyAmounts afn={(rawSettlementCustomer.balanceOwed || 0).toLocaleString()} usd={(rawSettlementCustomer.balanceOwedUsd || 0).toLocaleString()}/></p></div><button type="button" onClick={()=>setRawSettlementCustomer(null)} aria-label={t.cancel} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5"/></button></div>
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">{t.rawSettlementNotice}</p>
           <form onSubmit={handleRawSettlement} className="space-y-4">
               <TransactionDateField value={rawDate} onChange={setRawDate} t={t}/>
@@ -768,7 +769,7 @@ export const CustomersPage = () => {
                     {t.receivePayment}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {receiveModalCustomer.name} ({t.remainingDebt}: {receiveModalCustomer.balanceOwed.toLocaleString()} AFN · {(receiveModalCustomer.balanceOwedUsd || 0).toLocaleString()} USD · {t.weOweThem}: {(receiveModalCustomer.creditBalance || 0).toLocaleString()} AFN · {(receiveModalCustomer.creditBalanceUsd || 0).toLocaleString()} USD)
+                    {receiveModalCustomer.name} ({t.remainingDebt}: <CurrencyAmounts afn={receiveModalCustomer.balanceOwed.toLocaleString()} usd={(receiveModalCustomer.balanceOwedUsd || 0).toLocaleString()}/> · {t.weOweThem}: <CurrencyAmounts afn={(receiveModalCustomer.creditBalance || 0).toLocaleString()} usd={(receiveModalCustomer.creditBalanceUsd || 0).toLocaleString()}/>)
                   </p>
                 </div>
               </div>
@@ -831,7 +832,7 @@ export const CustomersPage = () => {
                     {t.accountStatementAndHistory} ({selectedHistoryCustomer.name})
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {t.phone}: {selectedHistoryCustomer.phone || '-'} • {t.remainingDebt}: {selectedHistoryCustomer.balanceOwed.toLocaleString()} AFN · {(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()} USD • {t.weOweThem}: {(selectedHistoryCustomer.creditBalance || 0).toLocaleString()} AFN · {(selectedHistoryCustomer.creditBalanceUsd || 0).toLocaleString()} USD
+                    {t.phone}: {selectedHistoryCustomer.phone || '-'} • {t.remainingDebt}: <CurrencyAmounts afn={selectedHistoryCustomer.balanceOwed.toLocaleString()} usd={(selectedHistoryCustomer.balanceOwedUsd || 0).toLocaleString()}/> • {t.weOweThem}: <CurrencyAmounts afn={(selectedHistoryCustomer.creditBalance || 0).toLocaleString()} usd={(selectedHistoryCustomer.creditBalanceUsd || 0).toLocaleString()}/>
                   </span>
                 </div>
               </div>

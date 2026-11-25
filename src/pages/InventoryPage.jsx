@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import { RecordAvatar } from '../components/RecordAvatar';
 import { recordTone } from '../lib/recordAppearance';
 import { TransactionDateField } from '../components/TransactionDateField';
@@ -265,7 +266,7 @@ export const InventoryPage = () => {
           <div>
             <span className="text-xs font-semibold text-slate-500">{t.totalValue}</span>
             <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-              {totalWarehouseValue.AFN.toLocaleString()} AFN · {totalWarehouseValue.USD.toLocaleString()} USD
+              <CurrencyAmounts afn={totalWarehouseValue.AFN.toLocaleString()} usd={totalWarehouseValue.USD.toLocaleString()}/>
             </div>
             <span className="text-xs text-slate-500">{t.activeFactory}</span>
           </div>

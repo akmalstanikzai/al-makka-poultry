@@ -64,6 +64,7 @@
   .stats-grid > div:nth-child(4n + 4) { --stat-accent: #8b5cf6; --stat-soft: #f3efff; }
   .stats-grid > div > div:first-child { min-width: 0; }
   .stats-grid .font-mono { font-family: inherit; overflow-wrap: anywhere; letter-spacing: -0.025em; }
+  .stats-grid span > .currency-amounts, .account-record td > span > .currency-amounts { display: grid; width: fit-content; }
   .app-shell[dir='rtl'] :is(.stats-grid, .expense-total) .font-mono { direction: ltr; unicode-bidi: isolate; text-align: right; }
   .stats-grid :is(.text-xl, .text-2xl) { font-size: clamp(16px, 1.5vw, 20px); line-height: 1.45; }
   .stats-grid > div > :last-child:has(> svg) { flex-shrink: 0; padding: 8px; border: 0; }
@@ -71,7 +72,6 @@
   .expense-summary-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 12px 14px; border: 1px solid var(--page-border); border-radius: 12px; background: white; }
   .expense-summary-label { display: flex; align-items: center; gap: 8px; color: var(--page-accent); font-size: 12px; font-weight: 650; }
   .expense-summary-strip strong { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 18px; color: #334155; }
-  .expense-summary-strip strong > span { color: #cbd5e1; }
   .expense-record-count { margin-inline-start: auto; padding: 4px 9px; border-radius: 20px; background: var(--page-soft); color: #64748b; font-size: 11px; }
   .content-panel { border-color: #e1e7f0; border-radius: 12px; box-shadow: 0 2px 7px rgb(15 23 42 / 2%); }
   .content-panel > div:first-child:has(h3), .counter-history > div:first-child { background: var(--page-soft); border-bottom-color: var(--page-border); }
@@ -109,6 +109,7 @@
   .account-name > span:first-child { overflow-wrap: anywhere; }
   .account-record > td:nth-child(2) > div { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 12px; }
   .account-record > td:nth-child(7) > div { justify-content: flex-start; }
+  .account-record .text-sm > .currency-amounts { font-size: 12px; }
   .account-history-row { display: block; max-width: 100%; border-color: #dce5ee; }
   .account-history-row > td { display: block; max-width: 100%; padding: 6px; }
   .sales-list-table .sale-record > td:first-child { border-inline-start: 3px solid var(--record-accent); background: var(--record-soft); color: var(--record-accent); }
@@ -204,7 +205,7 @@
   .dashboard-currency-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
   .dashboard-currency-row > span { font-size: 10px; color: #64748b; font-weight: 650; }
   .dashboard-currency-row strong { font-size: 18px; line-height: 1.35; letter-spacing: -0.04em; overflow-wrap: anywhere; }
-  .dashboard-currency.is-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dashboard-currency.is-compact { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .dashboard-currency.is-compact .dashboard-currency-row { flex-wrap: wrap; gap: 0 4px; }
   .dashboard-currency.is-compact strong { font-size: 12px; }
   .dashboard-metric .metric-footnote { font-size: 10px; line-height: 1.5; padding-top: 5px; border-color: color-mix(in srgb, var(--metric-accent) 15%, transparent); }

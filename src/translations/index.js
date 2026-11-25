@@ -1098,7 +1098,7 @@ export const translations = {
         "cashPaid": "نغدي تادیه",
         "cashReceived": "نغدي ترلاسه شوي",
         "remainingOwedToSupplier": "په مونږه پاتې پور",
-        "ourRemainingDebt": "زموږ پاتې پور",
+        "ourRemainingDebt": "په مونږه پاتې پور",
         "customerDebtBadge": "پوروړی",
         "supplierCreditBadge": "طلبکار",
         "settledBadge": "تصفیه شوی",

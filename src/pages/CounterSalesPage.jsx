@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
 import React, { useMemo, useRef, useState } from 'react';
@@ -17,7 +18,7 @@ const createLine = (db, stockType = 'processed') => ({
     salePricePerUnit: '',
 });
 const unitKg = unit => unit === 'ton' ? 1000 : unit === 'bag' ? 50 : 1;
-const moneyPair = (afn, usd) => `${Number(afn || 0).toLocaleString()} AFN · ${Number(usd || 0).toLocaleString()} USD`;
+const moneyPair = (afn, usd) => <CurrencyAmounts afn={Number(afn || 0).toLocaleString()} usd={Number(usd || 0).toLocaleString()}/>;
 
 export const CounterSalesPage = () => {
     const { db, lang, t, recordCounterSale, receiveCounterCustomerPayment, updateCounterSale, voidCounterSale } = useDatabase();
@@ -153,4 +154,3 @@ const Cell = ({ label, value, good, bad, className='' }) => <div className={clas
 const Empty = ({ text }) => <div className="p-10 text-center text-sm text-slate-500">{text}</div>;
 const Stat = ({ icon:Icon,label,value,tone }) => <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex items-center justify-between gap-3"><div><span className="text-xs font-semibold text-slate-500">{label}</span><strong className="mt-1 block font-mono text-base text-slate-900">{value}</strong></div><span className={`rounded-xl p-3 ${tone==='emerald'?'bg-emerald-100 text-emerald-700':tone==='rose'?'bg-rose-100 text-rose-700':'bg-violet-100 text-violet-700'}`}><Icon className="h-5 w-5"/></span></div>;
 const Modal = ({ onClose,title,children }) => <div className="ui-overlay fixed inset-0 z-50 overflow-y-auto bg-slate-900/55 p-3 sm:p-6"><div className="mx-auto my-2 w-full max-w-5xl rounded-2xl bg-white shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-5 py-4 rounded-t-2xl"><h3 className="font-bold text-slate-900">{title}</h3><button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5"/></button></div><div className="p-4 sm:p-6">{children}</div></div></div>;
-

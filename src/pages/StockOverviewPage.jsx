@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import { RecordAvatar } from '../components/RecordAvatar';
 import { recordTone } from '../lib/recordAppearance';
 import React, { useState } from 'react';
@@ -44,8 +45,8 @@ export const StockOverviewPage = () => {
       <div className="stats-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">{[
         { label: t.rawStockCard, value: `${rawKg.toLocaleString()} ${t.kilo}`, detail: `${(rawKg / 1000).toFixed(2)} ${t.tons}`, icon: Wheat, color: 'amber' },
         { label: t.processedStockCard, value: `${processedKg.toLocaleString()} ${t.kilo}`, detail: `${(processedKg / 1000).toFixed(2)} ${t.tons}`, icon: PackageCheck, color: 'emerald' },
-        { label: t.rawInventoryValue, value: `${rawValue.AFN.toLocaleString()} AFN · ${rawValue.USD.toLocaleString()} USD`, detail: `${db.rawMaterials.length} ${t.records}`, icon: DollarSign, color: 'amber' },
-        { label: t.processedInventoryValue, value: `${processedValue.AFN.toLocaleString()} AFN · ${processedValue.USD.toLocaleString()} USD`, detail: `${db.processedStock.length} ${t.records}`, icon: Scale, color: 'emerald' },
+        { label: t.rawInventoryValue, value: <CurrencyAmounts afn={rawValue.AFN.toLocaleString()} usd={rawValue.USD.toLocaleString()}/>, detail: `${db.rawMaterials.length} ${t.records}`, icon: DollarSign, color: 'amber' },
+        { label: t.processedInventoryValue, value: <CurrencyAmounts afn={processedValue.AFN.toLocaleString()} usd={processedValue.USD.toLocaleString()}/>, detail: `${db.processedStock.length} ${t.records}`, icon: Scale, color: 'emerald' },
       ].map(card => { const Icon = card.icon; const colors = card.color === 'amber' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'; return <div key={card.label} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between"><div><span className="text-xs font-semibold text-slate-500">{card.label}</span><div className="text-xl font-bold font-mono text-slate-900 mt-1">{card.value}</div><span className="text-xs text-slate-500">{card.detail}</span></div><span className={`p-3 rounded-xl border ${colors}`}><Icon className="w-6 h-6"/></span></div>; })}</div>
       <InventorySection title={t.rawMaterialsSection} description={t.rawMaterialsSectionDesc} icon={Wheat} count={rawMaterials.length} emptyText={t.noRawMaterials} accent="amber" searchTerm={rawSearchTerm} onSearchChange={(value) => { setRawSearchTerm(value); setShowAllRaw(false); }} searchPlaceholder={labels.rawSearch} showMore={rawMaterials.length > 20 && !showAllRaw} onShowMore={() => setShowAllRaw(true)} showMoreLabel={`${labels.more} (${Math.max(0, rawMaterials.length - 20)})`}>
         {visibleRawMaterials.map(item => <RawMaterialRow key={item.id} item={item} t={t} onEdit={openEdit} editLabel={labels.edit}/>) }

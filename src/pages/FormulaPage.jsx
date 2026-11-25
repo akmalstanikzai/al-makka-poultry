@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import React, { useMemo, useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { normalizeDecimalInput } from '../lib/numberInput';
@@ -560,7 +561,7 @@ export const FormulaPage = () => {
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
                 <div className="flex flex-wrap justify-between items-center gap-1 text-slate-600">
                   <span>{t.rawMaterialsCost}</span>
-                  <span className="font-mono font-bold">{scaledRawMaterialCost.AFN.toLocaleString()} AFN · {scaledRawMaterialCost.USD.toLocaleString()} USD</span>
+                  <span className="font-mono font-bold"><CurrencyAmounts afn={scaledRawMaterialCost.AFN.toLocaleString()} usd={scaledRawMaterialCost.USD.toLocaleString()}/></span>
                 </div>
                 {batchExpenseAmount > 0 && (<div className="flex justify-between items-center text-amber-700 mt-1.5 pt-1.5 border-t border-slate-200">
                     <span>{t.prodExpensesSub}</span>
@@ -568,7 +569,7 @@ export const FormulaPage = () => {
                   </div>)}
                 <div className="flex flex-wrap justify-between items-center gap-1 text-slate-900 font-bold mt-2 pt-2 border-t border-slate-300">
                   <span>{t.totalBatchCost}:</span>
-                  <span className="font-mono text-cyan-700">{totalBatchCost.AFN.toLocaleString()} AFN · {totalBatchCost.USD.toLocaleString()} USD</span>
+                  <span className="font-mono text-cyan-700"><CurrencyAmounts afn={totalBatchCost.AFN.toLocaleString()} usd={totalBatchCost.USD.toLocaleString()}/></span>
                 </div>
               </div>
 
@@ -579,7 +580,7 @@ export const FormulaPage = () => {
                     {t.costPerTonResult}:
                   </span>
                   <div className="text-2xl font-black font-mono text-emerald-800 mt-0.5">
-                    {costPerTon.AFN.toLocaleString(undefined, { maximumFractionDigits: 1 })} AFN · {costPerTon.USD.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD
+                    <CurrencyAmounts afn={costPerTon.AFN.toLocaleString(undefined, { maximumFractionDigits: 1 })} usd={costPerTon.USD.toLocaleString(undefined, { maximumFractionDigits: 2 })}/>
                     <span className="text-xs font-medium text-emerald-700 ms-1">/ {t.tons}</span>
                   </div>
                 </div>
@@ -588,13 +589,13 @@ export const FormulaPage = () => {
                   <div>
                     <span className="text-[10px] text-emerald-700 block">{t.costPerBag50kg}</span>
                     <strong className="font-mono text-emerald-900 text-sm">
-                      {costPerBag.AFN.toFixed(0)} AFN · {costPerBag.USD.toFixed(2)} USD
+                      <CurrencyAmounts afn={costPerBag.AFN.toFixed(0)} usd={costPerBag.USD.toFixed(2)}/>
                     </strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-emerald-700 block">{t.costPerKgShort}</span>
                     <strong className="font-mono text-emerald-900 text-sm">
-                      {costPerKg.AFN.toFixed(2)} AFN · {costPerKg.USD.toFixed(4)} USD
+                      <CurrencyAmounts afn={costPerKg.AFN.toFixed(2)} usd={costPerKg.USD.toFixed(4)}/>
                     </strong>
                   </div>
                 </div>
@@ -683,7 +684,7 @@ export const FormulaPage = () => {
           <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
             <span className="text-[11px] font-semibold text-emerald-800 block">{t.totalProcessedStockValue}</span>
             <div className="text-lg sm:text-xl font-bold font-mono text-emerald-900 mt-1 break-words [overflow-wrap:anywhere]">
-              {totalProcessedValue.AFN.toLocaleString()} AFN · {totalProcessedValue.USD.toLocaleString()} USD
+              <CurrencyAmounts afn={totalProcessedValue.AFN.toLocaleString()} usd={totalProcessedValue.USD.toLocaleString()}/>
             </div>
             <span className="text-[10px] text-emerald-700">{db.processedStock.length} {t.readyFeedTypes}</span>
           </div>
@@ -761,19 +762,19 @@ export const FormulaPage = () => {
                     <div className="flex justify-between items-center text-slate-600">
                       <span className="font-medium">{t.costPerTon}:</span>
                       <span className="font-mono font-bold text-amber-800">
-                        {ratePerTon.AFN.toLocaleString(undefined, { maximumFractionDigits: 1 })} AFN · {ratePerTon.USD.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD
+                        <CurrencyAmounts afn={ratePerTon.AFN.toLocaleString(undefined, { maximumFractionDigits: 1 })} usd={ratePerTon.USD.toLocaleString(undefined, { maximumFractionDigits: 2 })}/>
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-slate-600">
                       <span className="font-medium">{t.costPerBag50kg}</span>
                       <span className="font-mono font-bold text-slate-800">
-                        {ratePerBag.AFN.toFixed(0)} AFN · {ratePerBag.USD.toFixed(2)} USD
+                        <CurrencyAmounts afn={ratePerBag.AFN.toFixed(0)} usd={ratePerBag.USD.toFixed(2)}/>
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-slate-600">
                       <span className="font-medium">{t.costPerKgShort}</span>
                       <span className="font-mono font-bold text-slate-800">
-                        {(p.averageCostPerKg || 0).toFixed(2)} AFN · {(p.averageCostPerKgUsd || 0).toFixed(4)} USD
+                        <CurrencyAmounts afn={(p.averageCostPerKg || 0).toFixed(2)} usd={(p.averageCostPerKgUsd || 0).toFixed(4)}/>
                       </span>
                     </div>
                   </div>
@@ -822,19 +823,25 @@ export const FormulaPage = () => {
                       <div className="flex justify-between text-slate-600">
                         <span>{t.costPerTon}:</span>
                         <span className="font-mono font-bold text-emerald-700">
-                          {costTon.AFN.toLocaleString(undefined, { maximumFractionDigits: 1 })} AFN · {costTon.USD.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD
+                          <CurrencyAmounts afn={costTon.AFN.toLocaleString(undefined, { maximumFractionDigits: 1 })} usd={costTon.USD.toLocaleString(undefined, { maximumFractionDigits: 2 })}/>
                         </span>
                       </div>
                       <div className="flex justify-between text-slate-600">
-                        <span>{t.costPerBag50kg} / {t.costPerKgShort}</span>
+                        <span>{t.costPerBag50kg}</span>
                         <span className="font-mono font-semibold text-slate-700">
-                          {costBag.AFN.toFixed(0)} AFN · {costBag.USD.toFixed(2)} USD / {(f.costPerKg || 0).toFixed(2)} AFN · {(f.costPerKgUsd || 0).toFixed(4)} USD
+                          <CurrencyAmounts afn={costBag.AFN.toFixed(0)} usd={costBag.USD.toFixed(2)}/>
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>{t.costPerKgShort}</span>
+                        <span className="font-mono font-semibold text-slate-700">
+                          <CurrencyAmounts afn={(f.costPerKg || 0).toFixed(2)} usd={(f.costPerKgUsd || 0).toFixed(4)}/>
                         </span>
                       </div>
                       <div className="flex justify-between text-slate-600">
                         <span>{t.totalBatchCost}:</span>
                         <span className="font-mono font-bold text-slate-800">
-                          {(f.totalBatchCost || 0).toLocaleString()} AFN · {(f.totalBatchCostUsd || 0).toLocaleString()} USD
+                          <CurrencyAmounts afn={(f.totalBatchCost || 0).toLocaleString()} usd={(f.totalBatchCostUsd || 0).toLocaleString()}/>
                         </span>
                       </div>
                       <div className="flex justify-between gap-3 text-slate-600">

@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import { recordTone } from '../lib/recordAppearance';
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
@@ -204,7 +205,7 @@ export const SalesPage = () => {
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.totalSaleAmount}</span>
           <div className="text-xl font-bold font-mono text-slate-900 mt-1">
-            {totalSalesRevenue.AFN.toLocaleString()} AFN · {totalSalesRevenue.USD.toLocaleString()} USD
+            <CurrencyAmounts afn={totalSalesRevenue.AFN.toLocaleString()} usd={totalSalesRevenue.USD.toLocaleString()}/>
           </div>
           <span className="text-xs text-amber-700 font-medium">
             {totalVolumeKg.toLocaleString()} {t.kilo} ({(totalVolumeKg / 50).toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.bag})
@@ -214,7 +215,7 @@ export const SalesPage = () => {
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.netProfit}</span>
           <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
-            {totalSalesProfit.AFN.toLocaleString()} AFN · {totalSalesProfit.USD.toLocaleString()} USD
+            <CurrencyAmounts afn={totalSalesProfit.AFN.toLocaleString()} usd={totalSalesProfit.USD.toLocaleString()}/>
           </div>
           <span className="text-xs text-emerald-600 font-medium">{t.operationalGrossProfit}</span>
         </div>
@@ -222,7 +223,7 @@ export const SalesPage = () => {
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <span className="text-xs font-semibold text-slate-500">{t.receivableCustomersCard}</span>
           <div className="text-xl font-bold font-mono text-rose-700 mt-1">
-            {totalReceivables.AFN.toLocaleString()} AFN · {totalReceivables.USD.toLocaleString()} USD
+            <CurrencyAmounts afn={totalReceivables.AFN.toLocaleString()} usd={totalReceivables.USD.toLocaleString()}/>
           </div>
           <span className="text-xs text-rose-600 font-medium">{t.remainingCustomerDebt}</span>
         </div>
@@ -317,7 +318,7 @@ export const SalesPage = () => {
                         </span>)}
                     </td>
                     {showCostRate && (<td data-label={t.netProfit} className="py-3.5 px-4 font-mono text-emerald-700 font-bold">
-                        +{(sale.profit || 0).toLocaleString()} AFN · {(sale.profitUsd || 0).toLocaleString()} USD
+                        <CurrencyAmounts afn={<>+{(sale.profit || 0).toLocaleString()}</>} usd={(sale.profitUsd || 0).toLocaleString()}/>
                       </td>)}
                     <td data-label={t.action} className="py-3.5 px-4 text-center">
                       <button type="button" onClick={() => setSelectedInvoice(sale)} className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 mx-auto transition-colors cursor-pointer">

@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from './CurrencyAmounts';
 import React from 'react';
 import { sortTransactionsNewestFirst } from '../lib/transactionSort';
 import { findRelatedSale, getTransactionEntryDetails } from '../lib/transactionDetails';
@@ -55,7 +56,7 @@ const quantityTotals = (rows, t, role) => {
 };
 
 const MoneyPair = ({ afn, usd, tone = 'text-slate-900' }) => (
-    <strong dir="ltr" className={`inline-block font-mono ${tone}`}>{amount(afn).toLocaleString()} AFN · {amount(usd).toLocaleString()} USD</strong>
+    <strong dir="ltr" className={`inline-block font-mono ${tone}`}><CurrencyAmounts afn={amount(afn).toLocaleString()} usd={amount(usd).toLocaleString()}/></strong>
 );
 
 export const AccountStatement = ({ id, party, role, sales = [], t, lang, audit = false }) => {

@@ -1,3 +1,4 @@
+import { CurrencyAmounts } from '../components/CurrencyAmounts';
 import { TransactionDateField } from '../components/TransactionDateField';
 import { localDateValue } from '../lib/recordDate';
 import React, { useState } from 'react';
@@ -116,7 +117,7 @@ export const ExpensesPage = () => {
       {/* Summary Card */}
       <section className="expense-summary-strip" aria-label={t.totalExpenses}>
         <div className="expense-summary-label"><Wallet className="w-5 h-5"/><span>{t.totalExpenses}</span></div>
-        <strong><bdi dir="ltr">{totalExpenses.AFN.toLocaleString()} AFN</bdi><span aria-hidden="true">·</span><bdi dir="ltr">{totalExpenses.USD.toLocaleString()} USD</bdi></strong>
+        <strong><CurrencyAmounts afn={totalExpenses.AFN.toLocaleString()} usd={totalExpenses.USD.toLocaleString()}/></strong>
         <span className="expense-record-count">{db.expenses.length} {t.records}</span>
       </section>
 
