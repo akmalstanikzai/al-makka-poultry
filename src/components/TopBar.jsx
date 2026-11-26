@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Menu, Bell, AlertTriangle, SlidersHorizontal, CheckCircle2, Globe2, X } from 'lucide-react';
+import { Menu, Bell, AlertTriangle, SlidersHorizontal, CheckCircle2, Globe2, RefreshCw, X } from 'lucide-react';
 export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestockModal, }) => {
-    const { lang, setLang, t, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName } = useDatabase();
+    const { lang, setLang, t, lowStockThreshold, setLowStockThreshold, lowStockMaterials, getLocalizedName, refreshDatabase, isRefreshingData } = useDatabase();
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [editingThreshold, setEditingThreshold] = useState(false);
     const [thresholdInput, setThresholdInput] = useState(lowStockThreshold.toString());
@@ -54,6 +54,9 @@ export const TopBar = ({ activeTab, setActiveTab, onOpenMobileMenu, onOpenRestoc
 
         {/* Right / End: Notification Bell, Cash Balance, Language & Profile */}
         <div className="topbar-actions flex items-center gap-2 sm:gap-3 shrink-0">
+          <button type="button" onClick={refreshDatabase} disabled={isRefreshingData} aria-label={t.refreshData} title={t.refreshData} aria-busy={isRefreshingData} className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50">
+            <RefreshCw className={`h-5 w-5 ${isRefreshingData ? 'animate-spin' : ''}`}/>
+          </button>
           {/* Low Stock Notification Bell */}
           <button type="button" onClick={() => setShowNotificationModal(true)} className={`relative p-2 rounded-xl border transition-all ${lowStockMaterials.length > 0
             ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 animate-pulse'

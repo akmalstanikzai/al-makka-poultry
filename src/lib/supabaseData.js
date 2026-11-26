@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { rawAverageCostPerKg } from './rawMaterialCost';
+import { readAllRows } from './readAllRows';
 let writeQueue = Promise.resolve();
 function reportDatabaseError(message) {
     console.error(message);
@@ -23,16 +24,6 @@ function queueWrite(operation) {
     return next;
 }
 const DEFAULT_CASH_IN_HAND = 0;
-async function readAllRows(query) {
-    const rows = [];
-    const pageSize = 1000;
-    for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await query.range(offset, offset + pageSize - 1);
-        if (error) return { data: null, error };
-        rows.push(...data);
-        if (data.length < pageSize) return { data: rows, error: null };
-    }
-}
 
 
 export async function loadFactorySettings() {
@@ -116,20 +107,20 @@ export async function loadStateFromSupabase() {
         return null;
     try {
         const [rawRes, supRes, supTxRes, custRes, custTxRes, procRes, salesRes, expRes, formRes, batchRes, counterCustRes, counterTxRes, counterSalesRes, purchaseRes] = await Promise.all([
-            readAllRows(supabase.from('raw_materials').select('*').order('id')),
-            readAllRows(supabase.from('suppliers').select('*').order('id')),
-            readAllRows(supabase.from('supplier_transactions').select('*').order('id')),
-            readAllRows(supabase.from('customers').select('*').order('id')),
-            readAllRows(supabase.from('customer_transactions').select('*').order('id')),
-            readAllRows(supabase.from('processed_stock').select('*').order('id')),
-            readAllRows(supabase.from('sales').select('*').order('date', { ascending: false }).order('id')),
-            readAllRows(supabase.from('expenses').select('*').order('date', { ascending: false }).order('id')),
-            readAllRows(supabase.from('formulas').select('*').order('id')),
-            readAllRows(supabase.from('production_batches').select('*').order('date', { ascending: false }).order('id')),
-            readAllRows(supabase.from('counter_customers').select('*').order('id')),
-            readAllRows(supabase.from('counter_customer_transactions').select('*').order('created_at', { ascending: false }).order('id')),
-            readAllRows(supabase.from('counter_sales').select('*').order('created_at', { ascending: false }).order('id')),
-            readAllRows(supabase.from('raw_material_purchases').select('*').order('id')),
+            readAllRows(supabase.from('raw_materials').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('suppliers').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('supplier_transactions').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('customers').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('customer_transactions').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('processed_stock').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('sales').select('*', { count: 'exact' }).order('date', { ascending: false }).order('id')),
+            readAllRows(supabase.from('expenses').select('*', { count: 'exact' }).order('date', { ascending: false }).order('id')),
+            readAllRows(supabase.from('formulas').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('production_batches').select('*', { count: 'exact' }).order('date', { ascending: false }).order('id')),
+            readAllRows(supabase.from('counter_customers').select('*', { count: 'exact' }).order('id')),
+            readAllRows(supabase.from('counter_customer_transactions').select('*', { count: 'exact' }).order('created_at', { ascending: false }).order('id')),
+            readAllRows(supabase.from('counter_sales').select('*', { count: 'exact' }).order('created_at', { ascending: false }).order('id')),
+            readAllRows(supabase.from('raw_material_purchases').select('*', { count: 'exact' }).order('id')),
         ]);
         const queryResults = [
             rawRes,
@@ -231,23 +222,6 @@ export async function loadStateFromSupabase() {
                 correctedAt: tx.corrected_at || undefined,
             })),
         }));
-        let supplierBalanceReconciliationNeeded = false;
-        suppliers.forEach(supplier => {
-            const afnNet = supplier.totalPurchasedAmount - supplier.totalPaid - supplier.goodsSettledAmount;
-            const usdNet = supplier.totalPurchasedAmountUsd - supplier.totalPaidUsd - supplier.goodsSettledAmountUsd;
-            const expectedAfnBalance = Math.max(0, afnNet);
-            const expectedUsdBalance = Math.max(0, usdNet);
-            const expectedAfnReceivable = Math.max(0, -afnNet);
-            const expectedUsdReceivable = Math.max(0, -usdNet);
-            if (supplier.balanceOwed !== expectedAfnBalance || supplier.balanceOwedUsd !== expectedUsdBalance
-                || supplier.receivableBalance !== expectedAfnReceivable || supplier.receivableBalanceUsd !== expectedUsdReceivable) {
-                supplierBalanceReconciliationNeeded = true;
-                supplier.balanceOwed = expectedAfnBalance;
-                supplier.balanceOwedUsd = expectedUsdBalance;
-                supplier.receivableBalance = expectedAfnReceivable;
-                supplier.receivableBalanceUsd = expectedUsdReceivable;
-            }
-        });
         const customerTransactions = custTxRes.data || [];
         const customers = (custRes.data || []).map(c => ({
             id: c.id,
@@ -298,28 +272,6 @@ export async function loadStateFromSupabase() {
                 correctedAt: tx.corrected_at || undefined,
             })),
         }));
-        // Customer debt has one accounting source of truth:
-        // sales - cash received - raw materials received. Repair older rows
-        // whose stored balance was not updated when a settlement was saved.
-        let customerBalanceReconciliationNeeded = false;
-        customers.forEach(customer => {
-            const expectedAfnBalance = Math.max(0,
-                customer.totalPurchasedAmount + customer.accountCharges - customer.totalPaid - customer.rawSettledAmount);
-            const expectedUsdBalance = Math.max(0,
-                customer.totalPurchasedAmountUsd + customer.accountChargesUsd - customer.totalPaidUsd - customer.rawSettledAmountUsd);
-            const expectedAfnCredit = Math.max(0,
-                customer.totalPaid + customer.rawSettledAmount - customer.totalPurchasedAmount - customer.accountCharges);
-            const expectedUsdCredit = Math.max(0,
-                customer.totalPaidUsd + customer.rawSettledAmountUsd - customer.totalPurchasedAmountUsd - customer.accountChargesUsd);
-            if (customer.balanceOwed !== expectedAfnBalance || customer.balanceOwedUsd !== expectedUsdBalance
-                || customer.creditBalance !== expectedAfnCredit || customer.creditBalanceUsd !== expectedUsdCredit) {
-                customerBalanceReconciliationNeeded = true;
-                customer.balanceOwed = expectedAfnBalance;
-                customer.balanceOwedUsd = expectedUsdBalance;
-                customer.creditBalance = expectedAfnCredit;
-                customer.creditBalanceUsd = expectedUsdCredit;
-            }
-        });
         const processedStock = (procRes.data || []).map(p => ({
             id: p.id,
             name: p.name,
@@ -411,27 +363,6 @@ export async function loadStateFromSupabase() {
             auditTrail: Array.isArray(sale.audit_trail) ? sale.audit_trail : [],
             createdAt: sale.created_at || '',
         }));
-        // Customer totals may already include payments from an older app
-        // version that failed before updating the sales table. Reconstruct the
-        // invoice paid/remaining values oldest-first so both pages agree.
-        let salesReconciliationNeeded = false;
-        customers.forEach(customer => {
-            ['AFN', 'USD'].forEach(currency => {
-                let paidToAllocate = currency === 'USD'
-                    ? customer.totalPaidUsd + customer.rawSettledAmountUsd
-                    : customer.totalPaid + customer.rawSettledAmount;
-                sales
-                    .filter(sale => (sale.currency || 'AFN') === currency && (sale.customerId === customer.id || (!sale.customerId && (sale.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase() || (customer.phone && sale.customerPhone === customer.phone)))))
-                    .sort((first, second) => first.date.localeCompare(second.date))
-                    .forEach(sale => {
-                        const invoicePaid = Math.min(paidToAllocate, sale.totalAmount);
-                        if (sale.paidAmount !== invoicePaid || sale.remainingAmount !== Math.max(0, sale.totalAmount - invoicePaid)) salesReconciliationNeeded = true;
-                        sale.paidAmount = invoicePaid;
-                        sale.remainingAmount = Math.max(0, sale.totalAmount - invoicePaid);
-                        paidToAllocate -= invoicePaid;
-                    });
-            });
-        });
         const expenses = (expRes.data || []).map(e => ({
             id: e.id,
             date: e.date,
@@ -491,7 +422,6 @@ export async function loadStateFromSupabase() {
         ].some(items => items.length > 0);
         return {
             hasData,
-            salesReconciliationNeeded: salesReconciliationNeeded || customerBalanceReconciliationNeeded || supplierBalanceReconciliationNeeded,
             state: {
                 rawMaterials,
                 rawMaterialPurchases,

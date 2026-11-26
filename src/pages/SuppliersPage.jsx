@@ -200,7 +200,7 @@ export const SuppliersPage = () => {
             || db.sales.some(sale => String(sale.billNumber || '').toLowerCase().includes(normalizedSearch)
                 && (sale.supplierId === s.id || (!sale.supplierId && sale.customerName?.trim().toLowerCase() === s.name.trim().toLowerCase())))
         );
-        const matchesSearch = !normalizedSearch || s.name.toLowerCase().includes(normalizedSearch) ||
+        const matchesSearch = !normalizedSearch || String(s.id).toLowerCase().includes(normalizedSearch) || s.name.toLowerCase().includes(normalizedSearch) ||
             (s.phone && s.phone.includes(normalizedSearch)) ||
             (s.address && s.address.toLowerCase().includes(normalizedSearch)) || hasMatchingBill;
         if (!matchesSearch)
@@ -222,7 +222,7 @@ export const SuppliersPage = () => {
           <div className="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none text-slate-400">
             <Search className="w-4 h-4"/>
           </div>
-          <input type="text" placeholder={t.searchByNamePhoneBill || t.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full ps-10 pe-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-600 shadow-2xs"/>
+          <input type="text" placeholder={t.searchSupplierRecords} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full ps-10 pe-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-600 shadow-2xs"/>
           {searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute inset-y-0 end-0 pe-3 flex items-center text-slate-400 hover:text-slate-700 cursor-pointer">
               <X className="w-4 h-4"/>
             </button>)}
@@ -349,8 +349,8 @@ export const SuppliersPage = () => {
                                   <span>{t.settledBadge}</span>
                                 </span>)}
                             </div>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {t.idCode}: #{sup.id.slice(-6).toUpperCase()}
+                            <span className="text-[10px] text-slate-500 font-mono break-all">
+                              {t.idCode}: <bdi dir="ltr">#{sup.id}</bdi>
                             </span>
                           </div>
                         </div>

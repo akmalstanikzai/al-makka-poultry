@@ -16,8 +16,7 @@ Security.
 Migrations are stored in `supabase/migrations` in execution order:
 
 1. `20260928000000_rebuild_public_schema.sql` destructively replaces the old
-   public application schema while preserving Supabase Auth accounts.
-2. The dated follow-up migrations add the supplier/customer settlement and
+   public application schema while preserving Supabase Auth accounts...2. The dated follow-up migrations add the supplier/customer settlement and
    dual-currency columns used by the frontend.
 3. `20261010000000_disable_realtime.sql` removes the application tables from
    Realtime because the UI loads once and performs targeted REST writes. Apply
@@ -73,6 +72,20 @@ and run `supabase db push --db-url "$SUPABASE_DB_URL"`.......
 npm install
 npm run dev
 ```
+
+## Reading changes made in Supabase
+
+The app loads all rows, including when the Supabase API row limit is lower
+than the requested page size. Use the refresh icon in the top bar to reload
+changes made directly in Supabase. Refresh waits for pending app edits to save
+and never writes fetched records back to the database or recalculates saved
+balances/payments. Historical transaction balances remain the values recorded
+on those transactions.
+
+Supplier IDs are shown in full and can be searched. Transactions belong to the
+supplier whose `id` exactly matches their `supplier_id`; similarly named supplier
+rows remain separate. For example, changing supplier `01` does not change a
+different supplier row with a generated ID. No records are merged by name.
 
 ## Reports and transaction dates
 

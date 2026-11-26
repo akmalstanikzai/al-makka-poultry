@@ -205,6 +205,46 @@ export const DatabaseProvider = ({ children }) => {
         }
     };
     const [db, setDb] = useState(emptyFactoryData);
+    const currentDbRef = useRef(db);
+    const refreshInFlightRef = useRef(false);
+    const sessionVersionRef = useRef(0);
+    const [isRefreshingData, setIsRefreshingData] = useState(false);
+    useEffect(() => { currentDbRef.current = db; }, [db]);
+    const refreshDatabase = async () => {
+        if (!supabase || !user || !isRemoteStateReady.current || refreshInFlightRef.current) return false;
+        const originalState = currentDbRef.current;
+        const originalHash = JSON.stringify(originalState);
+        if (pendingStateRef.current || originalHash !== lastSyncedState.current) {
+            setDatabaseError(t.refreshWaitForSave);
+            return false;
+        }
+        const sessionVersion = sessionVersionRef.current;
+        refreshInFlightRef.current = true;
+        setIsRefreshingData(true);
+        try {
+            const result = await loadStateFromSupabase();
+            if (sessionVersion !== sessionVersionRef.current || !isRemoteStateReady.current) return false;
+            if (!result?.state) {
+                setDatabaseError(t.refreshDataFailed);
+                return false;
+            }
+            // An edit made while this read was in flight must never be replaced.
+            if (currentDbRef.current !== originalState || pendingStateRef.current || lastSyncedState.current !== originalHash) {
+                setDatabaseError(t.refreshWaitForSave);
+                return false;
+            }
+            lastSyncedState.current = JSON.stringify(result.state);
+            persistedStateRef.current = result.state;
+            currentDbRef.current = result.state;
+            setDb(result.state);
+            setIsSupabaseConnected(true);
+            setDatabaseError(null);
+            return true;
+        } finally {
+            refreshInFlightRef.current = false;
+            setIsRefreshingData(false);
+        }
+    };
     const commitConfirmedState = async (nextState, isConfirmed) => {
         const saved = await persistStateChanges(db, nextState);
         let committedState = nextState;
@@ -310,7 +350,9 @@ export const DatabaseProvider = ({ children }) => {
     // deliberately do not subscribe to broad Realtime changes or refetch on
     // focus/visibility, since either pattern redownloads the complete database.
     useEffect(() => {
+        sessionVersionRef.current += 1;
         if (!supabase || isAuthLoading || !user?.email) {
+            isRemoteStateReady.current = false;
             setIsSupabaseConnected(false);
             if (!isAuthLoading) setIsDatabaseLoading(false);
             return;
@@ -341,9 +383,6 @@ export const DatabaseProvider = ({ children }) => {
             lastSyncedState.current = JSON.stringify(result.state);
             persistedStateRef.current = result.state;
             setDb(result.state);
-            if (result.salesReconciliationNeeded) {
-                void writeStateToSupabase(result.state);
-            }
             void loadFactorySettings().then(settings => {
                 if (isMounted && settings?.lowStockThreshold) setLowStockThresholdState(settings.lowStockThreshold);
             });
@@ -2062,6 +2101,8 @@ export const DatabaseProvider = ({ children }) => {
             logout,
             isAuthLoading,
             isDatabaseLoading,
+            refreshDatabase,
+            isRefreshingData,
             lowStockThreshold,
             setLowStockThreshold,
             updateRawMaterialThreshold,
