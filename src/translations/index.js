@@ -663,7 +663,7 @@ export const translations = {
         "transactionDate": "د معاملې نېټه",
         "reporting": {
             "stockSummary": "تولید، پېرود او خرڅلاو",
-            "producedStock": "تولید شوې پروسس شوې دانه",
+            "producedStock": "تولید شوې دانه",
             "rawPurchased": "پېرودل شوي خام مواد",
             "processedSold": "پلورل شوې پروسس شوې دانه",
             "rawSold": "پلورل شوي خام مواد",
